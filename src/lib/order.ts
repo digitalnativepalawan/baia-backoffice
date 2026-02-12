@@ -15,6 +15,9 @@ export function formatWhatsAppMessage(order: OrderInfo, items: CartItem[], total
     WalkIn: 'Walk-In Guest',
   };
 
+  const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const serviceCharge = Math.round(subtotal * 0.10);
+
   const lines = [
     '🌴 *NEW ORDER – BAIA PALAWAN*',
     '',
@@ -31,7 +34,9 @@ export function formatWhatsAppMessage(order: OrderInfo, items: CartItem[], total
     lines.push(`${item.quantity}x ${item.name} – ₱${(item.price * item.quantity).toLocaleString()}`);
   });
 
-  lines.push('', `*Total: ₱${total.toLocaleString()}*`);
+  lines.push('', `*Subtotal: ₱${subtotal.toLocaleString()}*`);
+  lines.push(`*Service Charge (10%): ₱${serviceCharge.toLocaleString()}*`);
+  lines.push(`*Total: ₱${total.toLocaleString()}*`);
   lines.push('', `*Time:* ${new Date().toLocaleString('en-PH')}`);
 
   return lines.join('\n');

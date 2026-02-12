@@ -8,12 +8,14 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Plus, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Plus, ArrowLeft, Eye, EyeOff, Receipt } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import EditableRow from '@/components/admin/EditableRow';
 import TimePicker from '@/components/admin/TimePicker';
 import OrderCard from '@/components/admin/OrderCard';
 import ReportsDashboard from '@/components/admin/ReportsDashboard';
+import TabInvoice from '@/components/admin/TabInvoice';
+import { formatDistanceToNow } from 'date-fns';
 
 type DateFilter = 'today' | 'yesterday' | 'all';
 
@@ -21,12 +23,16 @@ const AdminPage = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  // Realtime subscription
+  // Realtime subscription for orders and tabs
   useEffect(() => {
     const channel = supabase
-      .channel('orders-realtime')
+      .channel('admin-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: ['orders-admin'] });
+        qc.invalidateQueries({ queryKey: ['tabs-admin'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tabs' }, () => {
+        qc.invalidateQueries({ queryKey: ['tabs-admin'] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -69,6 +75,14 @@ const AdminPage = () => {
     queryKey: ['orders-admin'],
     queryFn: async () => {
       const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(200);
+      return data || [];
+    },
+  });
+
+  const { data: tabs = [] } = useQuery({
+    queryKey: ['tabs-admin'],
+    queryFn: async () => {
+      const { data } = await supabase.from('tabs').select('*').order('created_at', { ascending: false }).limit(100);
       return data || [];
     },
   });
@@ -154,7 +168,8 @@ const AdminPage = () => {
   const [dateFilter, setDateFilter] = useState<DateFilter>('today');
   const [showClosed, setShowClosed] = useState(false);
   const [activeStatus, setActiveStatus] = useState('New');
-
+  const [ordersSubView, setOrdersSubView] = useState<'pipeline' | 'tabs'>('pipeline');
+  const [selectedTabId, setSelectedTabId] = useState<string | null>(null);
   const filteredOrders = useMemo(() => {
     let filtered = orders;
 
@@ -308,45 +323,127 @@ const AdminPage = () => {
             ))}
           </TabsContent>
 
-          {/* ORDERS TAB — Kitchen Pipeline */}
+          {/* ORDERS TAB — Kitchen Pipeline + Tabs */}
           <TabsContent value="orders" className="space-y-4">
-            {/* Date filter + closed toggle */}
-            <div className="flex gap-2 items-center">
-              {(['today', 'yesterday', 'all'] as DateFilter[]).map(df => (
-                <Button key={df} size="sm" variant={dateFilter === df ? 'default' : 'outline'}
-                  onClick={() => setDateFilter(df)} className="font-body text-xs flex-1 capitalize">
-                  {df}
-                </Button>
-              ))}
-              <Button size="icon" variant="ghost" onClick={() => setShowClosed(!showClosed)}
-                className="text-cream-dim" title={showClosed ? 'Hide Closed' : 'Show Closed'}>
-                {showClosed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {/* Sub-view toggle */}
+            <div className="flex gap-2 mb-2">
+              <Button size="sm" variant={ordersSubView === 'pipeline' ? 'default' : 'outline'}
+                onClick={() => { setOrdersSubView('pipeline'); setSelectedTabId(null); }}
+                className="font-display text-xs tracking-wider flex-1">
+                Kitchen Pipeline
+              </Button>
+              <Button size="sm" variant={ordersSubView === 'tabs' ? 'default' : 'outline'}
+                onClick={() => setOrdersSubView('tabs')}
+                className="font-display text-xs tracking-wider flex-1 gap-1">
+                <Receipt className="w-3.5 h-3.5" /> Open Tabs
               </Button>
             </div>
 
-            {/* Status tabs */}
-            <div className="flex gap-1 overflow-x-auto">
-              {statuses.map(s => (
-                <button key={s} onClick={() => setActiveStatus(s)}
-                  className={`px-3 py-1.5 font-body text-xs rounded-md whitespace-nowrap transition-colors ${
-                    activeStatus === s
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary text-cream-dim hover:text-foreground'
-                  }`}>
-                  {s} {statusCounts[s] > 0 && <span className="ml-1 font-display">({statusCounts[s]})</span>}
-                </button>
-              ))}
-            </div>
+            {ordersSubView === 'pipeline' ? (
+              <>
+                {/* Date filter + closed toggle */}
+                <div className="flex gap-2 items-center">
+                  {(['today', 'yesterday', 'all'] as DateFilter[]).map(df => (
+                    <Button key={df} size="sm" variant={dateFilter === df ? 'default' : 'outline'}
+                      onClick={() => setDateFilter(df)} className="font-body text-xs flex-1 capitalize">
+                      {df}
+                    </Button>
+                  ))}
+                  <Button size="icon" variant="ghost" onClick={() => setShowClosed(!showClosed)}
+                    className="text-cream-dim" title={showClosed ? 'Hide Closed' : 'Show Closed'}>
+                    {showClosed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                </div>
 
-            {/* Order cards */}
-            <div className="space-y-3">
-              {filteredOrders.length === 0 && (
-                <p className="font-body text-cream-dim text-center py-8">No {activeStatus.toLowerCase()} orders</p>
-              )}
-              {filteredOrders.map(order => (
-                <OrderCard key={order.id} order={order} onAdvance={advanceOrder} />
-              ))}
-            </div>
+                {/* Status tabs */}
+                <div className="flex gap-1 overflow-x-auto">
+                  {statuses.map(s => (
+                    <button key={s} onClick={() => setActiveStatus(s)}
+                      className={`px-3 py-1.5 font-body text-xs rounded-md whitespace-nowrap transition-colors ${
+                        activeStatus === s
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary text-cream-dim hover:text-foreground'
+                      }`}>
+                      {s} {statusCounts[s] > 0 && <span className="ml-1 font-display">({statusCounts[s]})</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Order cards */}
+                <div className="space-y-3">
+                  {filteredOrders.length === 0 && (
+                    <p className="font-body text-cream-dim text-center py-8">No {activeStatus.toLowerCase()} orders</p>
+                  )}
+                  {filteredOrders.map(order => (
+                    <OrderCard key={order.id} order={order} onAdvance={advanceOrder} />
+                  ))}
+                </div>
+              </>
+            ) : selectedTabId ? (
+              <TabInvoice tabId={selectedTabId} onClose={() => setSelectedTabId(null)} />
+            ) : (
+              /* Tabs list */
+              <div className="space-y-3">
+                {/* Filter open/closed tabs */}
+                {(() => {
+                  const openTabs = tabs.filter(t => t.status === 'Open');
+                  const closedTabs = tabs.filter(t => t.status === 'Closed');
+                  return (
+                    <>
+                      {openTabs.length === 0 && closedTabs.length === 0 && (
+                        <p className="font-body text-cream-dim text-center py-8">No tabs yet</p>
+                      )}
+                      {openTabs.length > 0 && (
+                        <>
+                          <p className="font-display text-xs tracking-wider text-cream-dim uppercase">Open Tabs ({openTabs.length})</p>
+                          {openTabs.map(tab => {
+                            const tabOrders = orders.filter(o => o.tab_id === tab.id);
+                            const tabTotal = tabOrders.reduce((s, o) => s + Number(o.total) + Number(o.service_charge || 0), 0);
+                            return (
+                              <button key={tab.id} onClick={() => setSelectedTabId(tab.id)}
+                                className="w-full text-left p-3 border border-border hover:border-gold/50 transition-colors rounded-lg">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="font-display text-sm text-foreground">{tab.location_detail}</p>
+                                    <p className="font-body text-xs text-cream-dim">
+                                      {tab.location_type} · {tabOrders.length} order{tabOrders.length !== 1 ? 's' : ''} · {formatDistanceToNow(new Date(tab.created_at), { addSuffix: true })}
+                                    </p>
+                                  </div>
+                                  <span className="font-display text-sm text-foreground">₱{tabTotal.toLocaleString()}</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </>
+                      )}
+                      {closedTabs.length > 0 && (
+                        <>
+                          <p className="font-display text-xs tracking-wider text-cream-dim uppercase mt-4">Closed Tabs ({closedTabs.length})</p>
+                          {closedTabs.slice(0, 20).map(tab => {
+                            const tabOrders = orders.filter(o => o.tab_id === tab.id);
+                            const tabTotal = tabOrders.reduce((s, o) => s + Number(o.total) + Number(o.service_charge || 0), 0);
+                            return (
+                              <button key={tab.id} onClick={() => setSelectedTabId(tab.id)}
+                                className="w-full text-left p-3 border border-border/50 transition-colors rounded-lg opacity-60">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="font-display text-sm text-foreground">{tab.location_detail}</p>
+                                    <p className="font-body text-xs text-cream-dim">
+                                      {tab.payment_method} · {tabOrders.length} order{tabOrders.length !== 1 ? 's' : ''}
+                                    </p>
+                                  </div>
+                                  <span className="font-display text-sm text-foreground">₱{tabTotal.toLocaleString()}</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
           </TabsContent>
 
           {/* REPORTS TAB */}

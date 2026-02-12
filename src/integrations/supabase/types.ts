@@ -65,7 +65,9 @@ export type Database = {
           location_detail: string | null
           order_type: string
           payment_type: string | null
+          service_charge: number
           status: string
+          tab_id: string | null
           total: number
           updated_at: string | null
         }
@@ -77,7 +79,9 @@ export type Database = {
           location_detail?: string | null
           order_type?: string
           payment_type?: string | null
+          service_charge?: number
           status?: string
+          tab_id?: string | null
           total?: number
           updated_at?: string | null
         }
@@ -89,11 +93,21 @@ export type Database = {
           location_detail?: string | null
           order_type?: string
           payment_type?: string | null
+          service_charge?: number
           status?: string
+          tab_id?: string | null
           total?: number
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "orders_tab_id_fkey"
+            columns: ["tab_id"]
+            isOneToOne: false
+            referencedRelation: "tabs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       resort_tables: {
         Row: {
@@ -140,6 +154,39 @@ export type Database = {
           id?: string
           kitchen_whatsapp_number?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      tabs: {
+        Row: {
+          closed_at: string | null
+          created_at: string
+          guest_name: string | null
+          id: string
+          location_detail: string
+          location_type: string
+          payment_method: string | null
+          status: string
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string
+          guest_name?: string | null
+          id?: string
+          location_detail?: string
+          location_type?: string
+          payment_method?: string | null
+          status?: string
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string
+          guest_name?: string | null
+          id?: string
+          location_detail?: string
+          location_type?: string
+          payment_method?: string | null
+          status?: string
         }
         Relationships: []
       }
