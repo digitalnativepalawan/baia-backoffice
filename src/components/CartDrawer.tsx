@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useCart } from '@/lib/cart';
+import { useResortProfile } from '@/hooks/useResortProfile';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -25,6 +26,8 @@ const TYPE_LABELS: Record<string, string> = {
 
 const CartDrawer = ({ open, onOpenChange, mode, orderType, locationDetail }: CartDrawerProps) => {
   const cart = useCart();
+  const { data: profile } = useResortProfile();
+  const brandName = profile?.resort_name || 'Resort';
   const [paymentType, setPaymentType] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -134,7 +137,10 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType, locationDetail }: Car
           /* Invoice View */
           <>
             <DrawerHeader className="text-center pb-2">
-              <p className="font-display text-xs tracking-[0.3em] text-cream-dim uppercase">Baia Palawan</p>
+              {profile?.logo_url && (
+                <img src={profile.logo_url} alt={brandName} className="w-12 h-12 object-contain mx-auto mb-1" />
+              )}
+              <p className="font-display text-xs tracking-[0.3em] text-cream-dim uppercase">{brandName}</p>
               <DrawerTitle className="font-display text-lg text-foreground tracking-wider">
                 Order Invoice
               </DrawerTitle>

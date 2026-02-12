@@ -109,6 +109,63 @@ export type Database = {
           },
         ]
       }
+      resort_profile: {
+        Row: {
+          address: string | null
+          contact_name: string | null
+          contact_number: string | null
+          created_at: string
+          email: string | null
+          facebook_url: string | null
+          google_map_embed: string | null
+          google_map_url: string | null
+          id: string
+          instagram_url: string | null
+          logo_url: string | null
+          phone: string | null
+          resort_name: string
+          tagline: string | null
+          tiktok_url: string | null
+          website_url: string | null
+        }
+        Insert: {
+          address?: string | null
+          contact_name?: string | null
+          contact_number?: string | null
+          created_at?: string
+          email?: string | null
+          facebook_url?: string | null
+          google_map_embed?: string | null
+          google_map_url?: string | null
+          id?: string
+          instagram_url?: string | null
+          logo_url?: string | null
+          phone?: string | null
+          resort_name?: string
+          tagline?: string | null
+          tiktok_url?: string | null
+          website_url?: string | null
+        }
+        Update: {
+          address?: string | null
+          contact_name?: string | null
+          contact_number?: string | null
+          created_at?: string
+          email?: string | null
+          facebook_url?: string | null
+          google_map_embed?: string | null
+          google_map_url?: string | null
+          id?: string
+          instagram_url?: string | null
+          logo_url?: string | null
+          phone?: string | null
+          resort_name?: string
+          tagline?: string | null
+          tiktok_url?: string | null
+          website_url?: string | null
+        }
+        Relationships: []
+      }
       resort_tables: {
         Row: {
           active: boolean

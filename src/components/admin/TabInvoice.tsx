@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useResortProfile } from '@/hooks/useResortProfile';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
@@ -29,6 +30,8 @@ const TYPE_LABELS: Record<string, string> = {
 
 const TabInvoice = ({ tabId, onClose }: TabInvoiceProps) => {
   const qc = useQueryClient();
+  const { data: profile } = useResortProfile();
+  const brandName = profile?.resort_name || 'Resort';
   const [paymentMethod, setPaymentMethod] = useState('');
   const [closing, setClosing] = useState(false);
 
@@ -101,7 +104,10 @@ const TabInvoice = ({ tabId, onClose }: TabInvoiceProps) => {
 
       {/* Invoice header */}
       <div className="text-center py-3 border border-border rounded-lg bg-secondary/30">
-        <p className="font-display text-xs tracking-[0.3em] text-cream-dim uppercase">Baia Palawan</p>
+        {profile?.logo_url && (
+          <img src={profile.logo_url} alt={brandName} className="w-12 h-12 object-contain mx-auto mb-1" />
+        )}
+        <p className="font-display text-xs tracking-[0.3em] text-cream-dim uppercase">{brandName}</p>
         <p className="font-display text-lg text-foreground tracking-wider mt-1">Tab Invoice</p>
         <div className="flex justify-center gap-2 mt-2">
           <span className="font-body text-xs bg-secondary px-2 py-0.5 rounded text-cream-dim">

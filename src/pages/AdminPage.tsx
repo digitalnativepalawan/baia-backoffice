@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Plus, ArrowLeft, Eye, EyeOff, Receipt } from 'lucide-react';
+import ResortProfileForm from '@/components/admin/ResortProfileForm';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import EditableRow from '@/components/admin/EditableRow';
 import TimePicker from '@/components/admin/TimePicker';
@@ -248,6 +249,8 @@ const AdminPage = () => {
 
           {/* SETTINGS TAB */}
           <TabsContent value="settings" className="space-y-8">
+            <ResortProfileForm />
+
             <section>
               <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Kitchen Settings</h3>
               <div className="space-y-3">

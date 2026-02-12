@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { useResortProfile } from '@/hooks/useResortProfile';
 
 const Index = () => {
   const navigate = useNavigate();
+  const { data: profile } = useResortProfile();
   const [passkeyMode, setPasskeyMode] = useState<'staff' | 'admin' | null>(null);
   const [passkey, setPasskey] = useState('');
   const [error, setError] = useState('');
@@ -22,18 +24,33 @@ const Index = () => {
     }
   };
 
+  const resortName = profile?.resort_name || 'BAIA PALAWAN';
+  const nameParts = resortName.split(' ');
+  const firstPart = nameParts[0] || '';
+  const restParts = nameParts.slice(1).join(' ');
+
   return (
     <div className="min-h-screen bg-navy-texture flex flex-col items-center justify-center px-6">
       {/* Decorative line */}
       <div className="w-16 h-px bg-gold mb-8 opacity-60" />
 
+      {/* Logo */}
+      {profile?.logo_url && (
+        <img src={profile.logo_url} alt={resortName} className="w-28 h-28 object-contain mb-4" />
+      )}
+
       {/* Brand */}
       <h1 className="font-display text-4xl md:text-5xl tracking-[0.2em] text-foreground text-center mb-2">
-        BAIA
+        {firstPart}
       </h1>
-      <p className="font-display text-lg md:text-xl tracking-[0.35em] text-cream-dim mb-1">
-        PALAWAN
-      </p>
+      {restParts && (
+        <p className="font-display text-lg md:text-xl tracking-[0.35em] text-cream-dim mb-1">
+          {restParts}
+        </p>
+      )}
+      {profile?.tagline && (
+        <p className="font-body text-sm text-cream-dim/70 tracking-wider mb-1">{profile.tagline}</p>
+      )}
       <div className="mb-12" />
 
       <div className="w-16 h-px bg-gold mb-12 opacity-40" />
