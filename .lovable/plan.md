@@ -1,125 +1,102 @@
 
 
-# Kitchen Order Management & Reporting System
+# Open Tab Invoice System
 
-## Overview
-Transform the Orders tab into a full kitchen workflow board (designed for tablet use by the chef), add a status pipeline for every order, and lay the groundwork for financial reporting.
+## The Problem
+Currently, every order is a one-off transaction -- the cart clears after each submission. A guest staying 3 days has no way to accumulate charges on a running tab. There's also no proper invoice/receipt format, and the 10% service charge isn't calculated.
 
----
+## How It Works
 
-## 1. Database Changes
-
-**Add columns to `orders` table** (migration):
-- `updated_at` (timestamptz, default now()) -- track last status change
-- `closed_at` (timestamptz, nullable) -- when order is fully closed/paid
-
-**Add trigger**: auto-update `updated_at` on row change using the existing `update_updated_at_column()` function.
-
-**Enable Realtime** on `orders` table so the kitchen tablet auto-refreshes when new orders come in (no manual reload needed).
-
----
-
-## 2. Orders Tab Redesign -- Kitchen Board
-
-Replace the current flat list with a **Kanban-style pipeline** using horizontal tabs or columns:
+### Guest Tabs
+A new `tabs` database table tracks open accounts tied to a location (e.g., "Unit 3" or "Table 1"). When a guest or staff places an order, the system checks if there's already an open tab for that location. If yes, the new order attaches to it. If not, a new tab is created automatically.
 
 ```text
- [ New ]  [ Preparing ]  [ Served ]  [ Paid ]  [ Closed ]
+Guest arrives at Unit 3
+  --> First order creates Tab #001 for "Unit 3"
+  --> Second order (next day) adds to the same tab
+  --> Third order (day 3) adds again
+  --> Staff closes tab at checkout --> Final invoice generated
 ```
 
-**Each order card shows:**
-- Order type and location (e.g. "DineIn -- Table 1")
-- Timestamp (relative: "2 min ago")
-- Item list with quantities
-- Total amount
-- Payment type (if staff order)
-- **Action button** to advance to next status
+### Checkout Flow Redesign
+The CartDrawer becomes a proper invoice-style review:
+- Resort header with "BAIA PALAWAN" branding
+- Itemized list with quantities, unit prices, line totals
+- Subtotal line
+- 10% Service Charge line (auto-calculated)
+- Grand Total
+- Two action buttons:
+  - **"Send to Kitchen"** -- places the order on the current tab, sends WhatsApp notification
+  - **"Close and Pay"** is only available in Admin, not during ordering
 
-**Status flow:**
-1. **New** -- order just placed (card highlighted in gold)
-2. **Preparing** -- chef taps "Start Preparing"
-3. **Served** -- food delivered, tap "Mark Served"
-4. **Paid** -- payment collected, tap "Mark Paid"
-5. **Closed** -- final state, sets `closed_at` timestamp
-
-Each transition updates the `status` column and `updated_at` in the database. Realtime subscription pushes changes to all open admin screens instantly.
-
-**Filter controls:**
-- Date filter (Today / Yesterday / All)
-- Toggle to show/hide Closed orders (hidden by default)
+### Admin Tab Management
+A new **"Tabs"** section in the Admin Orders area lets staff:
+- See all open tabs with guest name/location and running total
+- Tap a tab to see every order on it (with timestamps)
+- **Close Tab** button generates the final invoice summary and marks it as settled
+- Payment method selection (Cash / Card / Charge to Room) at close-out time
 
 ---
 
-## 3. Realtime Subscription
+## Database Changes
 
-Subscribe to `postgres_changes` on the `orders` table so that:
-- When a guest or staff places a new order, it appears on the kitchen tablet immediately
-- When any admin updates a status, all other admin screens see it live
+**New `tabs` table:**
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid (PK) | |
+| location_type | text | Room, DineIn, Beach, WalkIn |
+| location_detail | text | e.g., "Unit 3", "Table 1" |
+| guest_name | text (nullable) | Optional guest name |
+| status | text | "Open" or "Closed" |
+| payment_method | text (nullable) | Set when closing |
+| created_at | timestamptz | Tab opened |
+| closed_at | timestamptz (nullable) | Tab settled |
 
-This uses the existing Supabase realtime client -- no edge function needed.
+**Add to `orders` table:**
+| Column | Type | Description |
+|--------|------|-------------|
+| tab_id | uuid (nullable, FK to tabs) | Links order to a tab |
 
----
-
-## 4. Reporting Tab (New)
-
-Add a **fourth tab** to the admin dashboard: **Reports**
-
-Tabs become: `Setup | Menu | Orders | Reports`
-
-**Reports tab -- Phase 1 (this build):**
-- **Date range picker** (Today / This Week / This Month / Custom)
-- **Summary cards:**
-  - Total Revenue (sum of `total` for Closed orders)
-  - Total Orders count
-  - Average Order Value
-- **Revenue by Order Type** breakdown (Room / DineIn / Beach / WalkIn)
-- **Top Selling Items** list (parsed from order JSON items)
-
-**Reports tab -- Future-ready structure:**
-- A placeholder section labeled "Food Cost and Profit Analysis (Coming Soon)" with a note that this will use the `food_cost` field from `menu_items` to calculate margins per item and overall profit
-- A placeholder for "Tours Revenue" for when tours are added
+Enable Realtime on `tabs` table.
 
 ---
 
-## 5. File Changes Summary
+## File Changes
 
 | File | Change |
 |------|--------|
-| `supabase/migrations/...` | Add `updated_at`, `closed_at` to orders; attach trigger; enable realtime |
-| `src/pages/AdminPage.tsx` | Refactor Orders tab into pipeline board with status buttons; add Reports tab; add realtime subscription |
-| `src/components/admin/OrderCard.tsx` | New component -- single order card with status action button |
-| `src/components/admin/ReportsDashboard.tsx` | New component -- revenue summary, top items, date filtering |
+| Migration SQL | Create `tabs` table, add `tab_id` column to `orders`, enable realtime |
+| `src/components/CartDrawer.tsx` | Redesign as invoice-style layout with service charge calculation, auto-attach orders to open tabs |
+| `src/pages/AdminPage.tsx` | Add "Tabs" sub-view in Orders tab showing open/closed tabs with close-out functionality |
+| `src/components/admin/TabInvoice.tsx` | New component -- full invoice view for a tab showing all orders, subtotal, service charge, grand total |
 
 ---
 
 ## Technical Details
 
-**Migration SQL:**
-- `ALTER TABLE orders ADD COLUMN updated_at timestamptz DEFAULT now();`
-- `ALTER TABLE orders ADD COLUMN closed_at timestamptz;`
-- `CREATE TRIGGER ... BEFORE UPDATE ON orders ... EXECUTE FUNCTION update_updated_at_column();`
-- `ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;`
+**Tab auto-detection logic (in CartDrawer):**
+1. On "Send to Kitchen", query `tabs` for an open tab matching the current `location_detail` and `location_type`
+2. If found, use that `tab_id` for the new order
+3. If not found, insert a new tab row, then use its id
+4. Order is inserted with the `tab_id` reference
 
-**Realtime in AdminPage:**
-```typescript
-useEffect(() => {
-  const channel = supabase
-    .channel('orders-realtime')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-      qc.invalidateQueries({ queryKey: ['orders-admin'] });
-    })
-    .subscribe();
-  return () => { supabase.removeChannel(channel); };
-}, []);
-```
+**Invoice layout in CartDrawer:**
+- Header: "BAIA PALAWAN -- Micro Resort"
+- Order type and location displayed
+- Itemized table: Item | Qty | Price | Total
+- Subtotal
+- Service Charge (10%): auto-calculated as `subtotal * 0.10`
+- Grand Total: `subtotal + service_charge`
+- "Send to Kitchen" button (places order, keeps tab open)
 
-**Status advancement logic:**
-- Each status maps to a "next" status: New->Preparing->Served->Paid->Closed
-- On "Closed", sets `closed_at = now()`
-- Only Closed orders count toward revenue reports
+**Admin tab close-out:**
+- Fetch all orders where `tab_id = selected_tab.id`
+- Display combined invoice with all orders grouped by timestamp
+- Select payment method, then update `tabs.status = 'Closed'` and `tabs.closed_at = now()`
+- All orders on the tab get status set to "Paid" then "Closed" automatically
 
-**Reports queries:**
-- Revenue: `SELECT SUM(total) FROM orders WHERE status = 'Closed' AND closed_at BETWEEN ...`
-- Top items: Parse `items` JSONB in JS after fetching closed orders for the date range
-- All calculations done client-side from fetched data (no custom DB functions needed for Phase 1)
+**Service charge stored on each order:**
+- Add `service_charge` numeric column to `orders` table (default 0)
+- Calculated as `total * 0.10` at order time
+- Reports tab can sum both `total` and `service_charge` for accurate revenue
 
