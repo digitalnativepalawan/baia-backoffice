@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,14 +8,29 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Plus, ArrowLeft } from 'lucide-react';
+import { Plus, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import EditableRow from '@/components/admin/EditableRow';
 import TimePicker from '@/components/admin/TimePicker';
+import OrderCard from '@/components/admin/OrderCard';
+import ReportsDashboard from '@/components/admin/ReportsDashboard';
+
+type DateFilter = 'today' | 'yesterday' | 'all';
 
 const AdminPage = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
+
+  // Realtime subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel('orders-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        qc.invalidateQueries({ queryKey: ['orders-admin'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [qc]);
 
   // Data queries
   const { data: settings } = useQuery({
@@ -53,7 +68,7 @@ const AdminPage = () => {
   const { data: orders = [] } = useQuery({
     queryKey: ['orders-admin'],
     queryFn: async () => {
-      const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(50);
+      const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(200);
       return data || [];
     },
   });
@@ -63,7 +78,6 @@ const AdminPage = () => {
   const [brkStart, setBrkStart] = useState('');
   const [brkEnd, setBrkEnd] = useState('');
 
-  // Initialize settings values
   useState(() => {
     if (settings) {
       setWhatsapp(settings.kitchen_whatsapp_number || '');
@@ -115,25 +129,17 @@ const AdminPage = () => {
   const openEditItem = (item: any) => {
     setEditItem(item);
     setItemForm({
-      name: item.name,
-      category: item.category,
-      description: item.description || '',
-      price: String(item.price),
-      food_cost: String(item.food_cost || ''),
-      sort_order: String(item.sort_order),
+      name: item.name, category: item.category, description: item.description || '',
+      price: String(item.price), food_cost: String(item.food_cost || ''), sort_order: String(item.sort_order),
     });
   };
 
   const saveItem = async () => {
     const payload = {
-      name: itemForm.name,
-      category: itemForm.category,
-      description: itemForm.description,
-      price: parseFloat(itemForm.price) || 0,
-      food_cost: parseFloat(itemForm.food_cost) || 0,
+      name: itemForm.name, category: itemForm.category, description: itemForm.description,
+      price: parseFloat(itemForm.price) || 0, food_cost: parseFloat(itemForm.food_cost) || 0,
       sort_order: parseInt(itemForm.sort_order) || 0,
     };
-
     if (editItem === 'new') {
       await supabase.from('menu_items').insert(payload);
     } else {
@@ -143,6 +149,68 @@ const AdminPage = () => {
     qc.invalidateQueries({ queryKey: ['menu-admin'] });
     toast.success('Menu item saved');
   };
+
+  // Orders pipeline state
+  const [dateFilter, setDateFilter] = useState<DateFilter>('today');
+  const [showClosed, setShowClosed] = useState(false);
+  const [activeStatus, setActiveStatus] = useState('New');
+
+  const filteredOrders = useMemo(() => {
+    let filtered = orders;
+
+    // Date filter
+    const now = new Date();
+    if (dateFilter === 'today') {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      filtered = filtered.filter(o => new Date(o.created_at) >= start);
+    } else if (dateFilter === 'yesterday') {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      filtered = filtered.filter(o => {
+        const d = new Date(o.created_at);
+        return d >= start && d < end;
+      });
+    }
+
+    // Status filter
+    if (activeStatus === 'Closed' || showClosed) {
+      return filtered.filter(o => o.status === activeStatus);
+    }
+    return filtered.filter(o => o.status === activeStatus);
+  }, [orders, dateFilter, activeStatus, showClosed]);
+
+  const statusCounts = useMemo(() => {
+    const now = new Date();
+    let filtered = orders;
+    if (dateFilter === 'today') {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      filtered = filtered.filter(o => new Date(o.created_at) >= start);
+    } else if (dateFilter === 'yesterday') {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      filtered = filtered.filter(o => {
+        const d = new Date(o.created_at);
+        return d >= start && d < end;
+      });
+    }
+    const counts: Record<string, number> = { New: 0, Preparing: 0, Served: 0, Paid: 0, Closed: 0 };
+    filtered.forEach(o => { counts[o.status] = (counts[o.status] || 0) + 1; });
+    return counts;
+  }, [orders, dateFilter]);
+
+  const advanceOrder = async (orderId: string, nextStatus: string) => {
+    const updateData: any = { status: nextStatus };
+    if (nextStatus === 'Closed') {
+      updateData.closed_at = new Date().toISOString();
+    }
+    await supabase.from('orders').update(updateData).eq('id', orderId);
+    qc.invalidateQueries({ queryKey: ['orders-admin'] });
+    toast.success(`Order → ${nextStatus}`);
+  };
+
+  const statuses = showClosed
+    ? ['New', 'Preparing', 'Served', 'Paid', 'Closed']
+    : ['New', 'Preparing', 'Served', 'Paid'];
 
   return (
     <div className="min-h-screen bg-navy-texture">
@@ -160,11 +228,11 @@ const AdminPage = () => {
             <TabsTrigger value="settings" className="font-display text-xs tracking-wider flex-1">Setup</TabsTrigger>
             <TabsTrigger value="menu" className="font-display text-xs tracking-wider flex-1">Menu</TabsTrigger>
             <TabsTrigger value="orders" className="font-display text-xs tracking-wider flex-1">Orders</TabsTrigger>
+            <TabsTrigger value="reports" className="font-display text-xs tracking-wider flex-1">Reports</TabsTrigger>
           </TabsList>
 
           {/* SETTINGS TAB */}
           <TabsContent value="settings" className="space-y-8">
-            {/* WhatsApp & Hours */}
             <section>
               <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Kitchen Settings</h3>
               <div className="space-y-3">
@@ -174,45 +242,21 @@ const AdminPage = () => {
                     className="bg-secondary border-border text-foreground font-body mt-1" placeholder="639171234567" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <TimePicker
-                    label="Breakfast Start"
-                    value={brkStart || settings?.breakfast_start_time || '07:00'}
-                    onChange={setBrkStart}
-                  />
-                  <TimePicker
-                    label="Breakfast End"
-                    value={brkEnd || settings?.breakfast_end_time || '11:00'}
-                    onChange={setBrkEnd}
-                  />
+                  <TimePicker label="Breakfast Start" value={brkStart || settings?.breakfast_start_time || '07:00'} onChange={setBrkStart} />
+                  <TimePicker label="Breakfast End" value={brkEnd || settings?.breakfast_end_time || '11:00'} onChange={setBrkEnd} />
                 </div>
                 <Button onClick={saveSettings} className="font-display tracking-wider w-full">Save Settings</Button>
               </div>
             </section>
 
-            {/* Units */}
             <section>
               <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Units / Rooms</h3>
               <div className="space-y-0">
                 {units.map(u => (
-                  <EditableRow
-                    key={u.id}
-                    id={u.id}
-                    name={u.unit_name}
-                    active={u.active}
-                    onRename={async (id, newName) => {
-                      await supabase.from('units').update({ unit_name: newName }).eq('id', id);
-                      qc.invalidateQueries({ queryKey: ['units-admin'] });
-                      toast.success('Unit renamed');
-                    }}
-                    onDelete={async (id) => {
-                      await supabase.from('units').delete().eq('id', id);
-                      qc.invalidateQueries({ queryKey: ['units-admin'] });
-                      toast.success('Unit deleted');
-                    }}
-                    onToggle={async (id, checked) => {
-                      await supabase.from('units').update({ active: checked }).eq('id', id);
-                      qc.invalidateQueries({ queryKey: ['units-admin'] });
-                    }}
+                  <EditableRow key={u.id} id={u.id} name={u.unit_name} active={u.active}
+                    onRename={async (id, newName) => { await supabase.from('units').update({ unit_name: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['units-admin'] }); toast.success('Unit renamed'); }}
+                    onDelete={async (id) => { await supabase.from('units').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['units-admin'] }); toast.success('Unit deleted'); }}
+                    onToggle={async (id, checked) => { await supabase.from('units').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['units-admin'] }); }}
                   />
                 ))}
                 <div className="flex gap-2 mt-3">
@@ -223,30 +267,14 @@ const AdminPage = () => {
               </div>
             </section>
 
-            {/* Tables */}
             <section>
               <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Dine-In Tables</h3>
               <div className="space-y-0">
                 {tables.map(t => (
-                  <EditableRow
-                    key={t.id}
-                    id={t.id}
-                    name={t.table_name}
-                    active={t.active}
-                    onRename={async (id, newName) => {
-                      await supabase.from('resort_tables').update({ table_name: newName }).eq('id', id);
-                      qc.invalidateQueries({ queryKey: ['tables-admin'] });
-                      toast.success('Table renamed');
-                    }}
-                    onDelete={async (id) => {
-                      await supabase.from('resort_tables').delete().eq('id', id);
-                      qc.invalidateQueries({ queryKey: ['tables-admin'] });
-                      toast.success('Table deleted');
-                    }}
-                    onToggle={async (id, checked) => {
-                      await supabase.from('resort_tables').update({ active: checked }).eq('id', id);
-                      qc.invalidateQueries({ queryKey: ['tables-admin'] });
-                    }}
+                  <EditableRow key={t.id} id={t.id} name={t.table_name} active={t.active}
+                    onRename={async (id, newName) => { await supabase.from('resort_tables').update({ table_name: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['tables-admin'] }); toast.success('Table renamed'); }}
+                    onDelete={async (id) => { await supabase.from('resort_tables').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['tables-admin'] }); toast.success('Table deleted'); }}
+                    onToggle={async (id, checked) => { await supabase.from('resort_tables').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['tables-admin'] }); }}
                   />
                 ))}
                 <div className="flex gap-2 mt-3">
@@ -264,11 +292,8 @@ const AdminPage = () => {
               <Plus className="w-4 h-4 mr-2" /> Add Menu Item
             </Button>
             {menuItems.map(item => (
-              <button
-                key={item.id}
-                onClick={() => openEditItem(item)}
-                className="w-full text-left p-3 border border-border hover:border-gold/50 transition-colors"
-              >
+              <button key={item.id} onClick={() => openEditItem(item)}
+                className="w-full text-left p-3 border border-border hover:border-gold/50 transition-colors">
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="font-display text-sm text-foreground">{item.name}</p>
@@ -283,30 +308,50 @@ const AdminPage = () => {
             ))}
           </TabsContent>
 
-          {/* ORDERS TAB */}
-          <TabsContent value="orders" className="space-y-3">
-            {orders.length === 0 && <p className="font-body text-cream-dim text-center py-8">No orders yet</p>}
-            {orders.map(order => (
-              <div key={order.id} className="p-3 border border-border">
-                <div className="flex justify-between mb-2">
-                  <span className="font-display text-sm text-foreground">{order.order_type} — {order.location_detail}</span>
-                  <span className="font-body text-xs text-cream-dim">
-                    {new Date(order.created_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-                <div className="font-body text-xs text-cream-dim">
-                  {(order.items as any[])?.map((i: any, idx: number) => (
-                    <span key={idx}>{i.qty}x {i.name}{idx < (order.items as any[]).length - 1 ? ', ' : ''}</span>
-                  ))}
-                </div>
-                <div className="flex justify-between mt-2">
-                  <span className="font-body text-xs text-gold">₱{order.total}</span>
-                  <span className={`font-body text-xs ${order.status === 'New' ? 'text-gold' : 'text-cream-dim'}`}>
-                    {order.status}
-                  </span>
-                </div>
-              </div>
-            ))}
+          {/* ORDERS TAB — Kitchen Pipeline */}
+          <TabsContent value="orders" className="space-y-4">
+            {/* Date filter + closed toggle */}
+            <div className="flex gap-2 items-center">
+              {(['today', 'yesterday', 'all'] as DateFilter[]).map(df => (
+                <Button key={df} size="sm" variant={dateFilter === df ? 'default' : 'outline'}
+                  onClick={() => setDateFilter(df)} className="font-body text-xs flex-1 capitalize">
+                  {df}
+                </Button>
+              ))}
+              <Button size="icon" variant="ghost" onClick={() => setShowClosed(!showClosed)}
+                className="text-cream-dim" title={showClosed ? 'Hide Closed' : 'Show Closed'}>
+                {showClosed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </Button>
+            </div>
+
+            {/* Status tabs */}
+            <div className="flex gap-1 overflow-x-auto">
+              {statuses.map(s => (
+                <button key={s} onClick={() => setActiveStatus(s)}
+                  className={`px-3 py-1.5 font-body text-xs rounded-md whitespace-nowrap transition-colors ${
+                    activeStatus === s
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-secondary text-cream-dim hover:text-foreground'
+                  }`}>
+                  {s} {statusCounts[s] > 0 && <span className="ml-1 font-display">({statusCounts[s]})</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* Order cards */}
+            <div className="space-y-3">
+              {filteredOrders.length === 0 && (
+                <p className="font-body text-cream-dim text-center py-8">No {activeStatus.toLowerCase()} orders</p>
+              )}
+              {filteredOrders.map(order => (
+                <OrderCard key={order.id} order={order} onAdvance={advanceOrder} />
+              ))}
+            </div>
+          </TabsContent>
+
+          {/* REPORTS TAB */}
+          <TabsContent value="reports">
+            <ReportsDashboard />
           </TabsContent>
         </Tabs>
       </div>
@@ -323,9 +368,7 @@ const AdminPage = () => {
             <Input value={itemForm.name} onChange={e => setItemForm(f => ({ ...f, name: e.target.value }))}
               placeholder="Name" className="bg-secondary border-border text-foreground font-body" />
             <Select value={itemForm.category} onValueChange={v => setItemForm(f => ({ ...f, category: v }))}>
-              <SelectTrigger className="bg-secondary border-border text-foreground font-body">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="bg-secondary border-border text-foreground font-body"><SelectValue /></SelectTrigger>
               <SelectContent className="bg-card border-border">
                 <SelectItem value="Breakfast" className="font-body text-foreground">Breakfast</SelectItem>
                 <SelectItem value="Starters" className="font-body text-foreground">Starters</SelectItem>
@@ -354,8 +397,7 @@ const AdminPage = () => {
             {editItem && editItem !== 'new' && (
               <div className="flex items-center justify-between pt-2 border-t border-border">
                 <span className="font-body text-sm text-foreground">Available</span>
-                <Switch
-                  checked={editItem.available}
+                <Switch checked={editItem.available}
                   onCheckedChange={async (checked) => {
                     await supabase.from('menu_items').update({ available: checked }).eq('id', editItem.id);
                     qc.invalidateQueries({ queryKey: ['menu-admin'] });
