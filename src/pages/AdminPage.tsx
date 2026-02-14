@@ -72,6 +72,14 @@ const AdminPage = () => {
     },
   });
 
+  const { data: menuCategories = [] } = useQuery({
+    queryKey: ['menu-categories-admin'],
+    queryFn: async () => {
+      const { data } = await supabase.from('menu_categories').select('*').order('sort_order');
+      return data || [];
+    },
+  });
+
   const { data: menuItems = [] } = useQuery({
     queryKey: ['menu-admin'],
     queryFn: async () => {
@@ -154,15 +162,26 @@ const AdminPage = () => {
     qc.invalidateQueries({ queryKey: ['order-types-admin'] });
   };
 
+  // Menu Categories
+  const [newCategory, setNewCategory] = useState('');
+  const addCategory = async () => {
+    if (!newCategory.trim()) return;
+    const maxSort = menuCategories.reduce((m: number, c: any) => Math.max(m, c.sort_order), 0);
+    await supabase.from('menu_categories').insert({ name: newCategory.trim(), sort_order: maxSort + 1 });
+    setNewCategory('');
+    qc.invalidateQueries({ queryKey: ['menu-categories-admin'] });
+  };
+
   // Menu item editor
   const [editItem, setEditItem] = useState<any>(null);
+  const defaultCategory = menuCategories.length > 0 ? menuCategories[0].name : '';
   const [itemForm, setItemForm] = useState({
-    name: '', category: 'Starters', description: '', price: '', food_cost: '', sort_order: '0',
+    name: '', category: defaultCategory, description: '', price: '', food_cost: '', sort_order: '0',
   });
 
   const openNewItem = () => {
     setEditItem('new');
-    setItemForm({ name: '', category: 'Starters', description: '', price: '', food_cost: '', sort_order: '0' });
+    setItemForm({ name: '', category: menuCategories.length > 0 ? menuCategories[0].name : '', description: '', price: '', food_cost: '', sort_order: '0' });
   };
 
   const openEditItem = (item: any) => {
@@ -344,6 +363,24 @@ const AdminPage = () => {
                 </div>
               </div>
             </section>
+
+            <section>
+              <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Menu Categories</h3>
+              <div className="space-y-0">
+                {menuCategories.map((cat: any) => (
+                  <EditableRow key={cat.id} id={cat.id} name={cat.name} active={cat.active}
+                    onRename={async (id, newName) => { await supabase.from('menu_categories').update({ name: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['menu-categories-admin'] }); toast.success('Category renamed'); }}
+                    onDelete={async (id) => { await supabase.from('menu_categories').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['menu-categories-admin'] }); toast.success('Category deleted'); }}
+                    onToggle={async (id, checked) => { await supabase.from('menu_categories').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['menu-categories-admin'] }); }}
+                  />
+                ))}
+                <div className="flex gap-2 mt-3">
+                  <Input value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="New category name"
+                    className="bg-secondary border-border text-foreground font-body" />
+                  <Button onClick={addCategory} size="icon" variant="outline"><Plus className="w-4 h-4" /></Button>
+                </div>
+              </div>
+            </section>
           </TabsContent>
 
           {/* MENU TAB */}
@@ -512,8 +549,8 @@ const AdminPage = () => {
             <Select value={itemForm.category} onValueChange={v => setItemForm(f => ({ ...f, category: v }))}>
               <SelectTrigger className="bg-secondary border-border text-foreground font-body"><SelectValue /></SelectTrigger>
               <SelectContent className="bg-card border-border max-h-60">
-                {['Breakfast', 'Breakfast Drinks', 'Starters', 'Pasta', 'Main Courses', 'Dessert', 'Cocktails', 'Wine', 'Soft Drinks & Beer', 'Coffee (Hot)', 'Coffee (Iced)', 'Fruit Smoothies'].map(cat => (
-                  <SelectItem key={cat} value={cat} className="font-body text-foreground">{cat}</SelectItem>
+                {menuCategories.filter((c: any) => c.active).map((cat: any) => (
+                  <SelectItem key={cat.id} value={cat.name} className="font-body text-foreground">{cat.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

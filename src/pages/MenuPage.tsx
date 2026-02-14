@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -18,12 +18,6 @@ interface MenuItem {
   sort_order: number;
 }
 
-const CATEGORIES = [
-  'Breakfast', 'Breakfast Drinks', 'Starters', 'Pasta', 'Main Courses', 'Dessert',
-  'Cocktails', 'Wine', 'Soft Drinks & Beer',
-  'Coffee (Hot)', 'Coffee (Iced)', 'Fruit Smoothies',
-];
-
 const MenuPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -31,7 +25,22 @@ const MenuPage = () => {
   const orderType = searchParams.get('orderType') || 'WalkIn';
   const location = searchParams.get('location') || '';
 
-  const [activeCategory, setActiveCategory] = useState('Starters');
+  const [activeCategory, setActiveCategory] = useState('');
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ['menu-categories'],
+    queryFn: async () => {
+      const { data } = await supabase.from('menu_categories').select('*').eq('active', true).order('sort_order');
+      return data || [];
+    },
+  });
+
+  // Set default active category to first one when loaded
+  useEffect(() => {
+    if (categories.length > 0 && !activeCategory) {
+      setActiveCategory(categories[0].name);
+    }
+  }, [categories, activeCategory]);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [addQuantity, setAddQuantity] = useState(1);
   const [cartOpen, setCartOpen] = useState(false);
@@ -75,17 +84,17 @@ const MenuPage = () => {
 
         {/* Category tabs */}
         <div className="max-w-2xl mx-auto px-4 pb-3 flex gap-6 overflow-x-auto">
-          {CATEGORIES.map(cat => (
+          {categories.map((cat: any) => (
             <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.name)}
               className={`font-display text-sm tracking-wider whitespace-nowrap pb-1 transition-colors border-b-2 ${
-                activeCategory === cat
+                activeCategory === cat.name
                   ? 'border-gold text-foreground'
                   : 'border-transparent text-cream-dim hover:text-foreground'
               }`}
             >
-              {cat}
+              {cat.name}
             </button>
           ))}
         </div>
