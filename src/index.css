@@ -98,3 +98,25 @@
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.3; transform: scale(0.7); }
 }
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px 2px hsla(38, 60%, 58%, 0.3), inset 0 0 4px 1px hsla(38, 60%, 58%, 0.1); border-color: hsla(38, 60%, 58%, 0.6); }
+  50% { box-shadow: 0 0 20px 6px hsla(38, 60%, 58%, 0.6), inset 0 0 8px 2px hsla(38, 60%, 58%, 0.2); border-color: hsla(38, 60%, 58%, 1); }
+}
+
+@keyframes btn-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.03); }
+}
+
+.new-order-card {
+  animation: glow-pulse 1.5s ease-in-out infinite;
+}
+
+.new-order-btn {
+  animation: btn-pulse 1.2s ease-in-out infinite;
+}
+
+.tab-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
