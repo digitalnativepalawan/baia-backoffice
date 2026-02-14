@@ -6,15 +6,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-type OrderType = 'Room' | 'DineIn' | 'Beach' | 'WalkIn';
-
 const OrderType = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const mode = searchParams.get('mode') || 'guest';
 
-  const [orderType, setOrderType] = useState<OrderType | ''>('');
+  const [selectedType, setSelectedType] = useState('');
   const [locationDetail, setLocationDetail] = useState('');
+
+  const { data: orderTypes = [] } = useQuery({
+    queryKey: ['order-types'],
+    queryFn: async () => {
+      const { data } = await supabase.from('order_types').select('*').eq('active', true).order('sort_order');
+      return data || [];
+    },
+  });
 
   const { data: units } = useQuery({
     queryKey: ['units'],
@@ -32,11 +38,18 @@ const OrderType = () => {
     },
   });
 
-  const canProceed = orderType && locationDetail;
+  const activeOrderType = orderTypes.find(ot => ot.type_key === selectedType);
+  const canProceed = selectedType && locationDetail;
+
+  const getSelectOptions = (sourceTable: string | null) => {
+    if (sourceTable === 'units') return units?.map(u => ({ id: u.id, name: u.unit_name })) || [];
+    if (sourceTable === 'resort_tables') return tables?.map(t => ({ id: t.id, name: t.table_name })) || [];
+    return [];
+  };
 
   const handleProceed = () => {
     if (!canProceed) return;
-    const params = new URLSearchParams({ mode, orderType, location: locationDetail });
+    const params = new URLSearchParams({ mode, orderType: selectedType, location: locationDetail });
     navigate(`/menu?${params.toString()}`);
   };
 
@@ -52,69 +65,40 @@ const OrderType = () => {
       <div className="w-full max-w-xs flex flex-col gap-6">
         {/* Order type buttons */}
         <div className="grid grid-cols-2 gap-3">
-          {([
-            ['Room', 'Room / Unit'],
-            ['DineIn', 'Dine In'],
-            ['Beach', 'Beach'],
-            ['WalkIn', 'Walk-In'],
-          ] as [OrderType, string][]).map(([type, label]) => (
+          {orderTypes.map(ot => (
             <button
-              key={type}
-              onClick={() => { setOrderType(type); setLocationDetail(''); }}
+              key={ot.id}
+              onClick={() => { setSelectedType(ot.type_key); setLocationDetail(''); }}
               className={`py-3 border font-display text-sm tracking-wider transition-colors ${
-                orderType === type
+                selectedType === ot.type_key
                   ? 'border-gold text-foreground bg-foreground/5'
                   : 'border-border text-cream-dim hover:border-foreground/30'
               }`}
             >
-              {label}
+              {ot.label}
             </button>
           ))}
         </div>
 
         {/* Location detail */}
-        {orderType === 'Room' && (
+        {activeOrderType && activeOrderType.input_mode === 'select' && activeOrderType.source_table && (
           <Select onValueChange={setLocationDetail} value={locationDetail}>
             <SelectTrigger className="bg-secondary border-border text-foreground font-body">
-              <SelectValue placeholder="Select unit" />
+              <SelectValue placeholder={activeOrderType.placeholder || 'Select'} />
             </SelectTrigger>
             <SelectContent className="bg-card border-border">
-              {units?.map(u => (
-                <SelectItem key={u.id} value={u.unit_name} className="text-foreground font-body">
-                  {u.unit_name}
+              {getSelectOptions(activeOrderType.source_table).map(item => (
+                <SelectItem key={item.id} value={item.name} className="text-foreground font-body">
+                  {item.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         )}
 
-        {orderType === 'DineIn' && (
-          <Select onValueChange={setLocationDetail} value={locationDetail}>
-            <SelectTrigger className="bg-secondary border-border text-foreground font-body">
-              <SelectValue placeholder="Select table" />
-            </SelectTrigger>
-            <SelectContent className="bg-card border-border">
-              {tables?.map(t => (
-                <SelectItem key={t.id} value={t.table_name} className="text-foreground font-body">
-                  {t.table_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        {orderType === 'Beach' && (
+        {activeOrderType && activeOrderType.input_mode === 'text' && (
           <Input
-            placeholder="Describe your location (e.g., near the kayaks)"
-            value={locationDetail}
-            onChange={(e) => setLocationDetail(e.target.value)}
-            className="bg-secondary border-border text-foreground font-body"
-          />
-        )}
-
-        {orderType === 'WalkIn' && (
-          <Input
-            placeholder="Your name"
+            placeholder={activeOrderType.placeholder || 'Enter details'}
             value={locationDetail}
             onChange={(e) => setLocationDetail(e.target.value)}
             className="bg-secondary border-border text-foreground font-body"

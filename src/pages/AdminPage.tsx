@@ -64,6 +64,14 @@ const AdminPage = () => {
     },
   });
 
+  const { data: orderTypes = [] } = useQuery({
+    queryKey: ['order-types-admin'],
+    queryFn: async () => {
+      const { data } = await supabase.from('order_types').select('*').order('sort_order');
+      return data || [];
+    },
+  });
+
   const { data: menuItems = [] } = useQuery({
     queryKey: ['menu-admin'],
     queryFn: async () => {
@@ -128,6 +136,22 @@ const AdminPage = () => {
     await supabase.from('resort_tables').insert({ table_name: newTable.trim() });
     setNewTable('');
     qc.invalidateQueries({ queryKey: ['tables-admin'] });
+  };
+
+  // Order Types
+  const [newOrderType, setNewOrderType] = useState('');
+  const addOrderType = async () => {
+    if (!newOrderType.trim()) return;
+    const maxSort = orderTypes.reduce((m, ot) => Math.max(m, ot.sort_order), 0);
+    await supabase.from('order_types').insert({
+      label: newOrderType.trim(),
+      type_key: newOrderType.trim().replace(/\s+/g, ''),
+      input_mode: 'text',
+      placeholder: '',
+      sort_order: maxSort + 1,
+    });
+    setNewOrderType('');
+    qc.invalidateQueries({ queryKey: ['order-types-admin'] });
   };
 
   // Menu item editor
@@ -299,6 +323,24 @@ const AdminPage = () => {
                   <Input value={newTable} onChange={e => setNewTable(e.target.value)} placeholder="New table name"
                     className="bg-secondary border-border text-foreground font-body" />
                   <Button onClick={addTable} size="icon" variant="outline"><Plus className="w-4 h-4" /></Button>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Order Types</h3>
+              <div className="space-y-0">
+                {orderTypes.map(ot => (
+                  <EditableRow key={ot.id} id={ot.id} name={ot.label} active={ot.active}
+                    onRename={async (id, newName) => { await supabase.from('order_types').update({ label: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); toast.success('Order type renamed'); }}
+                    onDelete={async (id) => { await supabase.from('order_types').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); toast.success('Order type deleted'); }}
+                    onToggle={async (id, checked) => { await supabase.from('order_types').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); }}
+                  />
+                ))}
+                <div className="flex gap-2 mt-3">
+                  <Input value={newOrderType} onChange={e => setNewOrderType(e.target.value)} placeholder="New order type label"
+                    className="bg-secondary border-border text-foreground font-body" />
+                  <Button onClick={addOrderType} size="icon" variant="outline"><Plus className="w-4 h-4" /></Button>
                 </div>
               </div>
             </section>

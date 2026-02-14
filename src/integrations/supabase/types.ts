@@ -56,6 +56,42 @@ export type Database = {
         }
         Relationships: []
       }
+      order_types: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          input_mode: string
+          label: string
+          placeholder: string | null
+          sort_order: number
+          source_table: string | null
+          type_key: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          input_mode?: string
+          label: string
+          placeholder?: string | null
+          sort_order?: number
+          source_table?: string | null
+          type_key: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          input_mode?: string
+          label?: string
+          placeholder?: string | null
+          sort_order?: number
+          source_table?: string | null
+          type_key?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           closed_at: string | null
