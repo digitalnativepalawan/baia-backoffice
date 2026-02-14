@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ChefHat, Truck, CreditCard, CheckCircle2 } from 'lucide-react';
+import { ChefHat, Truck, CreditCard, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 const STATUS_FLOW: Record<string, { next: string; label: string; icon: React.ReactNode }> = {
@@ -27,9 +27,22 @@ const OrderCard = ({ order, onAdvance }: OrderCardProps) => {
   const flow = STATUS_FLOW[order.status];
   const items = (order.items as any[]) || [];
   const statusColor = STATUS_COLORS[order.status] || STATUS_COLORS.Closed;
+  const isNew = order.status === 'New';
 
   return (
-    <div className={`p-4 border rounded-lg ${order.status === 'New' ? 'border-gold/50 bg-gold/5' : 'border-border bg-card/50'}`}>
+    <div className={`p-4 border rounded-lg transition-all ${
+      isNew
+        ? 'border-gold new-order-card bg-gold/10'
+        : 'border-border bg-card/50'
+    }`}>
+      {/* NEW ORDER banner */}
+      {isNew && (
+        <div className="flex items-center gap-2 mb-3 bg-gold/20 rounded px-3 py-1.5 border border-gold/40">
+          <AlertTriangle className="w-4 h-4 text-gold blink-dot" />
+          <span className="font-display text-sm text-gold tracking-widest font-bold uppercase">New Order</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-start mb-3">
         <div>
@@ -65,11 +78,11 @@ const OrderCard = ({ order, onAdvance }: OrderCardProps) => {
         </div>
         {flow && (
           <Button
-            size="sm"
+            size={isNew ? 'default' : 'sm'}
             onClick={() => onAdvance(order.id, flow.next)}
-            className="font-body text-xs gap-1.5 relative"
+            className={`font-body text-xs gap-1.5 relative ${isNew ? 'new-order-btn bg-gold text-primary-foreground hover:bg-gold/90 font-bold text-sm px-5' : ''}`}
           >
-            {order.status === 'New' && (
+            {isNew && (
               <span className="absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full bg-destructive blink-dot" />
             )}
             {flow.icon}

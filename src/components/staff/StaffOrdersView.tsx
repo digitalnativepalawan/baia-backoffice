@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -8,6 +8,51 @@ const STATUSES = ['New', 'Preparing', 'Served', 'Paid'];
 
 const StaffOrdersView = () => {
   const qc = useQueryClient();
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Unlock AudioContext on first user interaction (mobile requirement)
+  useEffect(() => {
+    const unlock = () => {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume();
+      }
+    };
+    document.addEventListener('touchstart', unlock, { once: true });
+    document.addEventListener('click', unlock, { once: true });
+    return () => {
+      document.removeEventListener('touchstart', unlock);
+      document.removeEventListener('click', unlock);
+    };
+  }, []);
+
+  // Play a two-tone chime
+  const playChime = useCallback(() => {
+    const ctx = audioCtxRef.current;
+    if (!ctx || ctx.state !== 'running') return;
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(880, now);
+    osc1.connect(gain);
+    osc1.start(now);
+    osc1.stop(now + 0.2);
+
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1108.73, now + 0.2);
+    osc2.connect(gain);
+    osc2.start(now + 0.2);
+    osc2.stop(now + 0.5);
+  }, []);
 
   // Realtime subscription
   useEffect(() => {
@@ -42,6 +87,22 @@ const StaffOrdersView = () => {
     return counts;
   }, [orders]);
 
+  const hasNewOrders = statusCounts.New > 0;
+
+  // Repeating chime every 5s while there are New orders
+  useEffect(() => {
+    if (hasNewOrders) {
+      playChime(); // play immediately
+      intervalRef.current = setInterval(playChime, 5000);
+    } else if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [hasNewOrders, playChime]);
+
   const filtered = useMemo(() => orders.filter(o => o.status === activeStatus), [orders, activeStatus]);
 
   const advanceOrder = async (orderId: string, nextStatus: string) => {
@@ -64,7 +125,7 @@ const StaffOrdersView = () => {
               activeStatus === s
                 ? 'bg-gold/20 text-gold border border-gold/40'
                 : 'bg-secondary text-cream-dim border border-border'
-            }`}
+            } ${s === 'New' && hasNewOrders && activeStatus !== s ? 'tab-pulse' : ''}`}
           >
             {s}
             {statusCounts[s] > 0 && (
