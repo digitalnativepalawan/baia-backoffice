@@ -116,6 +116,16 @@ const ResortProfileForm = () => {
         <input ref={fileRef} type="file" accept="image/png,image/svg+xml,image/webp" className="hidden" onChange={handleLogoUpload} />
         <p className="font-body text-[10px] text-cream-dim">PNG or SVG with transparent background recommended</p>
         {uploading && <p className="font-body text-xs text-cream-dim">Uploading...</p>}
+        {form.logo_url && (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setForm(f => ({ ...f, logo_url: '' }))}
+            className="font-body text-xs"
+          >
+            Delete Logo
+          </Button>
+        )}
       </div>
 
       {/* Logo size slider */}
