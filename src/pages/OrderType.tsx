@@ -69,7 +69,7 @@ const OrderType = () => {
             <button
               key={ot.id}
               onClick={() => { setSelectedType(ot.type_key); setLocationDetail(''); }}
-              className={`py-3 border font-display text-sm tracking-wider transition-colors ${
+              className={`min-h-[48px] py-3 border font-display text-sm tracking-wider transition-colors ${
                 selectedType === ot.type_key
                   ? 'border-gold text-foreground bg-foreground/5'
                   : 'border-border text-cream-dim hover:border-foreground/30'

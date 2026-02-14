@@ -83,20 +83,24 @@ const MenuPage = () => {
         </div>
 
         {/* Category tabs */}
-        <div className="max-w-2xl mx-auto px-4 pb-3 flex gap-6 overflow-x-auto">
-          {categories.map((cat: any) => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.name)}
-              className={`font-display text-sm tracking-wider whitespace-nowrap pb-1 transition-colors border-b-2 ${
-                activeCategory === cat.name
-                  ? 'border-gold text-foreground'
-                  : 'border-transparent text-cream-dim hover:text-foreground'
-              }`}
-            >
-              {cat.name}
-            </button>
-          ))}
+        <div className="relative max-w-2xl mx-auto">
+          <div className="px-4 pb-3 flex gap-6 overflow-x-auto scrollbar-hide">
+            {categories.map((cat: any) => (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.name)}
+                className={`font-display text-sm tracking-wider whitespace-nowrap pb-1 transition-colors border-b-2 min-h-[44px] ${
+                  activeCategory === cat.name
+                    ? 'border-gold text-foreground'
+                    : 'border-transparent text-cream-dim hover:text-foreground'
+                }`}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+          {/* Right fade hint */}
+          <div className="absolute right-0 top-0 bottom-0 w-8 pointer-events-none bg-gradient-to-l from-[hsl(var(--navy-deep))] to-transparent" />
         </div>
       </header>
 

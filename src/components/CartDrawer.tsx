@@ -159,38 +159,30 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType, locationDetail }: Car
                 <p className="font-body text-cream-dim text-center py-8">Your order is empty</p>
               ) : (
                 <>
-                  <div className="flex items-center text-cream-dim font-body text-[10px] uppercase tracking-wider pb-1 border-b border-border mb-2">
-                    <span className="flex-1">Item</span>
-                    <span className="w-8 text-center">Qty</span>
-                    <span className="w-16 text-right">Price</span>
-                    <span className="w-20 text-right">Total</span>
-                    <span className="w-10" />
-                  </div>
-
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-3">
                     {cart.items.map(item => (
-                      <div key={item.id} className="flex items-center">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-display text-sm text-foreground truncate">{item.name}</p>
-                        </div>
-                        <div className="flex items-center gap-1 w-8 justify-center">
-                          <button onClick={() => cart.updateQuantity(item.id, item.quantity - 1)} className="text-cream-dim hover:text-foreground">
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="font-body text-xs text-foreground w-4 text-center">{item.quantity}</span>
-                          <button onClick={() => cart.updateQuantity(item.id, item.quantity + 1)} className="text-cream-dim hover:text-foreground">
-                            <Plus className="w-3 h-3" />
+                      <div key={item.id} className="flex flex-col gap-1 border-b border-border pb-3 last:border-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-display text-sm text-foreground flex-1 min-w-0 truncate">{item.name}</p>
+                          <button onClick={() => cart.removeItem(item.id)} className="text-cream-dim hover:text-destructive min-w-[44px] min-h-[44px] flex items-center justify-center">
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
-                        <span className="font-body text-xs text-cream-dim w-16 text-right">
-                          ₱{item.price.toLocaleString()}
-                        </span>
-                        <span className="font-display text-sm text-foreground w-20 text-right">
-                          ₱{(item.price * item.quantity).toLocaleString()}
-                        </span>
-                        <button onClick={() => cart.removeItem(item.id)} className="text-cream-dim hover:text-destructive w-10 flex justify-end">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => cart.updateQuantity(item.id, item.quantity - 1)} className="min-w-[44px] min-h-[44px] flex items-center justify-center border border-border rounded-full text-cream-dim hover:text-foreground">
+                              <Minus className="w-4 h-4" />
+                            </button>
+                            <span className="font-body text-sm text-foreground w-6 text-center">{item.quantity}</span>
+                            <button onClick={() => cart.updateQuantity(item.id, item.quantity + 1)} className="min-w-[44px] min-h-[44px] flex items-center justify-center border border-border rounded-full text-cream-dim hover:text-foreground">
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="flex items-baseline gap-2">
+                            <span className="font-body text-xs text-cream-dim">₱{item.price.toLocaleString()} ×{item.quantity}</span>
+                            <span className="font-display text-sm text-foreground">₱{(item.price * item.quantity).toLocaleString()}</span>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>

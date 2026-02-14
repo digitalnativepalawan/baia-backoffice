@@ -283,11 +283,11 @@ const AdminPage = () => {
         </div>
 
         <Tabs defaultValue="settings" className="w-full">
-          <TabsList className="w-full bg-secondary mb-6">
-            <TabsTrigger value="settings" className="font-display text-xs tracking-wider flex-1">Setup</TabsTrigger>
-            <TabsTrigger value="menu" className="font-display text-xs tracking-wider flex-1">Menu</TabsTrigger>
-            <TabsTrigger value="orders" className="font-display text-xs tracking-wider flex-1">Orders</TabsTrigger>
-            <TabsTrigger value="reports" className="font-display text-xs tracking-wider flex-1">Reports</TabsTrigger>
+          <TabsList className="w-full bg-secondary mb-6 overflow-x-auto scrollbar-hide">
+            <TabsTrigger value="settings" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">Setup</TabsTrigger>
+            <TabsTrigger value="menu" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">Menu</TabsTrigger>
+            <TabsTrigger value="orders" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">Orders</TabsTrigger>
+            <TabsTrigger value="reports" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">Reports</TabsTrigger>
           </TabsList>
 
           {/* SETTINGS TAB */}

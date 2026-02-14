@@ -69,6 +69,13 @@
   .font-body {
     font-family: 'Lato', sans-serif;
   }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
   .dotted-leader {
     flex: 1;
     border-bottom: 1px dotted hsl(var(--cream-dim));
