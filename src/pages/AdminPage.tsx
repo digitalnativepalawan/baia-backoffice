@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Plus, ArrowLeft, Home, Eye, EyeOff, Receipt, Search } from 'lucide-react';
+import { Plus, ArrowLeft, Home, Eye, EyeOff, Receipt, Search, Download } from 'lucide-react';
 import ResortProfileForm from '@/components/admin/ResortProfileForm';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import EditableRow from '@/components/admin/EditableRow';
@@ -429,9 +429,30 @@ const AdminPage = () => {
                 className="bg-secondary border-border text-foreground font-body pl-9"
               />
             </div>
-            <Button onClick={openNewItem} className="font-display tracking-wider w-full" variant="outline">
-              <Plus className="w-4 h-4 mr-2" /> Add Menu Item
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={openNewItem} className="font-display tracking-wider flex-1" variant="outline">
+                <Plus className="w-4 h-4 mr-2" /> Add Menu Item
+              </Button>
+              <Button
+                variant="outline"
+                className="font-display tracking-wider"
+                onClick={() => {
+                  let csv = 'Category,Name,Description,Price,Food Cost\n';
+                  menuItems.forEach(item => {
+                    csv += `"${item.category}","${item.name}","${(item.description || '').replace(/"/g, '""')}",${item.price},${item.food_cost || 0}\n`;
+                  });
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `menu-items-${new Date().toISOString().slice(0, 10)}.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                <Download className="w-4 h-4" />
+              </Button>
+            </div>
             {menuItems
               .filter(item => {
                 if (!menuSearch.trim()) return true;
