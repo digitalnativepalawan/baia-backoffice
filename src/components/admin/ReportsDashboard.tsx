@@ -6,9 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 import { startOfDay, startOfWeek, startOfMonth, startOfYear, subDays, endOfDay, format } from 'date-fns';
-import { DollarSign, ShoppingCart, TrendingUp, Lock, Download, CalendarIcon, Percent, PiggyBank } from 'lucide-react';
+import { DollarSign, ShoppingCart, TrendingUp, Lock, Download, CalendarIcon, Percent, PiggyBank, Receipt, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+const TYPE_LABELS: Record<string, string> = {
+  Room: 'Room Delivery',
+  DineIn: 'Dine In',
+  Beach: 'Beach Delivery',
+  WalkIn: 'Walk-In Guest',
+};
 
 type DateRange = 'today' | 'yesterday' | 'week' | 'month' | 'ytd' | 'custom';
 
@@ -16,6 +24,8 @@ const ReportsDashboard = () => {
   const [range, setRange] = useState<DateRange>('today');
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
+  const [tabTypeFilter, setTabTypeFilter] = useState<string>('all');
+  const [expandedTabId, setExpandedTabId] = useState<string | null>(null);
 
   const { dateFrom, dateTo } = useMemo(() => {
     const now = new Date();
@@ -57,6 +67,57 @@ const ReportsDashboard = () => {
     },
   });
 
+  // Fetch closed tabs for the selected period
+  const { data: closedTabs = [] } = useQuery({
+    queryKey: ['reports-closed-tabs', dateFrom, dateTo],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('tabs')
+        .select('*')
+        .eq('status', 'Closed')
+        .gte('closed_at', dateFrom)
+        .lte('closed_at', dateTo)
+        .order('closed_at', { ascending: false });
+      return data || [];
+    },
+  });
+
+  // Fetch orders for closed tabs
+  const tabIds = closedTabs.map(t => t.id);
+  const { data: tabOrders = [] } = useQuery({
+    queryKey: ['reports-tab-orders', tabIds],
+    queryFn: async () => {
+      if (tabIds.length === 0) return [];
+      const { data } = await supabase
+        .from('orders')
+        .select('*')
+        .in('tab_id', tabIds)
+        .order('created_at', { ascending: true });
+      return data || [];
+    },
+    enabled: tabIds.length > 0,
+  });
+
+  const tabOrdersMap = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    tabOrders.forEach(o => {
+      if (o.tab_id) {
+        if (!map[o.tab_id]) map[o.tab_id] = [];
+        map[o.tab_id].push(o);
+      }
+    });
+    return map;
+  }, [tabOrders]);
+
+  const filteredTabs = useMemo(() => {
+    if (tabTypeFilter === 'all') return closedTabs;
+    return closedTabs.filter(t => t.location_type === tabTypeFilter);
+  }, [closedTabs, tabTypeFilter]);
+
+  const tabLocationTypes = useMemo(() => {
+    const types = new Set(closedTabs.map(t => t.location_type));
+    return Array.from(types).sort();
+  }, [closedTabs]);
   // Fetch menu items for food cost lookup
   const { data: menuItems = [] } = useQuery({
     queryKey: ['menu-items-cost'],
@@ -314,6 +375,130 @@ const ReportsDashboard = () => {
           </div>
         </section>
       )}
+
+      {/* Closed Tabs Log */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-display text-sm tracking-wider text-foreground flex items-center gap-2">
+            <Receipt className="w-4 h-4 text-gold" />
+            Closed Tabs ({filteredTabs.length})
+          </h3>
+        </div>
+
+        {/* Type filter */}
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          <Button
+            size="sm"
+            variant={tabTypeFilter === 'all' ? 'default' : 'outline'}
+            onClick={() => setTabTypeFilter('all')}
+            className="font-body text-[11px] h-7 px-2"
+          >
+            All
+          </Button>
+          {['Room', 'DineIn', 'Beach', 'WalkIn'].map(type => (
+            <Button
+              key={type}
+              size="sm"
+              variant={tabTypeFilter === type ? 'default' : 'outline'}
+              onClick={() => setTabTypeFilter(type)}
+              className="font-body text-[11px] h-7 px-2"
+            >
+              {TYPE_LABELS[type] || type}
+            </Button>
+          ))}
+        </div>
+
+        {filteredTabs.length === 0 ? (
+          <p className="font-body text-xs text-cream-dim text-center py-4">No closed tabs for this period.</p>
+        ) : (
+          <div className="space-y-2">
+            {filteredTabs.map(tab => {
+              const orders = tabOrdersMap[tab.id] || [];
+              const tabTotal = orders.reduce((s, o) => s + (o.total || 0), 0);
+              const tabSC = orders.reduce((s, o) => s + (o.service_charge || 0), 0);
+              const isExpanded = expandedTabId === tab.id;
+
+              return (
+                <div key={tab.id} className="border border-border rounded-lg overflow-hidden">
+                  {/* Tab header - clickable */}
+                  <button
+                    onClick={() => setExpandedTabId(isExpanded ? null : tab.id)}
+                    className="w-full flex items-center justify-between p-3 text-left hover:bg-secondary/30 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-display text-xs tracking-wider text-foreground">
+                          {TYPE_LABELS[tab.location_type] || tab.location_type}
+                        </span>
+                        <Badge variant="outline" className="font-body text-[10px]">
+                          {tab.location_detail}
+                        </Badge>
+                        {tab.guest_name && (
+                          <span className="font-body text-[10px] text-cream-dim">({tab.guest_name})</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="font-body text-[10px] text-cream-dim">
+                          {tab.closed_at ? format(new Date(tab.closed_at), 'MMM d, h:mm a') : ''}
+                        </span>
+                        {tab.payment_method && (
+                          <Badge variant="outline" className="font-body text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-400/30">
+                            {tab.payment_method}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-display text-sm text-gold">₱{(tabTotal + tabSC).toLocaleString()}</span>
+                      {isExpanded ? <ChevronUp className="w-4 h-4 text-cream-dim" /> : <ChevronDown className="w-4 h-4 text-cream-dim" />}
+                    </div>
+                  </button>
+
+                  {/* Expanded details */}
+                  {isExpanded && (
+                    <div className="border-t border-border p-3 bg-secondary/10 space-y-3">
+                      {orders.length === 0 ? (
+                        <p className="font-body text-xs text-cream-dim">No orders found.</p>
+                      ) : (
+                        orders.map((order, idx) => {
+                          const items = (Array.isArray(order.items) ? order.items : []) as any[];
+                          return (
+                            <div key={order.id} className="space-y-1">
+                              <div className="flex justify-between items-center">
+                                <span className="font-display text-[11px] text-cream-dim tracking-wider">
+                                  Order #{idx + 1}
+                                </span>
+                                <span className="font-body text-[10px] text-cream-dim">
+                                  {format(new Date(order.created_at), 'MMM d, h:mm a')}
+                                </span>
+                              </div>
+                              {items.map((item: any, i: number) => (
+                                <div key={i} className="flex justify-between font-body text-xs">
+                                  <span className="text-foreground">{item.qty}× {item.name}</span>
+                                  <span className="text-cream-dim">₱{((item.price || 0) * (item.qty || 1)).toLocaleString()}</span>
+                                </div>
+                              ))}
+                              <div className="flex justify-between font-body text-[10px] text-cream-dim pt-1 border-t border-border/30">
+                                <span>Subtotal: ₱{Number(order.total || 0).toLocaleString()}</span>
+                                <span>SC: ₱{Number(order.service_charge || 0).toLocaleString()}</span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                      {/* Tab totals */}
+                      <div className="border-t border-border pt-2 flex justify-between font-display text-sm">
+                        <span className="text-foreground">Tab Total</span>
+                        <span className="text-gold">₱{(tabTotal + tabSC).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* Coming Soon - Tours */}
       <section className="p-4 border border-dashed border-border rounded-lg opacity-60">
