@@ -1,57 +1,62 @@
 
 
-## Efficient Tab-Based Ordering: Keep All Items on the Original Tab
+## Reports Dashboard: Food Cost, Profit Analysis, and CSV Export
 
-### Problem
-When staff adds items to a served order, the new order is created separately but it already links to the same `tab_id`. However, from the **staff orders view**, there's no easy way to see which tab an order belongs to or to add items directly to a tab's invoice. The admin also needs a way to share consolidated invoices from the staff view.
+### What We're Building
+A comprehensive accounting reports tool that replaces the "Coming Soon" placeholder with real food cost and profit analysis, adds flexible date range selection (including custom date picker), and enables CSV download for accounting purposes.
+
+### Key Issues to Fix First
+1. **Reports currently only show "Closed" orders** -- but we changed tab closure to mark orders as "Paid". The query needs to include BOTH "Paid" and "Closed" statuses to capture all completed transactions.
 
 ### Changes
 
-### 1. Staff Orders View - Link "Add Items" to the Tab
-**File: `src/components/staff/StaffOrdersView.tsx`**
+### 1. Expanded Date Range Options
+Replace the 4 simple buttons with a more complete set for accounting:
+- Today, Yesterday, This Week, This Month, Year to Date
+- Custom date range picker (two date inputs: From / To)
 
-When the user clicks "Add Items" on a served order that has a `tab_id`, the new order already inherits the `tab_id` (this is working correctly). No change needed here for the insert logic.
+### 2. Food Cost and Profit Analysis Section
+Since order items don't store `food_cost` in their JSON, we'll cross-reference item names against the `menu_items` table to look up each item's food cost.
 
-### 2. Order Card - Show Tab Link and Add "View Tab Invoice" Button
-**File: `src/components/admin/OrderCard.tsx`**
+For each item sold in the period:
+- **Revenue**: price x quantity
+- **Food Cost**: food_cost x quantity (from menu_items lookup)
+- **Profit**: Revenue - Food Cost
+- **Margin %**: (Profit / Revenue) x 100
 
-- Show a small "Tab" badge on orders that belong to a tab, so staff can see at a glance that this order is part of a larger tab
-- Add a "View Tab/Invoice" button for orders linked to a tab, which opens the TabInvoice view showing the consolidated bill with all orders for that tab
-- This lets admin/staff share the full consolidated invoice (PDF or WhatsApp) from the tab view
+Summary cards will show:
+- Total Revenue | Total Food Cost | Total Profit | Overall Margin %
 
-### 3. Staff Orders View - Add Tab Invoice Dialog
-**File: `src/components/staff/StaffOrdersView.tsx`**
+A per-item breakdown table showing name, qty sold, revenue, food cost, profit, and margin.
 
-- Import the `TabInvoice` component
-- Add a dialog/drawer that opens when staff clicks "View Tab/Invoice" on an order card
-- This shows the full consolidated tab with all orders, download, and WhatsApp share options
-- Pass a new `onViewTab` callback prop to `OrderCard`
+### 3. CSV Export Button
+A "Download CSV" button that generates a CSV file with all transaction data for the selected period. The CSV will include:
 
-### 4. OrderCard Props Update
-**File: `src/components/admin/OrderCard.tsx`**
+**Transactions sheet data:**
+- Order ID, Date/Time, Order Type, Location, Items (name, qty, price), Subtotal, Service Charge, Total, Payment Type, Status
 
-- Add `onViewTab?: (tabId: string) => void` prop
-- When order has a `tab_id`, show a "Tab Invoice" button that calls `onViewTab(order.tab_id)`
-- The "Add Items" button remains available on served orders with a tab, and any new items added will automatically be linked to the same tab
+**Summary data at the top:**
+- Period, Total Revenue, Total Food Cost, Total Profit, Margin %
+
+The filename will indicate the period (e.g., `report-2026-02-15-today.csv`).
+
+### 4. Fix Order Query
+Change from `.eq('status', 'Closed')` to `.in('status', ['Paid', 'Closed'])` so all completed orders are captured.
 
 ### Technical Details
 
-```text
-Order Card Layout (for orders with a tab):
-+------------------------------------------+
-| Room - Room 5           [Tab] [Served]   |
-| 2 minutes ago                            |
-|                                          |
-| 1x Mango Shake              P150        |
-|                                          |
-| P150                                     |
-| [Add Items] [Tab Invoice] [PDF] [WA]    |
-|                              [Mark Paid] |
-+------------------------------------------+
-```
+**File: `src/components/admin/ReportsDashboard.tsx`** (major rewrite)
 
-- The "Tab Invoice" button opens a dialog with the full `TabInvoice` component showing all orders under that tab
-- From there, admin can download the consolidated PDF or share via WhatsApp
-- Adding items from either the tab invoice view or the order card "Add Items" button will create a new order linked to the same tab
-- No database changes needed -- `tab_id` already exists on orders
+- Add `menu_items` query to fetch food_cost data for cross-referencing
+- New date range type: `'today' | 'yesterday' | 'week' | 'month' | 'ytd' | 'custom'`
+- Custom date state with two date pickers (using Popover + Calendar from shadcn)
+- Fix query to use `.in('status', ['Paid', 'Closed'])`
+- New `stats` calculations adding: `totalFoodCost`, `totalProfit`, `marginPct`, and per-item cost/profit breakdown
+- Summary cards row: Revenue, Food Cost, Profit, Margin %
+- Per-item profit table with columns: Item, Qty, Revenue, Cost, Profit, Margin
+- `generateCSV()` function that builds CSV string from orders data and triggers download via `Blob` + `URL.createObjectURL`
+- Remove the two "Coming Soon" placeholder sections (Food Cost and Tours)
+- Keep the "Tours Revenue" placeholder as coming soon
+
+No database changes needed -- all data already exists in `menu_items.food_cost` and order items JSON.
 
