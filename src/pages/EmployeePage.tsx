@@ -125,6 +125,8 @@ const EmployeePage = () => {
             const activeShift = getActiveShift(emp.id);
             const todayHours = getTodayHours(emp.id);
             const isClockedIn = !!activeShift;
+            const todayShifts = shifts.filter(s => s.employee_id === emp.id);
+            const shiftCount = todayShifts.length;
 
             return (
               <div key={emp.id} className="border border-border rounded-lg p-4 space-y-3">
@@ -133,15 +135,33 @@ const EmployeePage = () => {
                     <p className="font-display text-sm tracking-wider text-foreground">{emp.name}</p>
                     <p className="font-body text-xs text-cream-dim">₱{Number(emp.hourly_rate).toFixed(0)}/hr</p>
                   </div>
-                  <Badge variant={isClockedIn ? 'default' : 'secondary'} className="font-body text-xs">
-                    {isClockedIn ? 'Clocked In' : 'Off'}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    {shiftCount > 1 && (
+                      <Badge variant="outline" className="font-body text-xs text-primary border-primary/40">
+                        Split · {shiftCount} shifts
+                      </Badge>
+                    )}
+                    <Badge variant={isClockedIn ? 'default' : 'secondary'} className="font-body text-xs">
+                      {isClockedIn ? 'Clocked In' : 'Off'}
+                    </Badge>
+                  </div>
                 </div>
 
-                {isClockedIn && activeShift && (
-                  <p className="font-body text-xs text-cream-dim">
-                    Since {format(new Date(activeShift.clock_in), 'h:mm a')}
-                  </p>
+                {/* Today's shift breakdown */}
+                {shiftCount > 0 && (
+                  <div className="space-y-1">
+                    {todayShifts
+                      .slice()
+                      .sort((a, b) => new Date(a.clock_in).getTime() - new Date(b.clock_in).getTime())
+                      .map((s, i) => (
+                        <p key={s.id} className="font-body text-xs text-cream-dim">
+                          Shift {i + 1}: {format(new Date(s.clock_in), 'h:mm a')}
+                          {s.clock_out
+                            ? ` – ${format(new Date(s.clock_out), 'h:mm a')} (${Number(s.hours_worked || 0).toFixed(1)}h)`
+                            : ' – still working'}
+                        </p>
+                      ))}
+                  </div>
                 )}
 
                 <div className="flex items-center justify-between">
