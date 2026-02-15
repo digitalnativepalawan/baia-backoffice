@@ -347,31 +347,21 @@ const ReportsDashboard = () => {
       {stats.itemBreakdown.length > 0 && (
         <section>
           <h3 className="font-display text-sm tracking-wider text-foreground mb-3">Item Profit Breakdown</h3>
-          <div className="overflow-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="font-body text-xs">Item</TableHead>
-                  <TableHead className="font-body text-xs text-right">Qty</TableHead>
-                  <TableHead className="font-body text-xs text-right">Revenue</TableHead>
-                  <TableHead className="font-body text-xs text-right">Cost</TableHead>
-                  <TableHead className="font-body text-xs text-right">Profit</TableHead>
-                  <TableHead className="font-body text-xs text-right">Margin</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {stats.itemBreakdown.map(item => (
-                  <TableRow key={item.name}>
-                    <TableCell className="font-body text-xs">{item.name}</TableCell>
-                    <TableCell className="font-body text-xs text-right">{item.qty}</TableCell>
-                    <TableCell className="font-body text-xs text-right">₱{item.revenue.toLocaleString()}</TableCell>
-                    <TableCell className="font-body text-xs text-right">₱{item.foodCost.toLocaleString()}</TableCell>
-                    <TableCell className="font-body text-xs text-right">₱{item.profit.toLocaleString()}</TableCell>
-                    <TableCell className="font-body text-xs text-right">{item.margin.toFixed(1)}%</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="space-y-2">
+            {stats.itemBreakdown.map(item => (
+              <div key={item.name} className="border border-border rounded-lg p-3 space-y-1.5">
+                <p className="font-display text-sm text-foreground">{item.name}</p>
+                <div className="flex justify-between font-body text-xs text-cream-dim">
+                  <span>Qty: {item.qty}</span>
+                  <span>Revenue: ₱{item.revenue.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between font-body text-xs text-cream-dim">
+                  <span>Cost: ₱{item.foodCost.toLocaleString()}</span>
+                  <span>Profit: <span className="text-foreground">₱{item.profit.toLocaleString()}</span></span>
+                  <span>Margin: <span className="text-gold">{item.margin.toFixed(1)}%</span></span>
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       )}
