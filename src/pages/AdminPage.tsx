@@ -198,9 +198,11 @@ const AdminPage = () => {
   };
 
   const saveItem = async () => {
+    const overrideVal = parseFloat(itemForm.food_cost);
+    const foodCost = (!itemForm.food_cost || isNaN(overrideVal) || overrideVal === 0) ? null : overrideVal;
     const payload = {
       name: itemForm.name, category: itemForm.category, description: itemForm.description,
-      price: parseFloat(itemForm.price) || 0, food_cost: parseFloat(itemForm.food_cost) || 0,
+      price: parseFloat(itemForm.price) || 0, food_cost: foodCost,
       sort_order: parseInt(itemForm.sort_order) || 0,
     };
     if (editItem === 'new') {
@@ -659,9 +661,11 @@ const AdminPage = () => {
                   type="number" className="bg-secondary border-border text-foreground font-body mt-1" />
               </div>
               <div>
-                <label className="font-body text-xs text-cream-dim">Food Cost (₱) — override</label>
+                <label className="font-body text-xs text-cream-dim">Food Cost Override (₱)</label>
                 <Input value={itemForm.food_cost} onChange={e => setItemForm(f => ({ ...f, food_cost: e.target.value }))}
-                  type="number" className="bg-secondary border-border text-foreground font-body mt-1" />
+                  type="number" placeholder="Leave empty for auto"
+                  className="bg-secondary border-border text-foreground font-body mt-1" />
+                <p className="font-body text-[10px] text-cream-dim mt-0.5">Optional — overrides recipe calculation</p>
               </div>
             </div>
             <div>
@@ -674,8 +678,12 @@ const AdminPage = () => {
               <div className="pt-3 border-t border-border">
                 <RecipeEditor
                   menuItemId={editItem.id}
+                  hasOverride={!!itemForm.food_cost && parseFloat(itemForm.food_cost) > 0}
                   onFoodCostUpdate={(cost) => {
-                    if (cost > 0) setItemForm(f => ({ ...f, food_cost: cost.toFixed(2) }));
+                    // Only auto-fill if no manual override is set
+                    if (cost > 0 && (!itemForm.food_cost || parseFloat(itemForm.food_cost) === 0)) {
+                      setItemForm(f => ({ ...f, food_cost: cost.toFixed(2) }));
+                    }
                   }}
                 />
               </div>
