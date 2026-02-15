@@ -66,6 +66,30 @@ const PayrollDashboard = () => {
     });
   }, [shifts, dateFilter]);
 
+  // Group shifts by employee + date for split shift display
+  type ShiftGroup = { key: string; employeeId: string; date: string; shifts: typeof filteredShifts; totalHours: number; totalPay: number; isSplit: boolean };
+  const groupedShifts = useMemo((): ShiftGroup[] => {
+    const map = new Map<string, typeof filteredShifts>();
+    filteredShifts.forEach(s => {
+      const dateKey = format(new Date(s.clock_in), 'yyyy-MM-dd');
+      const key = `${s.employee_id}_${dateKey}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(s);
+    });
+    const groups: ShiftGroup[] = [];
+    map.forEach((groupShifts, key) => {
+      const parts = key.split('_');
+      const employeeId = parts[0];
+      const date = parts[1];
+      const sorted = groupShifts.sort((a, b) => new Date(a.clock_in).getTime() - new Date(b.clock_in).getTime());
+      const totalHours = sorted.reduce((s, sh) => s + Number(sh.hours_worked || 0), 0);
+      const totalPay = sorted.reduce((s, sh) => s + Number(sh.total_pay || 0), 0);
+      groups.push({ key, employeeId, date, shifts: sorted, totalHours, totalPay, isSplit: sorted.length > 1 });
+    });
+    groups.sort((a, b) => b.date.localeCompare(a.date) || getEmployeeName(a.employeeId).localeCompare(getEmployeeName(b.employeeId)));
+    return groups;
+  }, [filteredShifts, employees]);
+
   // Summary stats
   const stats = useMemo(() => {
     const totalHours = filteredShifts.reduce((s, sh) => s + Number(sh.hours_worked || 0), 0);
@@ -74,7 +98,7 @@ const PayrollDashboard = () => {
     return { totalHours, totalPay, totalPaid, outstanding: totalPay - totalPaid };
   }, [filteredShifts]);
 
-  // Per-employee summary (always includes paid-out data)
+  // Per-employee summary
   const employeeSummary = useMemo(() => {
     return employees.map(emp => {
       const empShifts = filteredShifts.filter(s => s.employee_id === emp.id);
@@ -85,7 +109,7 @@ const PayrollDashboard = () => {
     });
   }, [employees, filteredShifts]);
 
-  // All-time paid-out per employee (always visible)
+  // All-time paid-out per employee
   const allTimePaid = useMemo(() => {
     const map: Record<string, number> = {};
     shifts.forEach(s => {
@@ -207,7 +231,7 @@ const PayrollDashboard = () => {
     toast.success('Shift added');
   };
 
-  // CSV Export
+  // CSV Export with split shift subtotals
   const downloadCSV = () => {
     let csv = 'Payroll Report\n';
     csv += `Period,${dateFilter}\n`;
@@ -226,15 +250,22 @@ const PayrollDashboard = () => {
     });
 
     csv += '\nSHIFT DETAIL\n';
-    csv += 'Employee,Clock In,Clock Out,Hours,Pay,Status,Paid At\n';
-    filteredShifts.forEach(s => {
-      csv += `"${getEmployeeName(s.employee_id)}",`;
-      csv += `${format(new Date(s.clock_in), 'yyyy-MM-dd HH:mm')},`;
-      csv += `${s.clock_out ? format(new Date(s.clock_out), 'yyyy-MM-dd HH:mm') : 'Still working'},`;
-      csv += `${s.hours_worked ? Number(s.hours_worked).toFixed(2) : ''},`;
-      csv += `${s.total_pay ? Number(s.total_pay).toFixed(2) : ''},`;
-      csv += `${s.is_paid ? 'Paid' : 'Unpaid'},`;
-      csv += `${s.paid_at ? format(new Date(s.paid_at), 'yyyy-MM-dd HH:mm') : ''}\n`;
+    csv += 'Employee,Date,Clock In,Clock Out,Hours,Pay,Status,Paid At,Note\n';
+    groupedShifts.forEach(group => {
+      group.shifts.forEach(s => {
+        csv += `"${getEmployeeName(s.employee_id)}",`;
+        csv += `${group.date},`;
+        csv += `${format(new Date(s.clock_in), 'yyyy-MM-dd HH:mm')},`;
+        csv += `${s.clock_out ? format(new Date(s.clock_out), 'yyyy-MM-dd HH:mm') : 'Still working'},`;
+        csv += `${s.hours_worked ? Number(s.hours_worked).toFixed(2) : ''},`;
+        csv += `${s.total_pay ? Number(s.total_pay).toFixed(2) : ''},`;
+        csv += `${s.is_paid ? 'Paid' : 'Unpaid'},`;
+        csv += `${s.paid_at ? format(new Date(s.paid_at), 'yyyy-MM-dd HH:mm') : ''},`;
+        csv += `${group.isSplit ? 'Split Shift' : ''}\n`;
+      });
+      if (group.isSplit) {
+        csv += `"${getEmployeeName(group.employeeId)}",${group.date},DAILY SUBTOTAL,,${group.totalHours.toFixed(2)},${group.totalPay.toFixed(2)},,,${group.shifts.length} shifts\n`;
+      }
     });
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -389,72 +420,94 @@ const PayrollDashboard = () => {
             </div>
           )}
 
-          {/* Shift cards */}
-          {filteredShifts.length === 0 && (
+          {/* Grouped shift cards */}
+          {groupedShifts.length === 0 && (
             <p className="font-body text-muted-foreground text-center py-8">No shifts for this period</p>
           )}
-          {filteredShifts.map(shift => (
-            <div key={shift.id} className="border border-border rounded-lg p-3 space-y-2">
-              {editingShiftId === shift.id ? (
-                <div className="space-y-2">
-                  <p className="font-display text-sm text-foreground">{getEmployeeName(shift.employee_id)}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="font-body text-xs text-muted-foreground">Clock In</label>
-                      <Input type="datetime-local" value={editClockIn} onChange={e => setEditClockIn(e.target.value)}
-                        className="bg-secondary border-border text-foreground font-body text-sm h-9" />
-                    </div>
-                    <div>
-                      <label className="font-body text-xs text-muted-foreground">Clock Out</label>
-                      <Input type="datetime-local" value={editClockOut} onChange={e => setEditClockOut(e.target.value)}
-                        className="bg-secondary border-border text-foreground font-body text-sm h-9" />
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => saveShiftEdit(shift)} className="font-display text-xs tracking-wider flex-1">Save</Button>
-                    <Button size="sm" variant="outline" onClick={() => setEditingShiftId(null)} className="font-display text-xs tracking-wider flex-1">Cancel</Button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-display text-sm text-foreground">{getEmployeeName(shift.employee_id)}</p>
-                      <p className="font-body text-xs text-muted-foreground">
-                        {format(new Date(shift.clock_in), 'MMM d · h:mm a')}
-                        {shift.clock_out ? ` → ${format(new Date(shift.clock_out), 'h:mm a')}` : ' → Still working'}
-                      </p>
-                    </div>
-                    <Badge variant={shift.is_paid ? 'default' : 'secondary'} className="font-body text-xs">
-                      {shift.is_paid ? 'Paid' : 'Unpaid'}
+          {groupedShifts.map(group => (
+            <div key={group.key} className={`border rounded-lg p-3 space-y-2 ${group.isSplit ? 'border-primary/30' : 'border-border'}`}>
+              {/* Group header */}
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <p className="font-display text-sm text-foreground">{getEmployeeName(group.employeeId)}</p>
+                  {group.isSplit && (
+                    <Badge variant="outline" className="font-body text-xs text-primary border-primary/40">
+                      Split · {group.shifts.length} shifts
                     </Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="font-body text-xs text-muted-foreground">
-                      {shift.hours_worked ? `${Number(shift.hours_worked).toFixed(1)}h` : '—'}
-                      {shift.total_pay ? ` · ₱${Number(shift.total_pay).toFixed(0)}` : ''}
-                    </span>
-                    <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                        onClick={() => startEditShift(shift)}>
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => deleteShift(shift.id)}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                      {shift.is_paid ? (
-                        <Button size="sm" variant="outline" onClick={() => markUnpaid(shift.id)}
-                          className="font-display text-xs tracking-wider h-7 px-2">Undo Pay</Button>
-                      ) : (
-                        shift.total_pay && (
-                          <Button size="sm" variant="outline" onClick={() => markPaid(shift.id)}
-                            className="font-display text-xs tracking-wider h-7 px-2">Mark Paid</Button>
-                        )
-                      )}
+                  )}
+                </div>
+                <span className="font-body text-xs text-muted-foreground">{format(new Date(group.date), 'MMM d')}</span>
+              </div>
+
+              {/* Individual shifts */}
+              {group.shifts.map(shift => (
+                <div key={shift.id} className="border-t border-border/50 pt-2 space-y-1">
+                  {editingShiftId === shift.id ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="font-body text-xs text-muted-foreground">Clock In</label>
+                          <Input type="datetime-local" value={editClockIn} onChange={e => setEditClockIn(e.target.value)}
+                            className="bg-secondary border-border text-foreground font-body text-sm h-9" />
+                        </div>
+                        <div>
+                          <label className="font-body text-xs text-muted-foreground">Clock Out</label>
+                          <Input type="datetime-local" value={editClockOut} onChange={e => setEditClockOut(e.target.value)}
+                            className="bg-secondary border-border text-foreground font-body text-sm h-9" />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => saveShiftEdit(shift)} className="font-display text-xs tracking-wider flex-1">Save</Button>
+                        <Button size="sm" variant="outline" onClick={() => setEditingShiftId(null)} className="font-display text-xs tracking-wider flex-1">Cancel</Button>
+                      </div>
                     </div>
-                  </div>
-                </>
+                  ) : (
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="font-body text-xs text-muted-foreground">
+                          {format(new Date(shift.clock_in), 'h:mm a')}
+                          {shift.clock_out ? ` → ${format(new Date(shift.clock_out), 'h:mm a')}` : ' → Still working'}
+                        </p>
+                        <span className="font-body text-xs text-muted-foreground">
+                          {shift.hours_worked ? `${Number(shift.hours_worked).toFixed(1)}h` : '—'}
+                          {shift.total_pay ? ` · ₱${Number(shift.total_pay).toFixed(0)}` : ''}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Badge variant={shift.is_paid ? 'default' : 'secondary'} className="font-body text-xs">
+                          {shift.is_paid ? 'Paid' : 'Unpaid'}
+                        </Badge>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => startEditShift(shift)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteShift(shift.id)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                        {shift.is_paid ? (
+                          <Button size="sm" variant="outline" onClick={() => markUnpaid(shift.id)}
+                            className="font-display text-xs tracking-wider h-7 px-2">Undo</Button>
+                        ) : (
+                          shift.total_pay && (
+                            <Button size="sm" variant="outline" onClick={() => markPaid(shift.id)}
+                              className="font-display text-xs tracking-wider h-7 px-2">Pay</Button>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* Daily subtotal for split shifts */}
+              {group.isSplit && (
+                <div className="border-t border-primary/20 pt-2 flex justify-between items-center">
+                  <span className="font-body text-xs text-primary font-semibold">Day Total</span>
+                  <span className="font-body text-xs text-primary font-semibold">
+                    {group.totalHours.toFixed(1)}h · ₱{group.totalPay.toFixed(0)}
+                  </span>
+                </div>
               )}
             </div>
           ))}
