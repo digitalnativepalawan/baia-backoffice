@@ -348,13 +348,45 @@ const AdminPage = () => {
 
             <section>
               <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Order Types</h3>
-              <div className="space-y-0">
+              <div className="space-y-3">
                 {orderTypes.map(ot => (
-                  <EditableRow key={ot.id} id={ot.id} name={ot.label} active={ot.active}
-                    onRename={async (id, newName) => { await supabase.from('order_types').update({ label: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); toast.success('Order type renamed'); }}
-                    onDelete={async (id) => { await supabase.from('order_types').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); toast.success('Order type deleted'); }}
-                    onToggle={async (id, checked) => { await supabase.from('order_types').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); }}
-                  />
+                  <div key={ot.id} className="space-y-2 border border-border rounded-lg p-3">
+                    <EditableRow id={ot.id} name={ot.label} active={ot.active}
+                      onRename={async (id, newName) => { await supabase.from('order_types').update({ label: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); toast.success('Order type renamed'); }}
+                      onDelete={async (id) => { await supabase.from('order_types').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); toast.success('Order type deleted'); }}
+                      onToggle={async (id, checked) => { await supabase.from('order_types').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); }}
+                    />
+                    <div className="flex gap-2 pl-2">
+                      <Select value={ot.input_mode} onValueChange={async (val) => {
+                        const update: any = { input_mode: val };
+                        if (val === 'text') update.source_table = null;
+                        await supabase.from('order_types').update(update).eq('id', ot.id);
+                        qc.invalidateQueries({ queryKey: ['order-types-admin'] });
+                      }}>
+                        <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs h-8 w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-card border-border">
+                          <SelectItem value="text" className="text-foreground font-body text-xs">Text</SelectItem>
+                          <SelectItem value="select" className="text-foreground font-body text-xs">Dropdown</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {ot.input_mode === 'select' && (
+                        <Select value={ot.source_table || ''} onValueChange={async (val) => {
+                          await supabase.from('order_types').update({ source_table: val }).eq('id', ot.id);
+                          qc.invalidateQueries({ queryKey: ['order-types-admin'] });
+                        }}>
+                          <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs h-8 w-36">
+                            <SelectValue placeholder="Source table" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-card border-border">
+                            <SelectItem value="units" className="text-foreground font-body text-xs">Rooms/Units</SelectItem>
+                            <SelectItem value="resort_tables" className="text-foreground font-body text-xs">Tables</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  </div>
                 ))}
                 <div className="flex gap-2 mt-3">
                   <Input value={newOrderType} onChange={e => setNewOrderType(e.target.value)} placeholder="New order type label"
