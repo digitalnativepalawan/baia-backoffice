@@ -1,89 +1,39 @@
 
 
-## Employee Payroll and Clock-In System
+## Support Split Shifts and Lunch Breaks
 
-### Overview
-Add a full employee management and payroll system with clock-in/clock-out tracking, hourly pay rates, and payment recording. Accessible from a new "Employee" button on the home page (below Admin), protected by the same passkey (5309), and managed via a new "Payroll" tab in Admin.
+### What Already Works
+The database already handles multiple shifts per day correctly. Each clock-in creates a new `employee_shifts` row, and clocking out closes only that row. The `getTodayHours` function sums all completed shifts for the day. So an employee can clock out for lunch and clock back in without any data issues.
 
-### Database Tables (2 new tables)
+### What Needs Improvement
 
-**employees**
-- id (uuid, PK)
-- name (text) -- employee name
-- hourly_rate (numeric) -- pay per hour
-- active (boolean, default true)
-- created_at (timestamptz)
+**1. Employee Page -- Show today's shift breakdown**
+Currently the employee card only shows "Today: 3.5h" as a single number. Employees can't see their individual shift segments. We'll add a small list of today's shifts under each employee card showing:
+- Shift 1: 8:00 AM - 12:00 PM (4.0h)
+- Shift 2: 1:30 PM - still working
 
-**employee_shifts**
-- id (uuid, PK)
-- employee_id (uuid, FK -> employees)
-- clock_in (timestamptz) -- when they clocked in
-- clock_out (timestamptz, nullable) -- null = still clocked in
-- hours_worked (numeric, nullable) -- auto-calculated on clock-out
-- total_pay (numeric, nullable) -- hours x hourly_rate
-- is_paid (boolean, default false) -- mark as paid
-- paid_at (timestamptz, nullable)
-- created_at (timestamptz)
+This makes it clear to the employee that their lunch break was recorded and they're on their second (or third) shift.
 
-Both tables get public RLS policies (matching the existing pattern in this project).
+**2. Employee Page -- Show shift count label**
+Add a "Split Shift" or "2 shifts" indicator when an employee has more than one shift today, so it's obvious at a glance.
 
-### New Pages and Components
+**3. Admin Payroll -- Group shifts by day per employee**
+In the Shift Log, when an employee has multiple shifts on the same day, visually group them together and show a "Split Shift" badge with a daily total. This helps admin quickly see the full picture for that day.
 
-**1. Home Page (`src/pages/Index.tsx`)**
-- Add "Employee" button below the "Admin" button
-- Uses same passkey dialog (add `'employee'` to passkeyMode union)
-- On success, navigates to `/employee`
-
-**2. Employee Clock-In Page (`src/pages/EmployeePage.tsx`)**
-- New route `/employee`
-- Shows list of active employees as cards
-- Each card shows employee name, hourly rate, and current status (Clocked In / Clocked Out)
-- "Clock In" button starts a shift (inserts into employee_shifts with clock_in = now)
-- "Clock Out" button ends the shift (updates clock_out, calculates hours_worked and total_pay)
-- Shows today's total hours for each employee
-- Home button to go back
-
-**3. Admin Payroll Tab (`src/pages/AdminPage.tsx`)**
-- New "Payroll" tab alongside Setup, Menu, Orders, Reports
-- Sub-sections:
-
-  **a. Employee Management**
-  - List of all employees with name, hourly rate, active toggle
-  - Add new employee form (name + hourly rate)
-  - Edit/delete employees (reuse EditableRow pattern)
-
-  **b. Shift Log & Pay**
-  - Date filter (Today, Yesterday, This Week, This Month, Custom) -- reuse same pattern as Reports
-  - Stacked card layout (no tables!) showing each shift:
-    - Employee name, clock-in time, clock-out time, hours worked, total pay
-    - "Mark Paid" button per shift (sets is_paid=true, paid_at=now)
-    - Badge showing Paid/Unpaid status
-  - Summary card at top: Total Hours, Total Pay Due, Total Paid
-
-  **c. Payroll Summary**
-  - Per-employee breakdown: total hours, total earnings, amount paid, amount outstanding
-  - "Mark All Paid" button per employee for bulk payment
-
-### Route Changes (`src/App.tsx`)
-- Add `/employee` route pointing to new `EmployeePage`
+**4. CSV Export -- Add daily totals for split shifts**
+When exporting, add a subtotal row for days where an employee worked multiple shifts, making it clear for accounting.
 
 ### Technical Details
 
-- All layouts use stacked cards (no horizontal scroll)
-- Follows existing design system: dark navy background, cream/beige typography, Playfair Display headers, Lato body text
-- Clock-in/out uses realtime subscription for live status updates
-- Hours calculation: `(clock_out - clock_in)` in hours, rounded to 2 decimal places
-- Service charge from Reports can be cross-referenced with payroll for Saturday distribution
+**File: `src/pages/EmployeePage.tsx`**
+- Filter today's shifts per employee (already available in `shifts` array)
+- Render a compact list of shift segments below the summary line
+- Show shift count badge (e.g., "2 shifts") when count > 1
+- No database changes needed
 
-### Files to Create
-- `src/pages/EmployeePage.tsx` -- clock-in/out interface
-- `src/components/admin/PayrollDashboard.tsx` -- admin payroll management
+**File: `src/components/admin/PayrollDashboard.tsx`**
+- In the Shifts sub-view, group `filteredShifts` by employee + date
+- When a group has more than 1 shift, show a "Split Shift" badge and a daily subtotal row
+- In `downloadCSV`, insert a subtotal row after each multi-shift day grouping
 
-### Files to Modify
-- `src/pages/Index.tsx` -- add Employee button + passkey mode
-- `src/pages/AdminPage.tsx` -- add Payroll tab
-- `src/App.tsx` -- add /employee route
-
-### Database Migration
-- Create `employees` table with RLS
-- Create `employee_shifts` table with RLS and FK to employees
+No database or schema changes required -- this is purely a UI/display enhancement.
