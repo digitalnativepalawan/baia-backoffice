@@ -8,9 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Plus, Trash2, AlertTriangle, Upload, Pencil, Check, X, Banknote, CalendarPlus, Printer } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Upload, Pencil, Check, X, Banknote, CalendarPlus, Printer, Settings } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import ImportReservationsModal from './ImportReservationsModal';
+import WebhookSettings from './WebhookSettings';
 import { format, startOfMonth, endOfMonth, getDaysInMonth, eachDayOfInterval, isWithinInterval, parseISO, isBefore } from 'date-fns';
 
 const MONTHS = [
@@ -146,6 +147,7 @@ const ResortOpsDashboard = () => {
   const [newBooking, setNewBooking] = useState({ guest_id: '', unit_id: '', platform: '', check_in: '', check_out: '', adults: '1', room_rate: '', addons_total: '0', paid_amount: '0', commission_applied: '0' });
   const [importOpen, setImportOpen] = useState(false);
   const [ledgerFilter, setLedgerFilter] = useState<'all' | 'staying' | 'arriving' | 'departing' | 'unpaid'>('all');
+  const [showWebhook, setShowWebhook] = useState(false);
 
   // ── Editing states ──
   const [editingUnit, setEditingUnit] = useState<any>(null);
@@ -327,6 +329,15 @@ const ResortOpsDashboard = () => {
           </Button>
         ))}
       </div>
+
+      {/* Webhook toggle */}
+      <div className="flex justify-end">
+        <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowWebhook(v => !v)}>
+          <Settings className="w-3.5 h-3.5 mr-1.5" />
+          Webhook Settings
+        </Button>
+      </div>
+      {showWebhook && <WebhookSettings />}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

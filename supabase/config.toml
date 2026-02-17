@@ -2,3 +2,6 @@ project_id = "clrmzgygbndcwlyrixpd"
 
 [functions.scan-receipt]
 verify_jwt = false
+
+[functions.sirvoy-webhook]
+verify_jwt = false
