@@ -262,27 +262,24 @@ const ResortOpsDashboard = () => {
       <Card className="bg-card border-border">
         <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Accommodation Units</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Base Price</TableHead><TableHead>Capacity</TableHead><TableHead></TableHead></TableRow></TableHeader>
-            <TableBody>
-              {units.map((u: any) => (
-                <TableRow key={u.id}>
-                  <TableCell className="font-body text-sm">{u.name}</TableCell>
-                  <TableCell className="font-body text-sm">{u.type}</TableCell>
-                  <TableCell className="font-body text-sm">₱{fmt(Number(u.base_price))}</TableCell>
-                  <TableCell className="font-body text-sm">{u.capacity}</TableCell>
-                  <TableCell><Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteRow('resort_ops_units', u.id)}><Trash2 className="w-3.5 h-3.5" /></Button></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="flex flex-wrap gap-2">
-            <Input placeholder="Name" value={newUnit.name} onChange={e => setNewUnit(p => ({...p, name: e.target.value}))} className="bg-secondary border-border text-foreground font-body flex-1 min-w-[100px]" />
-            <Input placeholder="Type" value={newUnit.type} onChange={e => setNewUnit(p => ({...p, type: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-24" />
-            <Input placeholder="Price" type="number" value={newUnit.base_price} onChange={e => setNewUnit(p => ({...p, base_price: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-20" />
-            <Input placeholder="Cap" type="number" value={newUnit.capacity} onChange={e => setNewUnit(p => ({...p, capacity: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-16" />
-            <Button size="sm" onClick={addUnit}><Plus className="w-4 h-4" /></Button>
+          <div className="space-y-2">
+            {units.map((u: any) => (
+              <div key={u.id} className="flex items-center justify-between py-2 px-2 border-b border-border">
+                <div className="flex-1 min-w-0">
+                  <p className="font-body text-sm text-foreground font-medium">{u.name}</p>
+                  <p className="font-body text-xs text-muted-foreground">{u.type} · ₱{fmt(Number(u.base_price))}/night · {u.capacity} pax</p>
+                </div>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => deleteRow('resort_ops_units', u.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+              </div>
+            ))}
           </div>
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <Input placeholder="Name" value={newUnit.name} onChange={e => setNewUnit(p => ({...p, name: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <Input placeholder="Type" value={newUnit.type} onChange={e => setNewUnit(p => ({...p, type: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <Input placeholder="Price/night" type="number" value={newUnit.base_price} onChange={e => setNewUnit(p => ({...p, base_price: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <Input placeholder="Capacity" type="number" value={newUnit.capacity} onChange={e => setNewUnit(p => ({...p, capacity: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+          </div>
+          <Button size="sm" onClick={addUnit} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Unit</Button>
         </CardContent>
       </Card>
 
@@ -290,25 +287,25 @@ const ResortOpsDashboard = () => {
       <Card className="bg-card border-border">
         <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Guests</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Phone</TableHead><TableHead></TableHead></TableRow></TableHeader>
-            <TableBody>
-              {guests.map((g: any) => (
-                <TableRow key={g.id}>
-                  <TableCell className="font-body text-sm">{g.full_name}</TableCell>
-                  <TableCell className="font-body text-sm">{g.email}</TableCell>
-                  <TableCell className="font-body text-sm">{g.phone}</TableCell>
-                  <TableCell><Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteRow('resort_ops_guests', g.id)}><Trash2 className="w-3.5 h-3.5" /></Button></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="flex flex-wrap gap-2">
-            <Input placeholder="Full name" value={newGuest.full_name} onChange={e => setNewGuest(p => ({...p, full_name: e.target.value}))} className="bg-secondary border-border text-foreground font-body flex-1 min-w-[120px]" />
-            <Input placeholder="Email" value={newGuest.email} onChange={e => setNewGuest(p => ({...p, email: e.target.value}))} className="bg-secondary border-border text-foreground font-body flex-1 min-w-[120px]" />
-            <Input placeholder="Phone" value={newGuest.phone} onChange={e => setNewGuest(p => ({...p, phone: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-28" />
-            <Button size="sm" onClick={addGuest}><Plus className="w-4 h-4" /></Button>
+          <div className="space-y-2">
+            {guests.map((g: any) => (
+              <div key={g.id} className="flex items-center justify-between py-2 px-2 border-b border-border">
+                <div className="flex-1 min-w-0">
+                  <p className="font-body text-sm text-foreground font-medium">{g.full_name}</p>
+                  <p className="font-body text-xs text-muted-foreground">{g.email}{g.phone ? ` · ${g.phone}` : ''}</p>
+                </div>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => deleteRow('resort_ops_guests', g.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+              </div>
+            ))}
           </div>
+          <div className="space-y-2 pt-2">
+            <Input placeholder="Full name" value={newGuest.full_name} onChange={e => setNewGuest(p => ({...p, full_name: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Email" value={newGuest.email} onChange={e => setNewGuest(p => ({...p, email: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+              <Input placeholder="Phone" value={newGuest.phone} onChange={e => setNewGuest(p => ({...p, phone: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            </div>
+          </div>
+          <Button size="sm" onClick={addGuest} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Guest</Button>
         </CardContent>
       </Card>
 
@@ -316,47 +313,48 @@ const ResortOpsDashboard = () => {
       <Card className="bg-card border-border">
         <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Reservations Ledger</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          <div className="overflow-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Guest</TableHead><TableHead>Unit</TableHead><TableHead>In</TableHead><TableHead>Out</TableHead>
-                  <TableHead>Platform</TableHead><TableHead>Rate</TableHead><TableHead>Paid</TableHead><TableHead>Balance</TableHead><TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {monthBookings.map((b: any) => (
-                  <TableRow key={b.id}>
-                    <TableCell className="font-body text-sm">{guestMap.get(b.guest_id) || '—'}</TableCell>
-                    <TableCell className="font-body text-sm">{unitMap.get(b.unit_id)?.name || '—'}</TableCell>
-                    <TableCell className="font-body text-xs">{b.check_in}</TableCell>
-                    <TableCell className="font-body text-xs">{b.check_out}</TableCell>
-                    <TableCell className="font-body text-xs">{b.platform}</TableCell>
-                    <TableCell className="font-body text-sm">₱{fmt(Number(b.room_rate))}</TableCell>
-                    <TableCell className="font-body text-sm">₱{fmt(Number(b.paid_amount))}</TableCell>
-                    <TableCell className="font-body text-sm">₱{fmt(Number(b.room_rate) - Number(b.paid_amount))}</TableCell>
-                    <TableCell><Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteRow('resort_ops_bookings', b.id)}><Trash2 className="w-3.5 h-3.5" /></Button></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="space-y-3">
+            {monthBookings.map((b: any) => (
+              <div key={b.id} className="p-3 rounded border border-border space-y-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-body text-sm text-foreground font-medium">{guestMap.get(b.guest_id) || '—'}</p>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => deleteRow('resort_ops_bookings', b.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                </div>
+                <p className="font-body text-xs text-muted-foreground">{unitMap.get(b.unit_id)?.name || '—'} · {b.platform}</p>
+                <div className="flex justify-between font-body text-xs text-muted-foreground">
+                  <span>{b.check_in} → {b.check_out}</span>
+                </div>
+                <div className="flex justify-between font-body text-sm">
+                  <span className="text-muted-foreground">Rate: <span className="text-foreground">₱{fmt(Number(b.room_rate))}</span></span>
+                  <span className="text-muted-foreground">Paid: <span className="text-foreground">₱{fmt(Number(b.paid_amount))}</span></span>
+                  <span className="text-muted-foreground">Bal: <span className="text-foreground">₱{fmt(Number(b.room_rate) - Number(b.paid_amount))}</span></span>
+                </div>
+              </div>
+            ))}
+            {monthBookings.length === 0 && <p className="font-body text-sm text-muted-foreground text-center py-4">No bookings this month</p>}
           </div>
           {/* Add booking inline */}
-          <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
-            <Select value={newBooking.guest_id} onValueChange={v => setNewBooking(p => ({...p, guest_id: v}))}>
-              <SelectTrigger className="bg-secondary border-border text-foreground font-body w-32"><SelectValue placeholder="Guest" /></SelectTrigger>
-              <SelectContent>{guests.map((g: any) => <SelectItem key={g.id} value={g.id}>{g.full_name}</SelectItem>)}</SelectContent>
-            </Select>
-            <Select value={newBooking.unit_id} onValueChange={v => setNewBooking(p => ({...p, unit_id: v}))}>
-              <SelectTrigger className="bg-secondary border-border text-foreground font-body w-28"><SelectValue placeholder="Unit" /></SelectTrigger>
-              <SelectContent>{units.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
-            </Select>
-            <Input placeholder="Platform" value={newBooking.platform} onChange={e => setNewBooking(p => ({...p, platform: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-24" />
-            <Input type="date" value={newBooking.check_in} onChange={e => setNewBooking(p => ({...p, check_in: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-32" />
-            <Input type="date" value={newBooking.check_out} onChange={e => setNewBooking(p => ({...p, check_out: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-32" />
-            <Input placeholder="Rate" type="number" value={newBooking.room_rate} onChange={e => setNewBooking(p => ({...p, room_rate: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-20" />
-            <Input placeholder="Paid" type="number" value={newBooking.paid_amount} onChange={e => setNewBooking(p => ({...p, paid_amount: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-20" />
-            <Button size="sm" onClick={addBooking}><Plus className="w-4 h-4" /></Button>
+          <div className="space-y-2 pt-2 border-t border-border">
+            <div className="grid grid-cols-2 gap-2">
+              <Select value={newBooking.guest_id} onValueChange={v => setNewBooking(p => ({...p, guest_id: v}))}>
+                <SelectTrigger className="bg-secondary border-border text-foreground font-body"><SelectValue placeholder="Guest" /></SelectTrigger>
+                <SelectContent>{guests.map((g: any) => <SelectItem key={g.id} value={g.id}>{g.full_name}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={newBooking.unit_id} onValueChange={v => setNewBooking(p => ({...p, unit_id: v}))}>
+                <SelectTrigger className="bg-secondary border-border text-foreground font-body"><SelectValue placeholder="Unit" /></SelectTrigger>
+                <SelectContent>{units.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <Input placeholder="Platform" value={newBooking.platform} onChange={e => setNewBooking(p => ({...p, platform: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <div className="grid grid-cols-2 gap-2">
+              <div><label className="font-body text-xs text-muted-foreground">Check-in</label><Input type="date" value={newBooking.check_in} onChange={e => setNewBooking(p => ({...p, check_in: e.target.value}))} className="bg-secondary border-border text-foreground font-body" /></div>
+              <div><label className="font-body text-xs text-muted-foreground">Check-out</label><Input type="date" value={newBooking.check_out} onChange={e => setNewBooking(p => ({...p, check_out: e.target.value}))} className="bg-secondary border-border text-foreground font-body" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Room rate" type="number" value={newBooking.room_rate} onChange={e => setNewBooking(p => ({...p, room_rate: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+              <Input placeholder="Paid amount" type="number" value={newBooking.paid_amount} onChange={e => setNewBooking(p => ({...p, paid_amount: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            </div>
+            <Button size="sm" onClick={addBooking} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Booking</Button>
           </div>
         </CardContent>
       </Card>
@@ -394,24 +392,22 @@ const ResortOpsDashboard = () => {
       {/* ── Unit Performance ── */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Unit Performance</CardTitle></CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader><TableRow><TableHead>Unit</TableHead><TableHead>Projected</TableHead><TableHead>Realized</TableHead><TableHead>Variance</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {unitPerformance.map(({ unit, projected, realized, variance, status }: any) => (
-                <TableRow key={unit.id}>
-                  <TableCell className="font-body text-sm">{unit.name}</TableCell>
-                  <TableCell className="font-body text-sm">₱{fmt(projected)}</TableCell>
-                  <TableCell className="font-body text-sm">₱{fmt(realized)}</TableCell>
-                  <TableCell className={`font-body text-sm ${variance >= 0 ? 'text-green-400' : 'text-red-400'}`}>₱{fmt(variance)}</TableCell>
-                  <TableCell>
-                    <Badge variant={status === 'HIGH' ? 'default' : status === 'ON_TRACK' ? 'secondary' : 'destructive'}
-                      className="font-body text-[10px]">{status}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <CardContent className="space-y-2">
+          {unitPerformance.map(({ unit, projected, realized, variance, status }: any) => (
+            <div key={unit.id} className="p-3 rounded border border-border space-y-1">
+              <div className="flex items-center justify-between">
+                <p className="font-body text-sm text-foreground font-medium">{unit.name}</p>
+                <Badge variant={status === 'HIGH' ? 'default' : status === 'ON_TRACK' ? 'secondary' : 'destructive'}
+                  className="font-body text-[10px]">{status}</Badge>
+              </div>
+              <div className="flex justify-between font-body text-sm">
+                <span className="text-muted-foreground">Projected: <span className="text-foreground">₱{fmt(projected)}</span></span>
+                <span className="text-muted-foreground">Realized: <span className="text-foreground">₱{fmt(realized)}</span></span>
+              </div>
+              <p className={`font-body text-xs ${variance >= 0 ? 'text-green-400' : 'text-red-400'}`}>Variance: ₱{fmt(variance)}</p>
+            </div>
+          ))}
+          {units.length === 0 && <p className="font-body text-sm text-muted-foreground text-center py-4">No units configured</p>}
         </CardContent>
       </Card>
 
@@ -419,27 +415,25 @@ const ResortOpsDashboard = () => {
       <Card className="bg-card border-border">
         <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Expenses</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Category</TableHead><TableHead>Amount</TableHead><TableHead>Date</TableHead><TableHead></TableHead></TableRow></TableHeader>
-            <TableBody>
-              {monthExpenses.map((e: any) => (
-                <TableRow key={e.id}>
-                  <TableCell className="font-body text-sm">{e.name}</TableCell>
-                  <TableCell className="font-body text-sm">{e.category}</TableCell>
-                  <TableCell className="font-body text-sm">₱{fmt(Number(e.amount))}</TableCell>
-                  <TableCell className="font-body text-xs">{e.expense_date}</TableCell>
-                  <TableCell><Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteRow('resort_ops_expenses', e.id)}><Trash2 className="w-3.5 h-3.5" /></Button></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="flex flex-wrap gap-2">
-            <Input placeholder="Name" value={newExpense.name} onChange={e => setNewExpense(p => ({...p, name: e.target.value}))} className="bg-secondary border-border text-foreground font-body flex-1 min-w-[100px]" />
-            <Input placeholder="Category" value={newExpense.category} onChange={e => setNewExpense(p => ({...p, category: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-24" />
-            <Input placeholder="Amount" type="number" value={newExpense.amount} onChange={e => setNewExpense(p => ({...p, amount: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-20" />
-            <Input type="date" value={newExpense.expense_date} onChange={e => setNewExpense(p => ({...p, expense_date: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-32" />
-            <Button size="sm" onClick={addExpense}><Plus className="w-4 h-4" /></Button>
+          <div className="space-y-2">
+            {monthExpenses.map((e: any) => (
+              <div key={e.id} className="flex items-center justify-between py-2 px-2 border-b border-border">
+                <div className="flex-1 min-w-0">
+                  <p className="font-body text-sm text-foreground font-medium">{e.name}</p>
+                  <p className="font-body text-xs text-muted-foreground">{e.category} · {e.expense_date}</p>
+                </div>
+                <span className="font-body text-sm text-foreground mr-2">₱{fmt(Number(e.amount))}</span>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => deleteRow('resort_ops_expenses', e.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+              </div>
+            ))}
           </div>
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <Input placeholder="Name" value={newExpense.name} onChange={e => setNewExpense(p => ({...p, name: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <Input placeholder="Category" value={newExpense.category} onChange={e => setNewExpense(p => ({...p, category: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <Input placeholder="Amount" type="number" value={newExpense.amount} onChange={e => setNewExpense(p => ({...p, amount: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <Input type="date" value={newExpense.expense_date} onChange={e => setNewExpense(p => ({...p, expense_date: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+          </div>
+          <Button size="sm" onClick={addExpense} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Expense</Button>
         </CardContent>
       </Card>
 
@@ -447,31 +441,40 @@ const ResortOpsDashboard = () => {
       <Card className="bg-card border-border">
         <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Tasks</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          <div className="space-y-1">
+          <div className="space-y-2">
             {monthTasks.map((t: any) => {
               const overdue = t.status !== 'done' && isBefore(parseISO(t.due_date), new Date());
               const isCritical = t.priority === 'critical';
               return (
-                <div key={t.id} className={`flex items-center gap-2 py-2 px-2 rounded border ${overdue ? 'border-destructive bg-destructive/10' : 'border-border'}`}>
-                  {isCritical && <span className="w-2 h-2 rounded-full bg-destructive animate-pulse flex-shrink-0" />}
-                  <button className="font-body text-sm text-foreground flex-1 text-left" onClick={() => toggleTaskStatus(t.id, t.status)}>
-                    <span className={t.status === 'done' ? 'line-through text-muted-foreground' : ''}>{t.title}</span>
-                  </button>
-                  <Badge variant={t.priority === 'critical' ? 'destructive' : t.priority === 'high' ? 'default' : 'secondary'}
-                    className="font-body text-[10px]">{t.priority}</Badge>
-                  <span className="font-body text-xs text-muted-foreground">{t.due_date}</span>
-                  <Badge variant="outline" className="font-body text-[10px]">{t.status}</Badge>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteRow('resort_ops_tasks', t.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                <div key={t.id} className={`p-3 rounded border space-y-1 ${overdue ? 'border-destructive bg-destructive/10' : 'border-border'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      {isCritical && <span className="w-2 h-2 rounded-full bg-destructive animate-pulse flex-shrink-0" />}
+                      <button className="font-body text-sm text-foreground text-left flex-1 min-w-0" onClick={() => toggleTaskStatus(t.id, t.status)}>
+                        <span className={t.status === 'done' ? 'line-through text-muted-foreground' : ''}>{t.title}</span>
+                      </button>
+                    </div>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => deleteRow('resort_ops_tasks', t.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant={t.priority === 'critical' ? 'destructive' : t.priority === 'high' ? 'default' : 'secondary'}
+                      className="font-body text-[10px]">{t.priority}</Badge>
+                    <Badge variant="outline" className="font-body text-[10px]">{t.status}</Badge>
+                    <span className="font-body text-xs text-muted-foreground">{t.category}</span>
+                    <span className="font-body text-xs text-muted-foreground ml-auto">{t.due_date}</span>
+                  </div>
                 </div>
               );
             })}
           </div>
-          <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
-            <Input placeholder="Title" value={newTask.title} onChange={e => setNewTask(p => ({...p, title: e.target.value}))} className="bg-secondary border-border text-foreground font-body flex-1 min-w-[120px]" />
-            <Input placeholder="Category" value={newTask.category} onChange={e => setNewTask(p => ({...p, category: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-24" />
-            <Input type="date" value={newTask.due_date} onChange={e => setNewTask(p => ({...p, due_date: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-32" />
+          <div className="space-y-2 pt-2 border-t border-border">
+            <Input placeholder="Title" value={newTask.title} onChange={e => setNewTask(p => ({...p, title: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Category" value={newTask.category} onChange={e => setNewTask(p => ({...p, category: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+              <Input type="date" value={newTask.due_date} onChange={e => setNewTask(p => ({...p, due_date: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            </div>
             <Select value={newTask.priority} onValueChange={v => setNewTask(p => ({...p, priority: v}))}>
-              <SelectTrigger className="bg-secondary border-border text-foreground font-body w-24"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="bg-secondary border-border text-foreground font-body"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="low">Low</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
@@ -479,7 +482,7 @@ const ResortOpsDashboard = () => {
                 <SelectItem value="critical">Critical</SelectItem>
               </SelectContent>
             </Select>
-            <Button size="sm" onClick={addTask}><Plus className="w-4 h-4" /></Button>
+            <Button size="sm" onClick={addTask} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Task</Button>
           </div>
         </CardContent>
       </Card>
@@ -488,26 +491,24 @@ const ResortOpsDashboard = () => {
       <Card className="bg-card border-border">
         <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Assets on Hand</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Balance</TableHead><TableHead>Updated</TableHead><TableHead></TableHead></TableRow></TableHeader>
-            <TableBody>
-              {assets.map((a: any) => (
-                <TableRow key={a.id}>
-                  <TableCell className="font-body text-sm">{a.name}</TableCell>
-                  <TableCell className="font-body text-sm">{a.type}</TableCell>
-                  <TableCell className="font-body text-sm">₱{fmt(Number(a.balance))}</TableCell>
-                  <TableCell className="font-body text-xs">{a.last_updated ? format(new Date(a.last_updated), 'MMM d, yyyy') : '—'}</TableCell>
-                  <TableCell><Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteRow('resort_ops_assets', a.id)}><Trash2 className="w-3.5 h-3.5" /></Button></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="flex flex-wrap gap-2">
-            <Input placeholder="Name" value={newAsset.name} onChange={e => setNewAsset(p => ({...p, name: e.target.value}))} className="bg-secondary border-border text-foreground font-body flex-1 min-w-[100px]" />
-            <Input placeholder="Type" value={newAsset.type} onChange={e => setNewAsset(p => ({...p, type: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-24" />
-            <Input placeholder="Balance" type="number" value={newAsset.balance} onChange={e => setNewAsset(p => ({...p, balance: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-24" />
-            <Button size="sm" onClick={addAsset}><Plus className="w-4 h-4" /></Button>
+          <div className="space-y-2">
+            {assets.map((a: any) => (
+              <div key={a.id} className="flex items-center justify-between py-2 px-2 border-b border-border">
+                <div className="flex-1 min-w-0">
+                  <p className="font-body text-sm text-foreground font-medium">{a.name}</p>
+                  <p className="font-body text-xs text-muted-foreground">{a.type} · Updated: {a.last_updated ? format(new Date(a.last_updated), 'MMM d, yyyy') : '—'}</p>
+                </div>
+                <span className="font-body text-sm text-foreground mr-2">₱{fmt(Number(a.balance))}</span>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => deleteRow('resort_ops_assets', a.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+              </div>
+            ))}
           </div>
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <Input placeholder="Name" value={newAsset.name} onChange={e => setNewAsset(p => ({...p, name: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <Input placeholder="Type" value={newAsset.type} onChange={e => setNewAsset(p => ({...p, type: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+          </div>
+          <Input placeholder="Balance" type="number" value={newAsset.balance} onChange={e => setNewAsset(p => ({...p, balance: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+          <Button size="sm" onClick={addAsset} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Asset</Button>
         </CardContent>
       </Card>
 
@@ -515,25 +516,24 @@ const ResortOpsDashboard = () => {
       <Card className="bg-card border-border">
         <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Incoming Payments</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          <Table>
-            <TableHeader><TableRow><TableHead>Source</TableHead><TableHead>Amount</TableHead><TableHead>Expected</TableHead><TableHead></TableHead></TableRow></TableHeader>
-            <TableBody>
-              {monthPayments.map((p: any) => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-body text-sm">{p.source}</TableCell>
-                  <TableCell className="font-body text-sm">₱{fmt(Number(p.amount))}</TableCell>
-                  <TableCell className="font-body text-xs">{p.expected_date}</TableCell>
-                  <TableCell><Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteRow('resort_ops_incoming_payments', p.id)}><Trash2 className="w-3.5 h-3.5" /></Button></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="flex flex-wrap gap-2">
-            <Input placeholder="Source" value={newPayment.source} onChange={e => setNewPayment(p => ({...p, source: e.target.value}))} className="bg-secondary border-border text-foreground font-body flex-1 min-w-[100px]" />
-            <Input placeholder="Amount" type="number" value={newPayment.amount} onChange={e => setNewPayment(p => ({...p, amount: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-24" />
-            <Input type="date" value={newPayment.expected_date} onChange={e => setNewPayment(p => ({...p, expected_date: e.target.value}))} className="bg-secondary border-border text-foreground font-body w-32" />
-            <Button size="sm" onClick={addPayment}><Plus className="w-4 h-4" /></Button>
+          <div className="space-y-2">
+            {monthPayments.map((p: any) => (
+              <div key={p.id} className="flex items-center justify-between py-2 px-2 border-b border-border">
+                <div className="flex-1 min-w-0">
+                  <p className="font-body text-sm text-foreground font-medium">{p.source}</p>
+                  <p className="font-body text-xs text-muted-foreground">Expected: {p.expected_date}</p>
+                </div>
+                <span className="font-body text-sm text-foreground mr-2">₱{fmt(Number(p.amount))}</span>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => deleteRow('resort_ops_incoming_payments', p.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+              </div>
+            ))}
           </div>
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <Input placeholder="Source" value={newPayment.source} onChange={e => setNewPayment(p => ({...p, source: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <Input placeholder="Amount" type="number" value={newPayment.amount} onChange={e => setNewPayment(p => ({...p, amount: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+          </div>
+          <div><label className="font-body text-xs text-muted-foreground">Expected date</label><Input type="date" value={newPayment.expected_date} onChange={e => setNewPayment(p => ({...p, expected_date: e.target.value}))} className="bg-secondary border-border text-foreground font-body" /></div>
+          <Button size="sm" onClick={addPayment} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Payment</Button>
         </CardContent>
       </Card>
     </div>
