@@ -1,20 +1,39 @@
 
 
-## Remove All Guests
+## Fix Guest Cards to Show Booking Details
 
-### What Will Happen
-Delete all 78 records from the `resort_ops_guests` table. There are currently 0 bookings referencing these guests, so no cascade issues.
+### Problem
+The Guests section currently only displays each guest's name, email, and phone. It does not show their associated booking information (check-in/out dates, number of guests, booking platform, amount).
 
-### Implementation
-Run a single SQL statement via a database migration (since the data tool doesn't support DELETE):
+### Solution
+Redesign the Guests section to join guest data with their bookings, so each guest card shows:
+- Guest name
+- Check-in and check-out dates
+- Number of guests (adults)
+- Booking platform
+- Amount (room rate / paid amount)
 
-```sql
-DELETE FROM resort_ops_guests;
+### Technical Changes
+
+**File: `src/components/admin/ResortOpsDashboard.tsx`**
+
+Update the Guests section (lines 288-312) to:
+
+1. For each guest, look up their bookings from the `bookings` array using `guest_id`
+2. Display each booking's details inline under the guest name:
+   - Check-in / Check-out dates
+   - Adults count
+   - Platform (e.g., Booking.com, Direct)
+   - Room rate and paid amount
+3. If a guest has multiple bookings, show each one as a sub-row
+
+The card layout for each guest will look like:
+
+```
+Guest Name
+  Check-in: Jan 24 -> Check-out: Jan 26 | 4 guests | Booking.com | P19,003
+  Check-in: Feb 10 -> Check-out: Feb 12 | 2 guests | Direct | P5,000
 ```
 
-This is a one-line data cleanup operation. No code changes needed -- the Resort Ops dashboard will automatically show an empty guests list after the deletion.
-
-### Risk
-- This is irreversible
-- No bookings are affected (0 bookings reference existing guests)
+This keeps the mobile-first stacked card layout and avoids horizontal scrolling.
 
