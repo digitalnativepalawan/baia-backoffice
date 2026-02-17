@@ -1,85 +1,94 @@
 
 
-## Receipt Management with OCR Scanning
+## Enhanced Receipt OCR with Image Preprocessing
 
 ### Overview
-Add a standalone `/receipts` page with camera-based receipt scanning, AI-powered data extraction, and a history list. This page will save scanned receipts to the existing `expenses` table, integrating seamlessly with the Expenses dashboard in Admin.
+Upgrade the existing `SnapReceiptOCR` component to include image preprocessing (grayscale, contrast, thresholding) for better OCR accuracy, extract additional fields (vendor, VAT, TIN), and autofill all expense form fields. A feature flag controls the entire feature. No database, routing, or external module changes.
 
-### OCR Approach: AI Vision via Backend Function
+### Changes
 
-Tesseract.js is unreliable for real-world receipts (thermal paper, varied layouts, poor lighting). Instead, we will use a backend function powered by Lovable AI (Gemini 2.5 Flash) which excels at reading receipt images and extracting structured data. No API key is needed.
+**Modified file: `src/components/admin/SnapReceiptOCR.tsx`**
 
-The flow:
-1. User captures/uploads a receipt image
-2. Image is uploaded to the existing `receipts` storage bucket
-3. The image URL is sent to a backend function
-4. The function calls Gemini with a prompt to extract vendor, date, currency, and total
-5. Extracted data is returned to the frontend as JSON
-6. User reviews and edits the data in a form, then saves
+Complete rewrite of the existing component:
 
-### File Changes
+1. **Image Preprocessing Pipeline** (new `preprocessImage` function):
+   - Load image onto a canvas
+   - Convert to grayscale using luminance formula (0.299R + 0.587G + 0.114B)
+   - Apply contrast enhancement (factor 1.5)
+   - Apply binary thresholding (threshold ~128) to produce clean black/white image
+   - Output as data URL for Tesseract
 
-**New files:**
-- `supabase/functions/scan-receipt/index.ts` -- Backend function that receives an image URL, calls Gemini Vision to extract vendor/date/currency/total, returns JSON with confidence scores
-- `src/pages/ReceiptsPage.tsx` -- Standalone page with scanner interface, review form, and history list
+2. **Expanded Extraction Types** -- the `ExtractedFields` type grows to include:
+   - `total` (string) -- largest currency value found
+   - `date` (string) -- detected date in YYYY-MM-DD format
+   - `vendor` (string) -- first prominent uppercase text line
+   - `vatAmount` (string) -- numeric value near "VAT" keyword
+   - `tin` (string) -- TIN pattern (###-###-### or 9-12 digit string)
+   - `vatDetected` (boolean) -- whether VAT was found at all
 
-**Modified files:**
-- `src/App.tsx` -- Add `/receipts` route
+3. **New Extraction Functions**:
+   - `extractTotal`: Enhanced to find the largest currency value (₱, PHP, $) or fallback to largest decimal number
+   - `extractDate`: Already handles MM/DD/YYYY, add YYYY-MM-DD and DD/MM/YYYY support
+   - `extractVendor`: Takes first line that is mostly uppercase and > 3 chars, skipping common receipt headers like "OFFICIAL RECEIPT"
+   - `extractVAT`: Looks for lines containing "VAT" and extracts nearby numeric value
+   - `extractTIN`: Matches patterns like `###-###-###`, `###-###-###-###`, or 9-12 consecutive digits
 
-**No changes to:** AdminPage, ExpensesDashboard, or any existing business logic.
+4. **UI**: Keep existing button style; add a secondary "Upload File" option alongside the camera capture button. Both feed into the same processing pipeline.
 
-### Database Changes
+5. **Feature Flag**: A `receipt_auto_extract_enabled` constant at the top of the file. When `false`, the component renders nothing.
 
-Add two columns to the existing `expenses` table:
-- `currency` (text, default 'PHP') -- to store the extracted currency
-- `ai_confidence` (jsonb, default null) -- to store per-field confidence scores from the AI extraction
+**Modified file: `src/components/admin/ExpensesDashboard.tsx`**
 
-No new tables needed. Scanned receipts are saved as expenses with `status = 'pending_review'`.
-
-### Page Layout: `/receipts`
-
-**Mobile-first, single column layout:**
-
-1. **Header** -- "Receipt Scanner" title with a back button to home
-2. **Scan Button** -- Large, prominent "Scan Receipt" button that opens the device camera (via `<input type="file" accept="image/*" capture="environment">`)
-3. **Processing State** -- After capture, show the image with a loading spinner overlay and "Extracting data..." text while the backend function runs
-4. **Review Form** (shown after extraction) -- Split layout on desktop (image left, form right), stacked on mobile:
-   - Receipt image preview (zoomable)
-   - Vendor Name (text input, pre-filled) with confidence badge
-   - Date (date input, pre-filled) with confidence badge
-   - Currency (text input, pre-filled, e.g. "PHP")
-   - Total Amount (number input, pre-filled) with confidence badge
-   - Category dropdown (same categories as Expenses)
-   - Notes textarea
-   - "Save" and "Discard" buttons
-5. **History List** -- Below the scanner, a scrollable list of previously scanned receipts showing vendor, date, amount, and status badge (Pending Review / Approved / Draft). Tapping opens the review form for editing.
-
-### Confidence Badges
-
-Each AI-extracted field shows a small colored badge:
-- Green "High" (score >= 0.8)
-- Yellow "Medium" (0.5-0.8)
-- Red "Low" (< 0.5)
-
-This tells the user which fields to double-check.
-
-### Backend Function: `scan-receipt`
+Update the `onExtracted` callback (lines 447-453) to handle all new fields:
 
 ```
-POST /scan-receipt
-Body: { imageUrl: string }
-Response: { vendor, date, currency, total, confidence: { vendor, date, currency, total } }
+onExtracted={({ total, date, vendor, vatAmount, tin, vatDetected }) => {
+  setForm(f => ({
+    ...f,
+    amount: total || f.amount,
+    expense_date: date || f.expense_date,
+    vendor: vendor || f.vendor,
+    tax_amount: vatAmount || f.tax_amount,
+    tin: tin || f.tin,
+    vat_type: vatDetected ? 'vatable' : f.vat_type,
+  }));
+}}
 ```
 
-Uses Gemini 2.5 Flash with a structured prompt asking it to extract receipt fields and return JSON. The model receives the image URL and returns parsed data.
+No other files are touched. No database changes. No changes to routing, navigation, or other modules.
 
-### Technical Details
+### Extraction Logic Details
 
-- Camera capture uses the native HTML file input with `capture="environment"` for rear camera on mobile
-- Images are uploaded to the existing `receipts` bucket before sending to the backend function
-- The backend function uses `LOVABLE_API_KEY` (already configured) and `SUPABASE_URL` secrets
-- Pay period dates are auto-calculated (Sunday-Saturday) and stored on save, matching the Expenses dashboard logic
-- History list queries `expenses` table filtered to entries that have an `image_url` (i.e., scanned receipts)
-- All saves record an entry in `expense_history` for the audit trail
-- Confidence scores stored in the `ai_confidence` JSONB column for future reference
+**Amount** (select largest value):
+1. Find all currency-prefixed values (₱, PHP, $)
+2. Find all "total/amount/due" labeled values
+3. Fallback: find all numbers with exactly 2 decimal places
+4. Return the largest value found across all matches
+
+**Date** (first match wins):
+- `YYYY-MM-DD` format
+- `MM/DD/YYYY` or `MM/DD/YY` format
+- `DD/MM/YYYY` format (checked if first number > 12)
+- Month name formats ("Jan 15, 2025")
+
+**Vendor**:
+- Split OCR text into lines
+- Find first line that is mostly uppercase letters (>60% uppercase), longer than 3 chars
+- Skip common noise words: "OFFICIAL RECEIPT", "SALES INVOICE", "RECEIPT", date-only lines
+
+**VAT**:
+- Search for lines containing "VAT" (case-insensitive)
+- Extract the first numeric value on that line or the next line
+- If found, set `vatDetected = true`
+
+**TIN**:
+- Match `\d{3}-\d{3}-\d{3}` or `\d{3}-\d{3}-\d{3}-\d{3}` patterns
+- Fallback: match standalone 9-12 digit sequences near "TIN" keyword
+
+### Performance
+- Image preprocessing runs synchronously on canvas (fast, ~50ms)
+- Tesseract worker runs in a Web Worker (non-blocking)
+- Progress bar shows real-time OCR progress percentage
+- Toast notifications summarize what was extracted
+- If nothing is extracted, a friendly message tells the user to fill manually
 
