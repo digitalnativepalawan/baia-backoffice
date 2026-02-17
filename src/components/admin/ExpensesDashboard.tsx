@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Plus, ArrowLeft, Clock, Receipt, Trash2, Check, Download, Upload, RotateCcw, Eye } from 'lucide-react';
+import SnapReceiptOCR from './SnapReceiptOCR';
 import { format, startOfDay, startOfMonth, previousSunday, nextSaturday, isSunday } from 'date-fns';
 import jsPDF from 'jspdf';
 
@@ -428,20 +429,29 @@ const ExpensesDashboard = () => {
                 onClick={() => setForm(f => ({ ...f, image_url: '' }))}>Change</Button>
             </div>
           ) : (
-            <label className="border-2 border-dashed border-border rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-secondary/30 transition-colors min-h-[200px]">
-              {uploading ? (
-                <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
-              ) : (
-                <>
-                  <Upload className="w-8 h-8 text-muted-foreground mb-2" />
-                  <span className="font-body text-sm text-muted-foreground">Upload Receipt</span>
-                </>
-              )}
-              <input type="file" accept="image/*" className="hidden" onChange={e => {
-                const file = e.target.files?.[0];
-                if (file) uploadReceipt(file);
+            <div className="space-y-3">
+              <label className="border-2 border-dashed border-border rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-secondary/30 transition-colors min-h-[160px]">
+                {uploading ? (
+                  <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+                ) : (
+                  <>
+                    <Upload className="w-8 h-8 text-muted-foreground mb-2" />
+                    <span className="font-body text-sm text-muted-foreground">Upload Receipt</span>
+                  </>
+                )}
+                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadReceipt(file);
+                }} />
+              </label>
+              <SnapReceiptOCR onExtracted={({ total, date }) => {
+                setForm(f => ({
+                  ...f,
+                  amount: total || f.amount,
+                  expense_date: date || f.expense_date,
+                }));
               }} />
-            </label>
+            </div>
           )}
         </div>
 
