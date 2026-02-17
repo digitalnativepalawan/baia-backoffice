@@ -290,15 +290,25 @@ const ResortOpsDashboard = () => {
         <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Guests</CardTitle></CardHeader>
         <CardContent className="space-y-2">
           <div className="space-y-2">
-            {guests.map((g: any) => (
-              <div key={g.id} className="flex items-center justify-between py-2 px-2 border-b border-border">
-                <div className="flex-1 min-w-0">
-                  <p className="font-body text-sm text-foreground font-medium">{g.full_name}</p>
-                  <p className="font-body text-xs text-muted-foreground">{g.email}{g.phone ? ` · ${g.phone}` : ''}</p>
+            {guests.map((g: any) => {
+              const guestBookings = bookings.filter((b: any) => b.guest_id === g.id);
+              return (
+                <div key={g.id} className="p-3 rounded border border-border space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="font-body text-sm text-foreground font-medium">{g.full_name}</p>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => deleteRow('resort_ops_guests', g.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                  </div>
+                  {guestBookings.length > 0 ? guestBookings.map((b: any) => (
+                    <div key={b.id} className="font-body text-xs text-muted-foreground border-t border-border pt-1 mt-1">
+                      <p>{b.check_in} → {b.check_out} · {b.adults} guest{b.adults !== 1 ? 's' : ''} · {b.platform || '—'}</p>
+                      <p>{unitMap.get(b.unit_id)?.name || '—'} · ₱{fmt(Number(b.room_rate || 0))} / Paid ₱{fmt(Number(b.paid_amount || 0))}</p>
+                    </div>
+                  )) : (
+                    <p className="font-body text-xs text-muted-foreground italic">No bookings</p>
+                  )}
                 </div>
-                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => deleteRow('resort_ops_guests', g.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div className="space-y-2 pt-2">
             <Input placeholder="Full name" value={newGuest.full_name} onChange={e => setNewGuest(p => ({...p, full_name: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
