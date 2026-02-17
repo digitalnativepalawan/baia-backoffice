@@ -39,12 +39,9 @@ const preprocessImage = (file: Blob): Promise<string> => {
       const contrastFactor = 1.5;
 
       for (let i = 0; i < d.length; i += 4) {
-        // Grayscale
         let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-        // Contrast
         gray = ((gray - 128) * contrastFactor) + 128;
         gray = Math.max(0, Math.min(255, gray));
-        // Threshold
         gray = gray > 128 ? 255 : 0;
         d[i] = d[i + 1] = d[i + 2] = gray;
       }
@@ -57,135 +54,279 @@ const preprocessImage = (file: Blob): Promise<string> => {
   });
 };
 
-/* ── Extraction helpers ── */
+/* ── Position-aware line parsing ── */
+type DocLine = { text: string; index: number; position: number /* 0-1 */ };
 
-const extractTotal = (text: string): string => {
-  const allValues: number[] = [];
-
-  // Currency-prefixed values
-  const currencyPattern = /[₱$]\s*([\d,]+\.?\d{0,2})/g;
-  let m: RegExpExecArray | null;
-  while ((m = currencyPattern.exec(text)) !== null) {
-    allValues.push(parseFloat(m[1].replace(/,/g, '')));
-  }
-
-  // PHP prefix
-  const phpPattern = /PHP\s*([\d,]+\.?\d{0,2})/gi;
-  while ((m = phpPattern.exec(text)) !== null) {
-    allValues.push(parseFloat(m[1].replace(/,/g, '')));
-  }
-
-  // Labeled totals
-  const labeledPattern = /(?:total|amount\s*due|balance\s*due|net\s*amount|grand\s*total)[:\s]*[₱$]?\s*([\d,]+\.?\d{0,2})/gi;
-  while ((m = labeledPattern.exec(text)) !== null) {
-    allValues.push(parseFloat(m[1].replace(/,/g, '')));
-  }
-
-  // Fallback: numbers with exactly 2 decimal places
-  const decimalPattern = /\b([\d,]+\.\d{2})\b/g;
-  while ((m = decimalPattern.exec(text)) !== null) {
-    allValues.push(parseFloat(m[1].replace(/,/g, '')));
-  }
-
-  const valid = allValues.filter(v => !isNaN(v) && v > 0);
-  if (valid.length === 0) return '';
-  return Math.max(...valid).toFixed(2);
+const parseLines = (text: string): DocLine[] => {
+  const raw = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const total = raw.length || 1;
+  return raw.map((text, index) => ({ text, index, position: index / total }));
 };
 
-const extractDate = (text: string): string => {
-  // YYYY-MM-DD
-  const iso = text.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+/* ── VENDOR EXTRACTION (scored heuristic) ── */
+const VENDOR_NEGATIVE = /\b(TIN|PROP|PROPRIETOR|NON\s*VAT|VAT|RECEIPT\s*NO|SALES\s*INVOICE|OFFICIAL\s*RECEIPT|DATE\s*ISSUED|ACCREDITATION|BIR|PERMIT|PTU|AUTHORITY|PRINTER|MIN\s*NO|S\/N|CASHIER)\b/i;
+const VENDOR_KEYWORDS = /\b(TRADING|ENTERPRISES|STORE|SERVICES|SUPPLY|MART|CORPORATION|CORP|INC|LLC|CO|COMPANY|RESTAURANT|EATERY|CAFE|SHOP|CENTER|HARDWARE|PHARMACY|DRUG|SUPERMARKET)\b/i;
+const FOOTER_KEYWORDS = /\b(Date\s*Issued|Printer|Accreditation|BIR\s*Authority|PTU\s*No|THIS\s*SERVES|THANK\s*YOU|S\/N)\b/i;
 
-  // MM/DD/YYYY or MM/DD/YY
-  const mdySlash = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-  if (mdySlash) {
-    let first = parseInt(mdySlash[1]);
-    let second = parseInt(mdySlash[2]);
-    let y = mdySlash[3];
-    if (y.length === 2) y = `20${y}`;
-    // If first > 12, treat as DD/MM/YYYY
-    if (first > 12) {
-      return `${y}-${String(second).padStart(2, '0')}-${String(first).padStart(2, '0')}`;
+const extractVendor = (lines: DocLine[]): string => {
+  let best = '';
+  let bestScore = -Infinity;
+
+  for (const line of lines) {
+    const t = line.text;
+    if (t.length < 4) continue;
+
+    let score = 0;
+
+    // Position: top 25% gets +3
+    if (line.position <= 0.25) score += 3;
+    else if (line.position <= 0.5) score += 1;
+
+    // ALL CAPS check
+    const letters = t.replace(/[^a-zA-Z]/g, '');
+    if (letters.length >= 3) {
+      const upperCount = (t.match(/[A-Z]/g) || []).length;
+      if (upperCount / letters.length > 0.7) score += 2;
     }
-    return `${y}-${String(first).padStart(2, '0')}-${String(second).padStart(2, '0')}`;
+
+    // Business keywords
+    if (VENDOR_KEYWORDS.test(t)) score += 2;
+
+    // Negative signals
+    if (VENDOR_NEGATIVE.test(t)) score -= 3;
+
+    // Footer area (bottom 25%)
+    if (line.position > 0.75) score -= 5;
+    if (FOOTER_KEYWORDS.test(t)) score -= 5;
+
+    // Skip lines that are pure numbers/dates
+    if (/^\d[\d\/\-\.\s,:]+$/.test(t)) continue;
+    // Skip very short after stripping
+    if (letters.length < 3) continue;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = t;
+    }
   }
 
-  // MM-DD-YYYY
-  const mdyDash = text.match(/(\d{1,2})-(\d{1,2})-(\d{2,4})/);
-  if (mdyDash) {
-    const m2 = mdyDash[1].padStart(2, '0');
-    const d2 = mdyDash[2].padStart(2, '0');
-    let y2 = mdyDash[3];
-    if (y2.length === 2) y2 = `20${y2}`;
-    return `${y2}-${m2}-${d2}`;
-  }
+  return bestScore >= 0 ? best : '';
+};
 
-  // Month name formats
-  const monthNames = /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/i;
-  const monthMatch = text.match(monthNames);
-  if (monthMatch) {
-    const monthStr = monthMatch[0].slice(0, 3).toLowerCase();
+/* ── DATE EXTRACTION (context-aware priority) ── */
+const DATE_PATTERNS = [
+  /(\d{4})-(\d{1,2})-(\d{1,2})/,
+  /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/,
+  /(\d{1,2})-(\d{1,2})-(\d{2,4})/,
+  /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/i,
+];
+
+const FOOTER_DATE_CONTEXT = /\b(date\s*issued|printer|accreditation|bir\s*authority|ptu)/i;
+
+const parseMatchedDate = (match: RegExpMatchArray, patternIndex: number): string | null => {
+  if (patternIndex === 3) {
+    // Month name format
+    const monthStr = match[0].slice(0, 3).toLowerCase();
     const months: Record<string, string> = {
       jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
       jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
     };
-    return `${monthMatch[2]}-${months[monthStr] || '01'}-${monthMatch[1].padStart(2, '0')}`;
+    const m = months[monthStr];
+    if (!m) return null;
+    return `${match[2]}-${m}-${match[1].padStart(2, '0')}`;
   }
 
-  return '';
+  if (patternIndex === 0) {
+    // YYYY-MM-DD
+    return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+  }
+
+  // MM/DD/YYYY or MM-DD-YYYY
+  let first = parseInt(match[1]);
+  let second = parseInt(match[2]);
+  let y = match[3];
+  if (y.length === 2) y = `20${y}`;
+  if (parseInt(y) < 2000 || parseInt(y) > 2099) return null;
+
+  if (first > 12) {
+    return `${y}-${String(second).padStart(2, '0')}-${String(first).padStart(2, '0')}`;
+  }
+  return `${y}-${String(first).padStart(2, '0')}-${String(second).padStart(2, '0')}`;
 };
 
-const SKIP_LINES = /^(official\s*receipt|sales\s*invoice|receipt|invoice|date|time|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})$/i;
+const extractDate = (lines: DocLine[]): string => {
+  type DateCandidate = { date: string; priority: number };
+  const candidates: DateCandidate[] = [];
 
-const extractVendor = (text: string): string => {
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3);
   for (const line of lines) {
-    if (SKIP_LINES.test(line)) continue;
-    const letters = line.replace(/[^a-zA-Z]/g, '');
-    if (letters.length < 3) continue;
-    const upper = letters.replace(/[^A-Z]/g, '').length;
-    if (upper / letters.length > 0.6) return line;
-  }
-  return '';
-};
+    // Skip footer context
+    if (FOOTER_DATE_CONTEXT.test(line.text)) continue;
+    if (line.position > 0.75 && FOOTER_KEYWORDS.test(line.text)) continue;
 
-const detectVatType = (text: string): string => {
-  if (/vat\s*exempt/i.test(text)) return 'VAT Exempt';
-  if (/zero\s*rated|0%\s*vat/i.test(text)) return 'Zero Rated';
-  if (/vat\s*12%|vatable/i.test(text)) return 'Vatable';
-  // If a VAT amount line exists, assume vatable
-  if (/vat/i.test(text)) return 'Vatable';
-  return '';
-};
+    for (let pi = 0; pi < DATE_PATTERNS.length; pi++) {
+      const match = line.text.match(DATE_PATTERNS[pi]);
+      if (!match) continue;
 
-const extractVAT = (text: string): { vatAmount: string; vatDetected: boolean; vatType: string } => {
-  const vatType = detectVatType(text);
-  const lines = text.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (/vat/i.test(lines[i])) {
-      const numMatch = lines[i].match(/([\d,]+\.?\d{0,2})/);
-      if (numMatch) return { vatAmount: numMatch[1].replace(/,/g, ''), vatDetected: true, vatType };
-      if (i + 1 < lines.length) {
-        const nextMatch = lines[i + 1].match(/([\d,]+\.?\d{0,2})/);
-        if (nextMatch) return { vatAmount: nextMatch[1].replace(/,/g, ''), vatDetected: true, vatType };
-      }
-      return { vatAmount: '', vatDetected: true, vatType };
+      const parsed = parseMatchedDate(match, pi);
+      if (!parsed) continue;
+
+      let priority = 0;
+      // Near "Date:" label in upper half
+      if (/date\s*[:]/i.test(line.text) && line.position <= 0.5) priority = 10;
+      // Top 40%
+      else if (line.position <= 0.4) priority = 5;
+      // Upper half
+      else if (line.position <= 0.5) priority = 3;
+      // Bottom half but not footer
+      else if (line.position <= 0.75) priority = 1;
+      else priority = -5; // footer area
+
+      candidates.push({ date: parsed, priority });
     }
   }
-  return { vatAmount: '', vatDetected: false, vatType };
+
+  if (candidates.length === 0) return '';
+  candidates.sort((a, b) => b.priority - a.priority);
+  return candidates[0].date;
 };
 
-const extractTIN = (text: string): string => {
-  // ###-###-###-### or ###-###-###
-  const dashPattern = text.match(/\d{3}-\d{3}-\d{3}(-\d{3})?/);
-  if (dashPattern) return dashPattern[0];
-  // 9-12 digit string near "TIN"
-  const tinArea = text.match(/TIN[:\s]*([\d\s]{9,15})/i);
-  if (tinArea) {
-    const digits = tinArea[1].replace(/\s/g, '');
-    if (digits.length >= 9 && digits.length <= 12) return digits;
+/* ── AMOUNT EXTRACTION (deterministic, contextual) ── */
+const AMOUNT_NOISE = /\b(TIN|RECEIPT\s*NO|ACCREDITATION|S\/N|MIN|OR\s*NO|SI\s*NO|PTU)\b/i;
+
+const extractTotal = (lines: DocLine[]): string => {
+  const parseNum = (s: string): number => {
+    const cleaned = s.replace(/,/g, '');
+    const v = parseFloat(cleaned);
+    return isNaN(v) || v <= 0 ? 0 : v;
+  };
+
+  type AmtCandidate = { value: number; priority: number };
+  const candidates: AmtCandidate[] = [];
+
+  for (const line of lines) {
+    const t = line.text;
+    // Skip lines with noise keywords
+    if (AMOUNT_NOISE.test(t)) continue;
+
+    // Check for labeled total
+    const isLabeled = /\b(total\s*(amount\s*due|sales|due)?|grand\s*total|amount\s*due|balance\s*due|net\s*amount)\b/i.test(t);
+
+    // Extract all numeric values from this line
+    const nums = [...t.matchAll(/[₱$P]?\s*([\d,]+\.\d{2})\b/g)];
+    for (const m of nums) {
+      const val = parseNum(m[1]);
+      if (val <= 0) continue;
+
+      let priority = 0;
+      if (isLabeled) priority += 10;
+      if (line.position >= 0.6) priority += 3; // bottom 40%
+      if (/[₱$]/.test(m[0])) priority += 1;
+
+      candidates.push({ value: val, priority });
+    }
+
+    // Also try bare numbers with 2 decimals if no currency symbol
+    if (nums.length === 0) {
+      const bare = [...t.matchAll(/([\d,]+\.\d{2})\b/g)];
+      for (const m of bare) {
+        const val = parseNum(m[1]);
+        if (val <= 0) continue;
+        let priority = 0;
+        if (isLabeled) priority += 10;
+        if (line.position >= 0.6) priority += 2;
+        candidates.push({ value: val, priority });
+      }
+    }
   }
+
+  if (candidates.length === 0) return '';
+
+  // Sort by priority desc, then value desc
+  candidates.sort((a, b) => b.priority - a.priority || b.value - a.value);
+  return candidates[0].value.toFixed(2);
+};
+
+/* ── VAT TYPE AUTO-DETECTION (strict rule order) ── */
+const detectVatType = (text: string): string => {
+  // Rule 1: NON VAT variants → VAT Exempt
+  if (/\b(non[\s\-]*vat|non[\s\-]*vat\s*reg)/i.test(text)) return 'VAT Exempt';
+  // Rule 2: Zero Rated
+  if (/\b(zero\s*rated|0%\s*vat)\b/i.test(text)) return 'Zero Rated';
+  // Rule 3: VAT 12% or VAT line with decimal amount
+  if (/vat\s*12%/i.test(text)) return 'Vatable';
+  // Check for VAT line with an actual decimal amount (not just "VAT" keyword)
+  const vatLines = text.split('\n').filter(l => /\bvat\b/i.test(l));
+  for (const vl of vatLines) {
+    if (/\bNON[\s\-]*VAT\b/i.test(vl)) continue; // skip NON VAT lines
+    if (/[\d,]+\.\d{2}/.test(vl)) return 'Vatable';
+  }
+  // Rule 4: nothing found
+  return '';
+};
+
+/* ── TAX AMOUNT EXTRACTION (safe guard) ── */
+const extractTaxAmount = (lines: DocLine[]): { vatAmount: string; vatDetected: boolean } => {
+  for (const line of lines) {
+    const t = line.text;
+    if (!/\bvat\b/i.test(t)) continue;
+    // Skip NON VAT lines
+    if (/\bnon[\s\-]*vat\b/i.test(t)) continue;
+    // Skip lines with TIN, accreditation, receipt numbers
+    if (AMOUNT_NOISE.test(t)) continue;
+
+    // Look for decimal value on this line
+    const numMatch = t.match(/([\d,]+\.\d{2})\b/);
+    if (numMatch) {
+      const val = parseFloat(numMatch[1].replace(/,/g, ''));
+      if (val > 0 && val < 1000000) {
+        return { vatAmount: val.toFixed(2), vatDetected: true };
+      }
+    }
+
+    // Check next line
+    const nextLine = lines.find(l => l.index === line.index + 1);
+    if (nextLine && !AMOUNT_NOISE.test(nextLine.text)) {
+      const nextMatch = nextLine.text.match(/([\d,]+\.\d{2})\b/);
+      if (nextMatch) {
+        const val = parseFloat(nextMatch[1].replace(/,/g, ''));
+        if (val > 0 && val < 1000000) {
+          return { vatAmount: val.toFixed(2), vatDetected: true };
+        }
+      }
+    }
+
+    return { vatAmount: '', vatDetected: true };
+  }
+  return { vatAmount: '', vatDetected: false };
+};
+
+/* ── TIN EXTRACTION (prefer top section, ignore noise) ── */
+const extractTIN = (lines: DocLine[]): string => {
+  // First pass: look for TIN-labeled lines in top 50%
+  for (const line of lines) {
+    if (line.position > 0.6) continue;
+    if (!/\bTIN\b/i.test(line.text)) continue;
+    // Skip printer/accreditation TINs
+    if (FOOTER_KEYWORDS.test(line.text)) continue;
+
+    const dashMatch = line.text.match(/\d{3}-\d{3}-\d{3}(-\d{3,5})?/);
+    if (dashMatch) return dashMatch[0];
+
+    const digitMatch = line.text.match(/\b(\d{9,14})\b/);
+    if (digitMatch) return digitMatch[1];
+  }
+
+  // Second pass: any TIN pattern in top 50%
+  for (const line of lines) {
+    if (line.position > 0.5) continue;
+    if (FOOTER_KEYWORDS.test(line.text)) continue;
+
+    const dashMatch = line.text.match(/\d{3}-\d{3}-\d{3}(-\d{3,5})?/);
+    if (dashMatch && !/\b(receipt|accreditation|s\/n|min)\b/i.test(line.text)) {
+      return dashMatch[0];
+    }
+  }
+
   return '';
 };
 
@@ -216,11 +357,13 @@ const SnapReceiptOCR = ({ onExtracted }: Props) => {
       const { data: { text } } = await worker.recognize(dataUrl);
       await worker.terminate();
 
-      const total = extractTotal(text);
-      const date = extractDate(text);
-      const vendor = extractVendor(text);
-      const { vatAmount, vatDetected, vatType } = extractVAT(text);
-      const tin = extractTIN(text);
+      const lines = parseLines(text);
+      const total = extractTotal(lines);
+      const date = extractDate(lines);
+      const vendor = extractVendor(lines);
+      const vatType = detectVatType(text);
+      const { vatAmount, vatDetected } = extractTaxAmount(lines);
+      const tin = extractTIN(lines);
 
       if (!total && !date && !vendor) {
         toast.info('Could not extract data. Please fill in manually.');
@@ -230,7 +373,7 @@ const SnapReceiptOCR = ({ onExtracted }: Props) => {
         if (total) parts.push(`Total: ₱${total}`);
         if (date) parts.push(`Date: ${date}`);
         if (vatType) parts.push(`VAT: ${vatType}`);
-        else if (vatDetected) parts.push('VAT detected');
+        if (vatAmount) parts.push(`Tax: ₱${vatAmount}`);
         if (tin) parts.push(`TIN: ${tin}`);
         toast.success(`Extracted: ${parts.join(', ')}`);
       }
