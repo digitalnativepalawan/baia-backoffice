@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Plus, Trash2, AlertTriangle, Upload, Pencil, Check, X } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Upload, Pencil, Check, X, Banknote, CalendarPlus, Printer } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import ImportReservationsModal from './ImportReservationsModal';
 import { format, startOfMonth, endOfMonth, getDaysInMonth, eachDayOfInterval, isWithinInterval, parseISO, isBefore } from 'date-fns';
 
@@ -144,6 +145,7 @@ const ResortOpsDashboard = () => {
   const [newGuest, setNewGuest] = useState({ full_name: '', email: '', phone: '' });
   const [newBooking, setNewBooking] = useState({ guest_id: '', unit_id: '', platform: '', check_in: '', check_out: '', adults: '1', room_rate: '', addons_total: '0', paid_amount: '0', commission_applied: '0' });
   const [importOpen, setImportOpen] = useState(false);
+  const [ledgerFilter, setLedgerFilter] = useState<'all' | 'staying' | 'arriving' | 'departing' | 'unpaid'>('all');
 
   // ── Editing states ──
   const [editingUnit, setEditingUnit] = useState<any>(null);
@@ -394,10 +396,66 @@ const ResortOpsDashboard = () => {
             <Upload className="w-3.5 h-3.5 mr-1" /> Import CSV
           </Button>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-3">
+          {/* Filter Chips */}
+          <div className="flex flex-wrap gap-1.5">
+            {([
+              { key: 'all', label: 'All' },
+              { key: 'staying', label: 'Staying Now' },
+              { key: 'arriving', label: 'Arriving Today' },
+              { key: 'departing', label: 'Departing Today' },
+              { key: 'unpaid', label: 'Unpaid' },
+            ] as const).map(f => (
+              <Button key={f.key} size="sm" variant={ledgerFilter === f.key ? 'default' : 'outline'}
+                className="font-body text-xs h-7 px-2.5" onClick={() => setLedgerFilter(f.key)}>
+                {f.label}
+                {f.key !== 'all' && (() => {
+                  const count = monthBookings.filter((b: any) => {
+                    const rate = Number(b.room_rate || 0);
+                    const paid = Number(b.paid_amount || 0);
+                    if (f.key === 'staying') return today >= b.check_in && today < b.check_out;
+                    if (f.key === 'arriving') return b.check_in === today;
+                    if (f.key === 'departing') return b.check_out === today;
+                    if (f.key === 'unpaid') return paid < rate;
+                    return true;
+                  }).length;
+                  return count > 0 ? <span className="ml-1 text-[10px] opacity-70">({count})</span> : null;
+                })()}
+              </Button>
+            ))}
+          </div>
+
           <div className="space-y-3">
-            {monthBookings.map((b: any) => (
-              editingBooking?.id === b.id ? (
+            {monthBookings.filter((b: any) => {
+              const rate = Number(b.room_rate || 0);
+              const paid = Number(b.paid_amount || 0);
+              if (ledgerFilter === 'staying') return today >= b.check_in && today < b.check_out;
+              if (ledgerFilter === 'arriving') return b.check_in === today;
+              if (ledgerFilter === 'departing') return b.check_out === today;
+              if (ledgerFilter === 'unpaid') return paid < rate;
+              return true;
+            }).map((b: any) => {
+              const rate = Number(b.room_rate || 0);
+              const paid = Number(b.paid_amount || 0);
+              const balance = rate - paid;
+              const paidPct = rate > 0 ? Math.min((paid / rate) * 100, 100) : 0;
+              const isStaying = today >= b.check_in && today < b.check_out;
+              const arrivesToday = b.check_in === today;
+              const departsToday = b.check_out === today;
+
+              // Payment status
+              const paymentStatus = paid >= rate && rate > 0 ? 'paid' : paid > 0 ? 'partial' : 'due';
+
+              // Platform border color
+              const platformKey = (b.platform || '').toLowerCase();
+              const platformBorder = platformKey.includes('airbnb') ? 'border-l-pink-500'
+                : platformKey.includes('booking') ? 'border-l-blue-500'
+                : platformKey.includes('direct') || platformKey.includes('front') ? 'border-l-green-500'
+                : platformKey.includes('website') ? 'border-l-purple-500'
+                : platformKey.includes('agoda') ? 'border-l-orange-500'
+                : 'border-l-border';
+
+              return editingBooking?.id === b.id ? (
                 <div key={b.id} className="p-3 rounded border border-primary/50 space-y-2">
                   <div className="grid grid-cols-2 gap-2">
                     <Select value={editingBooking.guest_id} onValueChange={v => setEditingBooking((p: any) => ({...p, guest_id: v}))}>
@@ -425,26 +483,72 @@ const ResortOpsDashboard = () => {
                   <div className="flex justify-end"><SaveCancelBtns onSave={saveBooking} onCancel={() => setEditingBooking(null)} /></div>
                 </div>
               ) : (
-                <div key={b.id} className="p-3 rounded border border-border space-y-1">
-                  <div className="flex items-center justify-between">
-                    <p className="font-body text-sm text-foreground font-medium">{guestMap.get(b.guest_id) || '—'}</p>
+                <div key={b.id} className={`p-3 rounded border border-border border-l-4 ${platformBorder} space-y-2`}>
+                  {/* Row 1: Guest name + Status badges + Actions */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-body text-sm text-foreground font-medium">{guestMap.get(b.guest_id) || '—'}</p>
+                      <p className="font-body text-xs text-muted-foreground">{unitMap.get(b.unit_id)?.name || '—'} · {b.platform || '—'} · {b.adults} guest{b.adults !== 1 ? 's' : ''}</p>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0 flex-wrap justify-end">
+                      {isStaying && <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 font-body text-[10px] h-5">STAYING NOW</Badge>}
+                      {paymentStatus === 'paid' && <Badge className="bg-green-500/20 text-green-400 border-green-500/30 font-body text-[10px] h-5">PAID</Badge>}
+                      {paymentStatus === 'partial' && <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 font-body text-[10px] h-5">PARTIAL</Badge>}
+                      {paymentStatus === 'due' && <Badge className="bg-red-500/20 text-red-400 border-red-500/30 font-body text-[10px] h-5">DUE</Badge>}
+                    </div>
+                  </div>
+
+                  {/* Row 2: Dates with today highlights */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`font-body text-xs px-1.5 py-0.5 rounded ${arrivesToday ? 'bg-green-500/20 text-green-400 font-medium' : 'text-muted-foreground'}`}>
+                      {b.check_in}
+                    </span>
+                    <span className="font-body text-xs text-muted-foreground">→</span>
+                    <span className={`font-body text-xs px-1.5 py-0.5 rounded ${departsToday ? 'bg-red-500/20 text-red-400 font-medium' : 'text-muted-foreground'}`}>
+                      {b.check_out}
+                    </span>
+                    {arrivesToday && <Badge className="bg-green-500/20 text-green-400 border-green-500/30 font-body text-[10px] h-5">ARRIVES TODAY</Badge>}
+                    {departsToday && <Badge className="bg-red-500/20 text-red-400 border-red-500/30 font-body text-[10px] h-5">DEPARTS TODAY</Badge>}
+                  </div>
+
+                  {/* Row 3: Financial summary */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between font-body text-xs">
+                      <span className="text-foreground font-bold">Total: ₱{fmt(rate)}</span>
+                      <span className="text-green-400">Paid: ₱{fmt(paid)}</span>
+                      {balance > 0 && <span className="text-red-400 font-medium">DUE: ₱{fmt(balance)}</span>}
+                    </div>
+                    <Progress value={paidPct} className="h-1.5" />
+                  </div>
+
+                  {/* Row 4: Quick actions */}
+                  <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                    <div className="flex gap-0.5">
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-green-400 flex-shrink-0" title="Quick payment"
+                        onClick={() => {
+                          setEditingBooking({ ...b, room_rate: String(b.room_rate), paid_amount: String(b.room_rate), adults: String(b.adults), addons_total: String(b.addons_total), commission_applied: String(b.commission_applied) });
+                        }}>
+                        <Banknote className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-blue-400 flex-shrink-0" title="Extend stay"
+                        onClick={() => {
+                          setEditingBooking({ ...b, room_rate: String(b.room_rate), paid_amount: String(b.paid_amount), adults: String(b.adults), addons_total: String(b.addons_total), commission_applied: String(b.commission_applied) });
+                        }}>
+                        <CalendarPlus className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-accent flex-shrink-0" title="Print invoice"
+                        onClick={() => toast.info(`Invoice for ${guestMap.get(b.guest_id) || 'guest'}`)}>
+                        <Printer className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                     <div className="flex gap-0.5">
                       <EditBtn onClick={() => setEditingBooking({ ...b, room_rate: String(b.room_rate), paid_amount: String(b.paid_amount), adults: String(b.adults), addons_total: String(b.addons_total), commission_applied: String(b.commission_applied) })} />
                       <DelBtn onClick={() => deleteRow('resort_ops_bookings', b.id)} />
                     </div>
                   </div>
-                  <p className="font-body text-xs text-muted-foreground">{unitMap.get(b.unit_id)?.name || '—'} · {b.platform}</p>
-                  <div className="flex justify-between font-body text-xs text-muted-foreground">
-                    <span>{b.check_in} → {b.check_out}</span>
-                  </div>
-                  <div className="flex justify-between font-body text-sm">
-                    <span className="text-muted-foreground">Rate: <span className="text-foreground">₱{fmt(Number(b.room_rate))}</span></span>
-                    <span className="text-muted-foreground">Paid: <span className="text-foreground">₱{fmt(Number(b.paid_amount))}</span></span>
-                    <span className="text-muted-foreground">Bal: <span className="text-foreground">₱{fmt(Number(b.room_rate) - Number(b.paid_amount))}</span></span>
-                  </div>
                 </div>
-              )
-            ))}
+              );
+            })}
             {monthBookings.length === 0 && <p className="font-body text-sm text-muted-foreground text-center py-4">No bookings this month</p>}
           </div>
           {/* Add booking inline */}
