@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Plus, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Upload } from 'lucide-react';
+import ImportReservationsModal from './ImportReservationsModal';
 import { format, startOfMonth, endOfMonth, getDaysInMonth, eachDayOfInterval, isWithinInterval, parseISO, isBefore } from 'date-fns';
 
 const MONTHS = [
@@ -144,6 +145,7 @@ const ResortOpsDashboard = () => {
   const [newUnit, setNewUnit] = useState({ name: '', type: '', base_price: '', capacity: '' });
   const [newGuest, setNewGuest] = useState({ full_name: '', email: '', phone: '' });
   const [newBooking, setNewBooking] = useState({ guest_id: '', unit_id: '', platform: '', check_in: '', check_out: '', adults: '1', room_rate: '', addons_total: '0', paid_amount: '0', commission_applied: '0' });
+  const [importOpen, setImportOpen] = useState(false);
 
   // ── CRUD helpers ──
   const invalidateAll = () => {
@@ -311,7 +313,12 @@ const ResortOpsDashboard = () => {
 
       {/* ── Reservations Ledger ── */}
       <Card className="bg-card border-border">
-        <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Reservations Ledger</CardTitle></CardHeader>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="font-display text-sm tracking-wider">Reservations Ledger</CardTitle>
+          <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setImportOpen(true)}>
+            <Upload className="w-3.5 h-3.5 mr-1" /> Import CSV
+          </Button>
+        </CardHeader>
         <CardContent className="space-y-2">
           <div className="space-y-3">
             {monthBookings.map((b: any) => (
@@ -357,6 +364,7 @@ const ResortOpsDashboard = () => {
             <Button size="sm" onClick={addBooking} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Booking</Button>
           </div>
         </CardContent>
+        <ImportReservationsModal open={importOpen} onOpenChange={setImportOpen} guests={guests} units={units} onComplete={invalidateAll} />
       </Card>
 
       {/* ── Occupancy Grid ── */}
