@@ -103,8 +103,11 @@ const ResortOpsDashboard = () => {
       return sum + items.reduce((s: number, i: any) => s + (Number(menuMap.get(i.name) || 0) * (i.qty || 1)), 0);
     }, 0);
   }, [orders, menuItems]);
-  const netProfit = revenue - totalExpenses;
-  const margin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
+  const foodRevenue = useMemo(() => orders.reduce((s: number, o: any) => s + Number(o.total || 0), 0), [orders]);
+  const totalRevenue = revenue + foodRevenue;
+  const foodProfit = foodRevenue - foodCost;
+  const netProfit = totalRevenue - foodCost - totalExpenses;
+  const margin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
   // ── Lookup helpers ──
   const guestMap = useMemo(() => new Map(guests.map((g: any) => [g.id, g.full_name])), [guests]);
@@ -340,14 +343,16 @@ const ResortOpsDashboard = () => {
       {showWebhook && <WebhookSettings />}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Revenue', value: `₱${fmt(revenue)}` },
+          { label: 'Room Revenue', value: `₱${fmt(revenue)}` },
+          { label: 'Food Revenue', value: `₱${fmt(foodRevenue)}` },
+          { label: 'Total Revenue', value: `₱${fmt(totalRevenue)}` },
           { label: 'Food Cost', value: `₱${fmt(foodCost)}` },
+          { label: 'Food Profit', value: `₱${fmt(foodProfit)}` },
+          { label: 'Total Expenses', value: `₱${fmt(totalExpenses)}` },
           { label: 'Net Profit', value: `₱${fmt(netProfit)}` },
           { label: 'Margin %', value: `${margin.toFixed(1)}%` },
-          { label: 'Room Revenue', value: `₱${fmt(revenue)}` },
-          { label: 'Total Expenses', value: `₱${fmt(totalExpenses)}` },
         ].map(kpi => (
           <Card key={kpi.label} className="bg-card border-border">
             <CardContent className="p-4">
