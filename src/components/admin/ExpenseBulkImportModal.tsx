@@ -5,13 +5,7 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Download, Upload } from 'lucide-react';
-
-const EXPENSE_CATEGORIES = [
-  'Food & Beverage', 'Utilities (Electric/Water/Gas/Fuel)', 'Labor/Staff', 'Housekeeping',
-  'Maintenance/Repairs', 'Operations/Supplies', 'Marketing/Admin', 'Professional Services',
-  'Permits/Licenses', 'Transportation', 'Guest Services', 'Taxes/Government',
-  'Capital Expenditures', 'Miscellaneous',
-];
+import { EXPENSE_CATEGORIES, VAT_STATUSES, computeVatFields } from './ResortOpsDashboard';
 
 interface ExpenseBulkImportModalProps {
   open: boolean;
@@ -25,8 +19,8 @@ const ExpenseBulkImportModal = ({ open, onOpenChange, onComplete }: ExpenseBulkI
   const fileRef = useRef<HTMLInputElement>(null);
 
   const downloadTemplate = () => {
-    const header = 'Date,Name,Category,Amount,Notes,Image URL';
-    const example = '02/15/2026,Electric Bill,Utilities (Electric/Water/Gas/Fuel),5000,Monthly bill,';
+    const header = 'Date,Supplier Name,Supplier TIN,VAT Status,Invoice Number,OR Number,Expense Category,Description,Vatable Sale,VAT Amount,VAT Exempt Amount,Zero Rated Amount,Total Amount,Withholding Tax,Payment Method,Is Paid,Project Unit,Notes,Image URL';
+    const example = '02/15/2026,Meralco,123-456-789-000,VAT,,OR-001,Utilities (Electric/Water/Gas/Fuel),Monthly electric bill,,,,,5600,0,Bank Transfer,true,,Monthly billing,';
     const csv = [header, example].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -38,7 +32,6 @@ const ExpenseBulkImportModal = ({ open, onOpenChange, onComplete }: ExpenseBulkI
   };
 
   const parseDate = (raw: string): string | null => {
-    // Accept mm/dd/yyyy or yyyy-mm-dd
     const mdyMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (mdyMatch) {
       const [, m, d, y] = mdyMatch;
@@ -47,6 +40,25 @@ const ExpenseBulkImportModal = ({ open, onOpenChange, onComplete }: ExpenseBulkI
     const isoMatch = raw.match(/^\d{4}-\d{2}-\d{2}$/);
     if (isoMatch) return raw;
     return null;
+  };
+
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        inQuotes = !inQuotes;
+      } else if (ch === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+    result.push(current.trim());
+    return result;
   };
 
   const handleImport = async () => {
@@ -67,22 +79,64 @@ const ExpenseBulkImportModal = ({ open, onOpenChange, onComplete }: ExpenseBulkI
     const errors: string[] = [];
 
     for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',').map(c => c.trim());
-      if (cols.length < 4) { errors.push(`Row ${i}: Not enough columns`); continue; }
-      const [dateRaw, name, category, amountRaw, notes, image_url] = cols;
+      const cols = parseCSVLine(lines[i]);
+      // Columns: Date, Supplier Name, Supplier TIN, VAT Status, Invoice #, OR #, Category, Description,
+      //          Vatable Sale, VAT Amount, VAT Exempt, Zero Rated, Total Amount, Withholding Tax,
+      //          Payment Method, Is Paid, Project Unit, Notes, Image URL
+      if (cols.length < 13) { errors.push(`Row ${i}: Not enough columns (need at least 13)`); continue; }
+      
+      const [dateRaw, supplierName, supplierTin, vatStatusRaw, invoiceNum, orNum, category, description,
+             vatableSaleRaw, vatAmountRaw, vatExemptRaw, zeroRatedRaw, totalAmountRaw, withholdingRaw,
+             paymentMethod, isPaidRaw, projectUnit, notes, imageUrl] = cols;
+
       const date = parseDate(dateRaw);
       if (!date) { errors.push(`Row ${i}: Invalid date "${dateRaw}"`); continue; }
-      if (!name) { errors.push(`Row ${i}: Missing name`); continue; }
-      const amount = parseFloat(amountRaw);
-      if (isNaN(amount)) { errors.push(`Row ${i}: Invalid amount "${amountRaw}"`); continue; }
+      if (!supplierName) { errors.push(`Row ${i}: Missing supplier name`); continue; }
+
+      const totalAmount = parseFloat(totalAmountRaw);
+      if (isNaN(totalAmount) || totalAmount <= 0) { errors.push(`Row ${i}: Invalid total amount "${totalAmountRaw}"`); continue; }
+
+      const vatStatus = (VAT_STATUSES as readonly string[]).includes(vatStatusRaw) ? vatStatusRaw : 'Non-VAT';
+
+      if (vatStatus === 'VAT' && !supplierTin) {
+        errors.push(`Row ${i}: Supplier TIN required for VAT status`);
+        continue;
+      }
+
+      // Use provided VAT breakdown or auto-compute
+      const hasManualVat = vatableSaleRaw || vatAmountRaw || vatExemptRaw || zeroRatedRaw;
+      let vatFields;
+      if (hasManualVat) {
+        vatFields = {
+          vatable_sale: parseFloat(vatableSaleRaw) || 0,
+          vat_amount: parseFloat(vatAmountRaw) || 0,
+          vat_exempt_amount: parseFloat(vatExemptRaw) || 0,
+          zero_rated_amount: parseFloat(zeroRatedRaw) || 0,
+        };
+      } else {
+        vatFields = computeVatFields(vatStatus, totalAmount);
+      }
 
       rows.push({
         expense_date: date,
-        name,
+        name: supplierName,
+        supplier_tin: supplierTin || null,
+        vat_status: vatStatus,
+        invoice_number: invoiceNum || null,
+        official_receipt_number: orNum || null,
         category: EXPENSE_CATEGORIES.includes(category) ? category : category || 'Miscellaneous',
-        amount,
+        description: description || null,
+        vatable_sale: vatFields.vatable_sale,
+        vat_amount: vatFields.vat_amount,
+        vat_exempt_amount: vatFields.vat_exempt_amount,
+        zero_rated_amount: vatFields.zero_rated_amount,
+        amount: totalAmount,
+        withholding_tax: parseFloat(withholdingRaw) || 0,
+        payment_method: paymentMethod || null,
+        is_paid: isPaidRaw?.toLowerCase() === 'false' ? false : true,
+        project_unit: projectUnit || null,
         notes: notes || null,
-        image_url: image_url || null,
+        image_url: imageUrl || null,
       });
     }
 
@@ -111,8 +165,13 @@ const ExpenseBulkImportModal = ({ open, onOpenChange, onComplete }: ExpenseBulkI
 
         <div className="space-y-4">
           <p className="font-body text-sm text-muted-foreground">
-            Download the CSV template, fill it in, then upload to bulk import expenses.
+            Download the CSV template with VAT-compliant columns, fill it in, then upload to bulk import expenses.
           </p>
+
+          <div className="font-body text-xs text-muted-foreground p-2 rounded border border-border bg-muted/50">
+            <p className="font-medium text-foreground mb-1">CSV Columns:</p>
+            <p>Date, Supplier Name, Supplier TIN, VAT Status, Invoice #, OR #, Category, Description, Vatable Sale, VAT Amount, VAT Exempt, Zero Rated, Total Amount, Withholding Tax, Payment Method, Is Paid, Project Unit, Notes, Image URL</p>
+          </div>
 
           <Button size="sm" variant="outline" onClick={downloadTemplate} className="w-full">
             <Download className="w-3.5 h-3.5 mr-1.5" /> Download CSV Template

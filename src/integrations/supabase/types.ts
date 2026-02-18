@@ -603,34 +603,73 @@ export type Database = {
           amount: number
           category: string
           created_at: string
+          description: string | null
           expense_date: string
           id: string
           image_url: string | null
+          invoice_number: string | null
+          is_paid: boolean
           name: string
           notes: string | null
+          official_receipt_number: string | null
+          payment_method: string | null
+          project_unit: string | null
+          supplier_tin: string | null
           updated_at: string | null
+          vat_amount: number
+          vat_exempt_amount: number
+          vat_status: string
+          vatable_sale: number
+          withholding_tax: number
+          zero_rated_amount: number
         }
         Insert: {
           amount?: number
           category?: string
           created_at?: string
+          description?: string | null
           expense_date: string
           id?: string
           image_url?: string | null
+          invoice_number?: string | null
+          is_paid?: boolean
           name: string
           notes?: string | null
+          official_receipt_number?: string | null
+          payment_method?: string | null
+          project_unit?: string | null
+          supplier_tin?: string | null
           updated_at?: string | null
+          vat_amount?: number
+          vat_exempt_amount?: number
+          vat_status?: string
+          vatable_sale?: number
+          withholding_tax?: number
+          zero_rated_amount?: number
         }
         Update: {
           amount?: number
           category?: string
           created_at?: string
+          description?: string | null
           expense_date?: string
           id?: string
           image_url?: string | null
+          invoice_number?: string | null
+          is_paid?: boolean
           name?: string
           notes?: string | null
+          official_receipt_number?: string | null
+          payment_method?: string | null
+          project_unit?: string | null
+          supplier_tin?: string | null
           updated_at?: string | null
+          vat_amount?: number
+          vat_exempt_amount?: number
+          vat_status?: string
+          vatable_sale?: number
+          withholding_tax?: number
+          zero_rated_amount?: number
         }
         Relationships: []
       }

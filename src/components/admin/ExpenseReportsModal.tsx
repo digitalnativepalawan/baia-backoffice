@@ -22,8 +22,20 @@ interface ExpenseReportsModalProps {
 
 const ExpenseReportsModal = ({ open, onOpenChange, expenses, monthLabel, onCategoryClick }: ExpenseReportsModalProps) => {
   const fmt = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const fmtDec = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const totalAmount = useMemo(() => expenses.reduce((s, e) => s + Number(e.amount || 0), 0), [expenses]);
+
+  // VAT summary totals
+  const vatSummary = useMemo(() => {
+    return expenses.reduce((acc, e) => ({
+      totalVatablePurchases: acc.totalVatablePurchases + Number(e.vatable_sale || 0),
+      totalInputVat: acc.totalInputVat + Number(e.vat_amount || 0),
+      totalNonVat: acc.totalNonVat + ((e.vat_status === 'Non-VAT') ? Number(e.amount || 0) : 0),
+      totalVatExempt: acc.totalVatExempt + Number(e.vat_exempt_amount || 0),
+      totalZeroRated: acc.totalZeroRated + Number(e.zero_rated_amount || 0),
+    }), { totalVatablePurchases: 0, totalInputVat: 0, totalNonVat: 0, totalVatExempt: 0, totalZeroRated: 0 });
+  }, [expenses]);
 
   const breakdown = useMemo(() => {
     const map = new Map<string, { total: number; count: number }>();
@@ -49,6 +61,14 @@ const ExpenseReportsModal = ({ open, onOpenChange, expenses, monthLabel, onCateg
   const exportCSV = () => {
     const rows = [['Category', 'Total Amount', '# of Expenses', '% of Total']];
     breakdown.forEach(r => rows.push([r.category, r.total.toFixed(2), String(r.count), r.pct.toFixed(1) + '%']));
+    rows.push([]);
+    rows.push(['--- VAT Summary ---']);
+    rows.push(['Total VATable Purchases', vatSummary.totalVatablePurchases.toFixed(2)]);
+    rows.push(['Total Input VAT', vatSummary.totalInputVat.toFixed(2)]);
+    rows.push(['Total Non-VAT Expenses', vatSummary.totalNonVat.toFixed(2)]);
+    rows.push(['Total VAT-Exempt Purchases', vatSummary.totalVatExempt.toFixed(2)]);
+    rows.push(['Total Zero-Rated Purchases', vatSummary.totalZeroRated.toFixed(2)]);
+    rows.push(['Total Expenses', totalAmount.toFixed(2)]);
     const csv = rows.map(r => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -79,8 +99,30 @@ const ExpenseReportsModal = ({ open, onOpenChange, expenses, monthLabel, onCateg
       doc.text(String(r.count), 140, y);
       doc.text(`${r.pct.toFixed(1)}%`, 165, y);
       y += 5;
-      if (y > 280) { doc.addPage(); y = 20; }
+      if (y > 260) { doc.addPage(); y = 20; }
     });
+
+    // VAT Summary section
+    y += 8;
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.setFontSize(11);
+    doc.text('VAT Summary', 14, y);
+    y += 7;
+    doc.setFontSize(9);
+    const vatRows = [
+      ['Total VATable Purchases', `₱${fmtDec(vatSummary.totalVatablePurchases)}`],
+      ['Total Input VAT', `₱${fmtDec(vatSummary.totalInputVat)}`],
+      ['Total Non-VAT Expenses', `₱${fmtDec(vatSummary.totalNonVat)}`],
+      ['Total VAT-Exempt Purchases', `₱${fmtDec(vatSummary.totalVatExempt)}`],
+      ['Total Zero-Rated Purchases', `₱${fmtDec(vatSummary.totalZeroRated)}`],
+      ['Total Expenses', `₱${fmtDec(totalAmount)}`],
+    ];
+    vatRows.forEach(([label, val]) => {
+      doc.text(label, 14, y);
+      doc.text(val, 100, y);
+      y += 5;
+    });
+
     doc.save(`expense-report-${monthLabel.replace(/\s/g, '-')}.pdf`);
   };
 
@@ -105,6 +147,25 @@ const ExpenseReportsModal = ({ open, onOpenChange, expenses, monthLabel, onCateg
           <div className="p-3 rounded border border-border bg-secondary">
             <p className="font-body text-xs text-muted-foreground">Categories Used</p>
             <p className="font-display text-lg text-foreground">{categoriesUsed}</p>
+          </div>
+        </div>
+
+        {/* VAT Summary Section */}
+        <div className="p-3 rounded border border-border bg-secondary space-y-1">
+          <p className="font-display text-xs tracking-wider text-foreground mb-2">Monthly VAT Summary</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-body text-xs">
+            <span className="text-muted-foreground">Total VATable Purchases</span>
+            <span className="text-foreground text-right">₱{fmtDec(vatSummary.totalVatablePurchases)}</span>
+            <span className="text-muted-foreground">Total Input VAT</span>
+            <span className="text-foreground text-right font-medium">₱{fmtDec(vatSummary.totalInputVat)}</span>
+            <span className="text-muted-foreground">Total Non-VAT Expenses</span>
+            <span className="text-foreground text-right">₱{fmtDec(vatSummary.totalNonVat)}</span>
+            <span className="text-muted-foreground">Total VAT-Exempt Purchases</span>
+            <span className="text-foreground text-right">₱{fmtDec(vatSummary.totalVatExempt)}</span>
+            <span className="text-muted-foreground">Total Zero-Rated Purchases</span>
+            <span className="text-foreground text-right">₱{fmtDec(vatSummary.totalZeroRated)}</span>
+            <span className="text-muted-foreground font-medium border-t border-border pt-1">Total Expenses</span>
+            <span className="text-foreground text-right font-medium border-t border-border pt-1">₱{fmtDec(totalAmount)}</span>
           </div>
         </div>
 

@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Trash2, AlertTriangle, Upload, Pencil, Check, X, Banknote, CalendarPlus, Printer, Settings, BarChart3, FileUp, ExternalLink } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import ImportReservationsModal from './ImportReservationsModal';
@@ -30,6 +31,28 @@ export const EXPENSE_CATEGORIES = [
   'Capital Expenditures', 'Miscellaneous',
 ];
 
+export const VAT_STATUSES = ['VAT', 'Non-VAT', 'VAT-Exempt', 'Zero-Rated'] as const;
+export const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'GCash', 'Credit Card'] as const;
+
+/** Auto-compute VAT fields from vat_status + total_amount */
+export const computeVatFields = (vatStatus: string, totalAmount: number) => {
+  const ta = totalAmount || 0;
+  switch (vatStatus) {
+    case 'VAT': {
+      const vatAmt = ta / 1.12 * 0.12;
+      return { vatable_sale: ta - vatAmt, vat_amount: vatAmt, vat_exempt_amount: 0, zero_rated_amount: 0 };
+    }
+    case 'Non-VAT':
+      return { vatable_sale: ta, vat_amount: 0, vat_exempt_amount: 0, zero_rated_amount: 0 };
+    case 'VAT-Exempt':
+      return { vatable_sale: 0, vat_amount: 0, vat_exempt_amount: ta, zero_rated_amount: 0 };
+    case 'Zero-Rated':
+      return { vatable_sale: 0, vat_amount: 0, vat_exempt_amount: 0, zero_rated_amount: ta };
+    default:
+      return { vatable_sale: ta, vat_amount: 0, vat_exempt_amount: 0, zero_rated_amount: 0 };
+  }
+};
+
 const monthLabel = (m: string) => {
   const [y, mo] = m.split('-');
   const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -37,6 +60,24 @@ const monthLabel = (m: string) => {
 };
 
 const from = (table: string) => supabase.from(table as any);
+
+const EMPTY_EXPENSE = {
+  name: '',
+  supplier_tin: '',
+  vat_status: 'Non-VAT',
+  invoice_number: '',
+  official_receipt_number: '',
+  category: '',
+  description: '',
+  amount: '',
+  withholding_tax: '0',
+  payment_method: 'Cash',
+  is_paid: true,
+  project_unit: '',
+  notes: '',
+  image_url: '',
+  expense_date: '',
+};
 
 const ResortOpsDashboard = () => {
   const qc = useQueryClient();
@@ -151,7 +192,7 @@ const ResortOpsDashboard = () => {
   }, [units, monthBookings, daysInMonth, occupancyData]);
 
   // ── Inline add forms state ──
-  const [newExpense, setNewExpense] = useState({ name: '', category: '', amount: '', expense_date: '', notes: '', image_url: '' });
+  const [newExpense, setNewExpense] = useState({ ...EMPTY_EXPENSE });
   const [newTask, setNewTask] = useState({ title: '', category: '', due_date: '', priority: 'medium', description: '' });
   const [newAsset, setNewAsset] = useState({ name: '', type: '', balance: '' });
   const [newPayment, setNewPayment] = useState({ source: '', amount: '', expected_date: '' });
@@ -180,13 +221,47 @@ const ResortOpsDashboard = () => {
     ['resort-ops-units','resort-ops-guests','resort-ops-bookings','resort-ops-expenses','resort-ops-tasks','resort-ops-assets','resort-ops-payments'].forEach(k => qc.invalidateQueries({ queryKey: [k] }));
   };
 
+  const buildExpensePayload = (e: typeof EMPTY_EXPENSE) => {
+    const totalAmount = parseFloat(e.amount) || 0;
+    const vatFields = computeVatFields(e.vat_status, totalAmount);
+    return {
+      name: e.name,
+      supplier_tin: e.supplier_tin || null,
+      vat_status: e.vat_status,
+      invoice_number: e.invoice_number || null,
+      official_receipt_number: e.official_receipt_number || null,
+      category: e.category,
+      description: e.description || null,
+      amount: totalAmount,
+      vatable_sale: vatFields.vatable_sale,
+      vat_amount: vatFields.vat_amount,
+      vat_exempt_amount: vatFields.vat_exempt_amount,
+      zero_rated_amount: vatFields.zero_rated_amount,
+      withholding_tax: parseFloat(e.withholding_tax) || 0,
+      payment_method: e.payment_method || null,
+      is_paid: e.is_paid,
+      project_unit: e.project_unit || null,
+      notes: e.notes || null,
+      image_url: e.image_url || null,
+      expense_date: e.expense_date,
+    };
+  };
+
+  const validateExpense = (e: typeof EMPTY_EXPENSE): string | null => {
+    if (!e.name) return 'Supplier name is required';
+    if (!e.amount || parseFloat(e.amount) <= 0) return 'Total amount is required';
+    if (!e.expense_date) return 'Date is required';
+    if (!e.category) return 'Category is required';
+    if (!e.vat_status) return 'VAT status is required';
+    if (e.vat_status === 'VAT' && !e.supplier_tin) return 'Supplier TIN is required for VAT';
+    return null;
+  };
+
   const addExpense = async () => {
-    if (!newExpense.name || !newExpense.amount || !newExpense.expense_date) return;
-    await from('resort_ops_expenses').insert({
-      name: newExpense.name, category: newExpense.category, amount: parseFloat(newExpense.amount),
-      expense_date: newExpense.expense_date, notes: newExpense.notes || null, image_url: newExpense.image_url || null,
-    });
-    setNewExpense({ name: '', category: '', amount: '', expense_date: '', notes: '', image_url: '' });
+    const err = validateExpense(newExpense);
+    if (err) { toast.error(err); return; }
+    await from('resort_ops_expenses').insert(buildExpensePayload(newExpense) as any);
+    setNewExpense({ ...EMPTY_EXPENSE });
     setShowAddExpenseForm(false);
     invalidateAll();
     toast.success('Expense added');
@@ -289,11 +364,10 @@ const ResortOpsDashboard = () => {
 
   const saveExpense = async () => {
     if (!editingExpense) return;
-    await from('resort_ops_expenses').update({
-      name: editingExpense.name, category: editingExpense.category,
-      amount: parseFloat(editingExpense.amount) || 0, expense_date: editingExpense.expense_date,
-      notes: editingExpense.notes || null, image_url: editingExpense.image_url || null,
-    }).eq('id', editingExpense.id);
+    const err = validateExpense(editingExpense);
+    if (err) { toast.error(err); return; }
+    const payload = buildExpensePayload(editingExpense);
+    await from('resort_ops_expenses').update(payload as any).eq('id', editingExpense.id);
     setEditingExpense(null);
     invalidateAll();
     toast.success('Expense updated');
@@ -324,6 +398,7 @@ const ResortOpsDashboard = () => {
   };
 
   const fmt = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const fmtDec = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const today = format(new Date(), 'yyyy-MM-dd');
 
@@ -341,274 +416,314 @@ const ResortOpsDashboard = () => {
     </div>
   );
 
-  const inputCls = "bg-secondary border-border text-foreground font-body text-xs h-8";
+  // ── Expense Form Component (shared between Add and Edit) ──
+  const ExpenseFormFields = ({ data, onChange }: { data: typeof EMPTY_EXPENSE; onChange: (d: typeof EMPTY_EXPENSE) => void }) => {
+    const inputCls = "bg-secondary border-border text-foreground font-body text-sm";
+    return (
+      <div className="space-y-2">
+        <Input placeholder="Supplier Name *" value={data.name} onChange={e => onChange({...data, name: e.target.value})} className={inputCls} />
+        <div className="grid grid-cols-2 gap-2">
+          <Input placeholder="Supplier TIN" value={data.supplier_tin} onChange={e => onChange({...data, supplier_tin: e.target.value})} className={inputCls} />
+          <Select value={data.vat_status} onValueChange={v => onChange({...data, vat_status: v})}>
+            <SelectTrigger className={inputCls}><SelectValue placeholder="VAT Status *" /></SelectTrigger>
+            <SelectContent>{VAT_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        {data.vat_status === 'VAT' && !data.supplier_tin && (
+          <p className="font-body text-xs text-destructive">⚠ Supplier TIN required for VAT status</p>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <Input placeholder="Invoice #" value={data.invoice_number} onChange={e => onChange({...data, invoice_number: e.target.value})} className={inputCls} />
+          <Input placeholder="OR #" value={data.official_receipt_number} onChange={e => onChange({...data, official_receipt_number: e.target.value})} className={inputCls} />
+        </div>
+        <Select value={data.category} onValueChange={v => onChange({...data, category: v})}>
+          <SelectTrigger className={inputCls}><SelectValue placeholder="Category *" /></SelectTrigger>
+          <SelectContent>{EXPENSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+        </Select>
+        <Input placeholder="Description" value={data.description} onChange={e => onChange({...data, description: e.target.value})} className={inputCls} />
+        <div className="grid grid-cols-2 gap-2">
+          <Input placeholder="Total Amount *" type="number" value={data.amount} onChange={e => onChange({...data, amount: e.target.value})} className={inputCls} />
+          <Input type="date" value={data.expense_date} onChange={e => onChange({...data, expense_date: e.target.value})} className={inputCls} />
+        </div>
+        {/* Computed VAT breakdown (read-only display) */}
+        {data.amount && parseFloat(data.amount) > 0 && (
+          <div className="px-2 py-1.5 rounded bg-muted/50 border border-border font-body text-xs text-muted-foreground space-y-0.5">
+            {(() => {
+              const vf = computeVatFields(data.vat_status, parseFloat(data.amount));
+              return <>
+                {vf.vatable_sale > 0 && <p>VATable Sale: <span className="text-foreground">₱{fmtDec(vf.vatable_sale)}</span></p>}
+                {vf.vat_amount > 0 && <p>VAT (12%): <span className="text-foreground">₱{fmtDec(vf.vat_amount)}</span></p>}
+                {vf.vat_exempt_amount > 0 && <p>VAT-Exempt: <span className="text-foreground">₱{fmtDec(vf.vat_exempt_amount)}</span></p>}
+                {vf.zero_rated_amount > 0 && <p>Zero-Rated: <span className="text-foreground">₱{fmtDec(vf.zero_rated_amount)}</span></p>}
+              </>;
+            })()}
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <Input placeholder="Withholding Tax" type="number" value={data.withholding_tax} onChange={e => onChange({...data, withholding_tax: e.target.value})} className={inputCls} />
+          <Select value={data.payment_method} onValueChange={v => onChange({...data, payment_method: v})}>
+            <SelectTrigger className={inputCls}><SelectValue placeholder="Payment Method" /></SelectTrigger>
+            <SelectContent>{PAYMENT_METHODS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Input placeholder="Project / Unit" value={data.project_unit} onChange={e => onChange({...data, project_unit: e.target.value})} className={inputCls} />
+          <div className="flex items-center gap-2 px-2">
+            <Checkbox checked={data.is_paid} onCheckedChange={v => onChange({...data, is_paid: !!v})} />
+            <label className="font-body text-xs text-foreground">Paid</label>
+          </div>
+        </div>
+        <Textarea placeholder="Notes (optional)" value={data.notes} onChange={e => onChange({...data, notes: e.target.value})} className="bg-secondary border-border text-foreground font-body text-sm min-h-[60px]" />
+        <Input placeholder="Image/Receipt URL (optional)" value={data.image_url} onChange={e => onChange({...data, image_url: e.target.value})} className={inputCls} />
+      </div>
+    );
+  };
+
+  const inputCls = "bg-secondary border-border text-foreground font-body text-sm";
+
+  // ── Helpers for bookings display ──
+  const platformColor = (p: string) => {
+    const lp = p?.toLowerCase() || '';
+    if (lp.includes('airbnb')) return 'bg-pink-500/20 text-pink-300 border-pink-500/30';
+    if (lp.includes('booking')) return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+    if (lp.includes('direct')) return 'bg-green-500/20 text-green-300 border-green-500/30';
+    if (lp.includes('website')) return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
+    if (lp.includes('agoda')) return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
+    return 'bg-secondary text-foreground';
+  };
+
+  const getBookingStatus = (b: any) => {
+    if (today >= b.check_in && today < b.check_out) return 'STAYING';
+    if (today === b.check_in) return 'ARRIVING';
+    if (today === b.check_out) return 'DEPARTING';
+    if (today > b.check_out) return 'PAST';
+    return 'UPCOMING';
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Month selector */}
-      <div className="flex flex-wrap gap-1.5">
-        {MONTHS.map(m => (
-          <Button key={m} size="sm" variant={selectedMonth === m ? 'default' : 'outline'}
-            className="font-display text-xs tracking-wider" onClick={() => setSelectedMonth(m)}>
-            {monthLabel(m)}
-          </Button>
-        ))}
+    <div className="space-y-6 max-w-4xl mx-auto">
+      {/* Month Selector */}
+      <div className="flex items-center gap-3">
+        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+          <SelectTrigger className="bg-card border-border text-foreground font-display tracking-wider w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {MONTHS.map(m => <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <h2 className="font-display text-lg tracking-wider text-foreground">Resort Ops</h2>
       </div>
-
-      {/* Webhook toggle */}
-      <div className="flex justify-end">
-        <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowWebhook(v => !v)}>
-          <Settings className="w-3.5 h-3.5 mr-1.5" />
-          Webhook Settings
-        </Button>
-      </div>
-      {showWebhook && <WebhookSettings />}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Room Revenue', value: `₱${fmt(revenue)}` },
-          { label: 'Food Revenue', value: `₱${fmt(foodRevenue)}` },
-          { label: 'Total Revenue', value: `₱${fmt(totalRevenue)}` },
-          { label: 'Food Cost', value: `₱${fmt(foodCost)}` },
-          { label: 'Food Profit', value: `₱${fmt(foodProfit)}` },
-          { label: 'Total Expenses', value: `₱${fmt(totalExpenses)}` },
-          { label: 'Net Profit', value: `₱${fmt(netProfit)}` },
-          { label: 'Margin %', value: `${margin.toFixed(1)}%` },
-        ].map(kpi => (
-          <Card key={kpi.label} className="bg-card border-border">
-            <CardContent className="p-4">
-              <p className="font-body text-xs text-muted-foreground">{kpi.label}</p>
-              <p className="font-display text-lg text-foreground">{kpi.value}</p>
+          { label: 'Room Revenue', value: revenue, color: 'text-green-400' },
+          { label: 'Food Revenue', value: foodRevenue, color: 'text-blue-400' },
+          { label: 'Expenses', value: totalExpenses, color: 'text-red-400' },
+          { label: 'Net Profit', value: netProfit, color: netProfit >= 0 ? 'text-green-400' : 'text-red-400' },
+        ].map(k => (
+          <Card key={k.label} className="bg-card border-border">
+            <CardContent className="p-3">
+              <p className="font-body text-xs text-muted-foreground">{k.label}</p>
+              <p className={`font-display text-lg ${k.color}`}>₱{fmt(k.value)}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'Food Cost', value: foodCost },
+          { label: 'Food Profit', value: foodProfit },
+          { label: 'Total Revenue', value: totalRevenue },
+          { label: 'Margin', value: margin, isMgn: true },
+        ].map(k => (
+          <Card key={k.label} className="bg-card border-border">
+            <CardContent className="p-3">
+              <p className="font-body text-xs text-muted-foreground">{k.label}</p>
+              <p className="font-display text-lg text-foreground">{k.isMgn ? `${margin.toFixed(1)}%` : `₱${fmt(k.value)}`}</p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* ── Units Management ── */}
+      {/* ── Units ── */}
       <Card className="bg-card border-border">
-        <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Accommodation Units</CardTitle></CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Units / Rooms</CardTitle></CardHeader>
         <CardContent className="space-y-2">
           <div className="space-y-2">
-            {units.map((u: any) => (
+            {units.map((u: any) =>
               editingUnit?.id === u.id ? (
-                <div key={u.id} className="p-3 rounded border border-primary/50 space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input value={editingUnit.name} onChange={e => setEditingUnit((p: any) => ({...p, name: e.target.value}))} placeholder="Name" className={inputCls} />
-                    <Input value={editingUnit.type} onChange={e => setEditingUnit((p: any) => ({...p, type: e.target.value}))} placeholder="Type" className={inputCls} />
-                    <Input value={editingUnit.base_price} onChange={e => setEditingUnit((p: any) => ({...p, base_price: e.target.value}))} placeholder="Price/night" type="number" className={inputCls} />
-                    <Input value={editingUnit.capacity} onChange={e => setEditingUnit((p: any) => ({...p, capacity: e.target.value}))} placeholder="Capacity" type="number" className={inputCls} />
-                  </div>
-                  <div className="flex justify-end"><SaveCancelBtns onSave={saveUnit} onCancel={() => setEditingUnit(null)} /></div>
+                <div key={u.id} className="flex items-center gap-2 p-2 rounded border border-primary/50">
+                  <Input value={editingUnit.name} onChange={e => setEditingUnit((p: any) => ({...p, name: e.target.value}))} className={`${inputCls} flex-1`} />
+                  <Input value={editingUnit.type} onChange={e => setEditingUnit((p: any) => ({...p, type: e.target.value}))} placeholder="Type" className={`${inputCls} w-24`} />
+                  <Input value={editingUnit.base_price} onChange={e => setEditingUnit((p: any) => ({...p, base_price: e.target.value}))} type="number" placeholder="Price/night" className={`${inputCls} w-24`} />
+                  <Input value={editingUnit.capacity} onChange={e => setEditingUnit((p: any) => ({...p, capacity: e.target.value}))} type="number" placeholder="Cap" className={`${inputCls} w-16`} />
+                  <SaveCancelBtns onSave={saveUnit} onCancel={() => setEditingUnit(null)} />
                 </div>
               ) : (
                 <div key={u.id} className="flex items-center justify-between py-2 px-2 border-b border-border">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-body text-sm text-foreground font-medium">{u.name}</p>
-                    <p className="font-body text-xs text-muted-foreground">{u.type} · ₱{fmt(Number(u.base_price))}/night · {u.capacity} pax</p>
+                  <div className="flex-1">
+                    <p className="font-body text-sm text-foreground">{u.name} <span className="text-muted-foreground text-xs">({u.type})</span></p>
+                    <p className="font-body text-xs text-muted-foreground">₱{fmt(Number(u.base_price))}/night · {u.capacity} pax</p>
                   </div>
-                  <div className="flex gap-0.5">
+                  <div className="flex gap-1">
                     <EditBtn onClick={() => setEditingUnit({ ...u, base_price: String(u.base_price), capacity: String(u.capacity) })} />
                     <DelBtn onClick={() => deleteRow('resort_ops_units', u.id)} />
                   </div>
                 </div>
               )
-            ))}
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-2 pt-2">
-            <Input placeholder="Name" value={newUnit.name} onChange={e => setNewUnit(p => ({...p, name: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-            <Input placeholder="Type" value={newUnit.type} onChange={e => setNewUnit(p => ({...p, type: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-            <Input placeholder="Price/night" type="number" value={newUnit.base_price} onChange={e => setNewUnit(p => ({...p, base_price: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-            <Input placeholder="Capacity" type="number" value={newUnit.capacity} onChange={e => setNewUnit(p => ({...p, capacity: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+          <div className="grid grid-cols-2 gap-2">
+            <Input placeholder="Unit name" value={newUnit.name} onChange={e => setNewUnit(p => ({...p, name: e.target.value}))} className={inputCls} />
+            <Input placeholder="Type" value={newUnit.type} onChange={e => setNewUnit(p => ({...p, type: e.target.value}))} className={inputCls} />
+            <Input placeholder="Price/night" type="number" value={newUnit.base_price} onChange={e => setNewUnit(p => ({...p, base_price: e.target.value}))} className={inputCls} />
+            <Input placeholder="Capacity" type="number" value={newUnit.capacity} onChange={e => setNewUnit(p => ({...p, capacity: e.target.value}))} className={inputCls} />
           </div>
           <Button size="sm" onClick={addUnit} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Unit</Button>
         </CardContent>
       </Card>
 
+      {/* ── Guests ── */}
+      <Card className="bg-card border-border">
+        <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Guests</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          <div className="space-y-2">
+            {guests.map((g: any) =>
+              editingGuest?.id === g.id ? (
+                <div key={g.id} className="flex items-center gap-2 p-2 rounded border border-primary/50">
+                  <Input value={editingGuest.full_name} onChange={e => setEditingGuest((p: any) => ({...p, full_name: e.target.value}))} className={`${inputCls} flex-1`} />
+                  <Input value={editingGuest.email || ''} onChange={e => setEditingGuest((p: any) => ({...p, email: e.target.value}))} placeholder="Email" className={`${inputCls} w-32`} />
+                  <Input value={editingGuest.phone || ''} onChange={e => setEditingGuest((p: any) => ({...p, phone: e.target.value}))} placeholder="Phone" className={`${inputCls} w-28`} />
+                  <SaveCancelBtns onSave={saveGuest} onCancel={() => setEditingGuest(null)} />
+                </div>
+              ) : (
+                <div key={g.id} className="flex items-center justify-between py-2 px-2 border-b border-border">
+                  <div className="flex-1">
+                    <p className="font-body text-sm text-foreground">{g.full_name}</p>
+                    <p className="font-body text-xs text-muted-foreground">{g.email || ''} {g.phone ? `· ${g.phone}` : ''}</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <EditBtn onClick={() => setEditingGuest({ ...g })} />
+                    <DelBtn onClick={() => deleteRow('resort_ops_guests', g.id)} />
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <Input placeholder="Full name" value={newGuest.full_name} onChange={e => setNewGuest(p => ({...p, full_name: e.target.value}))} className={inputCls} />
+            <Input placeholder="Email" value={newGuest.email} onChange={e => setNewGuest(p => ({...p, email: e.target.value}))} className={inputCls} />
+            <Input placeholder="Phone" value={newGuest.phone} onChange={e => setNewGuest(p => ({...p, phone: e.target.value}))} className={inputCls} />
+          </div>
+          <Button size="sm" onClick={addGuest} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Guest</Button>
+        </CardContent>
+      </Card>
 
       {/* ── Reservations Ledger ── */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="font-display text-sm tracking-wider">Reservations Ledger</CardTitle>
-          <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setImportOpen(true)}>
-            <Upload className="w-3.5 h-3.5 mr-1" /> Import CSV
-          </Button>
+          <CardTitle className="font-display text-sm tracking-wider">Reservations</CardTitle>
+          <div className="flex gap-1.5">
+            <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setShowWebhook(true)}><Settings className="w-3.5 h-3.5 mr-1" /> Webhook</Button>
+            <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setImportOpen(true)}><Upload className="w-3.5 h-3.5 mr-1" /> Import</Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* Filter Chips */}
+          {/* Booking filter */}
           <div className="flex flex-wrap gap-1.5">
-            {([
-              { key: 'all', label: 'All' },
-              { key: 'staying', label: 'Staying Now' },
-              { key: 'arriving', label: 'Arriving Today' },
-              { key: 'departing', label: 'Departing Today' },
-              { key: 'unpaid', label: 'Unpaid' },
-            ] as const).map(f => (
-              <Button key={f.key} size="sm" variant={ledgerFilter === f.key ? 'default' : 'outline'}
-                className="font-body text-xs h-7 px-2.5" onClick={() => setLedgerFilter(f.key)}>
-                {f.label}
-                {f.key !== 'all' && (() => {
-                  const count = monthBookings.filter((b: any) => {
-                    const rate = Number(b.room_rate || 0);
-                    const paid = Number(b.paid_amount || 0);
-                    if (f.key === 'staying') return today >= b.check_in && today < b.check_out;
-                    if (f.key === 'arriving') return b.check_in === today;
-                    if (f.key === 'departing') return b.check_out === today;
-                    if (f.key === 'unpaid') return paid < rate;
-                    return true;
-                  }).length;
-                  return count > 0 ? <span className="ml-1 text-[10px] opacity-70">({count})</span> : null;
-                })()}
-              </Button>
+            {(['all','staying','arriving','departing','unpaid'] as const).map(f => (
+              <Button key={f} size="sm" variant={ledgerFilter === f ? 'default' : 'outline'} className="text-xs h-7 capitalize" onClick={() => setLedgerFilter(f)}>{f}</Button>
             ))}
           </div>
-
-          <div className="space-y-3">
-            {monthBookings.filter((b: any) => {
-              const rate = Number(b.room_rate || 0);
-              const paid = Number(b.paid_amount || 0);
-              if (ledgerFilter === 'staying') return today >= b.check_in && today < b.check_out;
-              if (ledgerFilter === 'arriving') return b.check_in === today;
-              if (ledgerFilter === 'departing') return b.check_out === today;
-              if (ledgerFilter === 'unpaid') return paid < rate;
-              return true;
-            }).map((b: any) => {
-              const rate = Number(b.room_rate || 0);
-              const paid = Number(b.paid_amount || 0);
-              const balance = rate - paid;
-              const paidPct = rate > 0 ? Math.min((paid / rate) * 100, 100) : 0;
-              const isStaying = today >= b.check_in && today < b.check_out;
-              const arrivesToday = b.check_in === today;
-              const departsToday = b.check_out === today;
-
-              // Payment status
-              const paymentStatus = paid >= rate && rate > 0 ? 'paid' : paid > 0 ? 'partial' : 'due';
-
-              // Platform border color
-              const platformKey = (b.platform || '').toLowerCase();
-              const platformBorder = platformKey.includes('airbnb') ? 'border-l-pink-500'
-                : platformKey.includes('booking') ? 'border-l-blue-500'
-                : platformKey.includes('direct') || platformKey.includes('front') ? 'border-l-green-500'
-                : platformKey.includes('website') ? 'border-l-purple-500'
-                : platformKey.includes('agoda') ? 'border-l-orange-500'
-                : 'border-l-border';
-
-              return editingBooking?.id === b.id ? (
-                <div key={b.id} className="p-3 rounded border border-primary/50 space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <Select value={editingBooking.guest_id} onValueChange={v => setEditingBooking((p: any) => ({...p, guest_id: v}))}>
-                      <SelectTrigger className={inputCls}><SelectValue placeholder="Guest" /></SelectTrigger>
-                      <SelectContent>{guests.map((g: any) => <SelectItem key={g.id} value={g.id}>{g.full_name}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Select value={editingBooking.unit_id} onValueChange={v => setEditingBooking((p: any) => ({...p, unit_id: v}))}>
-                      <SelectTrigger className={inputCls}><SelectValue placeholder="Unit" /></SelectTrigger>
-                      <SelectContent>{units.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <Input value={editingBooking.platform} onChange={e => setEditingBooking((p: any) => ({...p, platform: e.target.value}))} placeholder="Platform" className={inputCls} />
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><label className="font-body text-xs text-muted-foreground">Check-in</label><Input type="date" value={editingBooking.check_in} onChange={e => setEditingBooking((p: any) => ({...p, check_in: e.target.value}))} className={inputCls} /></div>
-                    <div><label className="font-body text-xs text-muted-foreground">Check-out</label><Input type="date" value={editingBooking.check_out} onChange={e => setEditingBooking((p: any) => ({...p, check_out: e.target.value}))} className={inputCls} /></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input value={editingBooking.room_rate} onChange={e => setEditingBooking((p: any) => ({...p, room_rate: e.target.value}))} placeholder="Room rate" type="number" className={inputCls} />
-                    <Input value={editingBooking.paid_amount} onChange={e => setEditingBooking((p: any) => ({...p, paid_amount: e.target.value}))} placeholder="Paid amount" type="number" className={inputCls} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input value={editingBooking.adults} onChange={e => setEditingBooking((p: any) => ({...p, adults: e.target.value}))} placeholder="Adults" type="number" className={inputCls} />
-                    <Input value={editingBooking.commission_applied} onChange={e => setEditingBooking((p: any) => ({...p, commission_applied: e.target.value}))} placeholder="Commission" type="number" className={inputCls} />
-                  </div>
-                  <div className="flex justify-end"><SaveCancelBtns onSave={saveBooking} onCancel={() => setEditingBooking(null)} /></div>
-                </div>
-              ) : (
-                <div key={b.id} className={`p-3 rounded border border-border border-l-4 ${platformBorder} space-y-2`}>
-                  {/* Row 1: Guest name + Status badges + Actions */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-body text-sm text-foreground font-medium">{guestMap.get(b.guest_id) || '—'}</p>
-                      <p className="font-body text-xs text-muted-foreground">{unitMap.get(b.unit_id)?.name || '—'} · {b.platform || '—'} · {b.adults} guest{b.adults !== 1 ? 's' : ''}</p>
+          {/* Booking list */}
+          <div className="space-y-2">
+            {monthBookings
+              .filter((b: any) => {
+                if (ledgerFilter === 'all') return true;
+                const status = getBookingStatus(b);
+                if (ledgerFilter === 'staying') return status === 'STAYING';
+                if (ledgerFilter === 'arriving') return status === 'ARRIVING';
+                if (ledgerFilter === 'departing') return status === 'DEPARTING';
+                if (ledgerFilter === 'unpaid') return Number(b.paid_amount) <= 0;
+                return true;
+              })
+              .map((b: any) => {
+                const status = getBookingStatus(b);
+                const isPaid = Number(b.paid_amount) > 0;
+                if (editingBooking?.id === b.id) {
+                  return (
+                    <div key={b.id} className="p-3 rounded border border-primary/50 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Select value={editingBooking.guest_id} onValueChange={v => setEditingBooking((p: any) => ({...p, guest_id: v}))}>
+                          <SelectTrigger className={inputCls}><SelectValue placeholder="Guest" /></SelectTrigger>
+                          <SelectContent>{guests.map((g: any) => <SelectItem key={g.id} value={g.id}>{g.full_name}</SelectItem>)}</SelectContent>
+                        </Select>
+                        <Select value={editingBooking.unit_id} onValueChange={v => setEditingBooking((p: any) => ({...p, unit_id: v}))}>
+                          <SelectTrigger className={inputCls}><SelectValue placeholder="Unit" /></SelectTrigger>
+                          <SelectContent>{units.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                      <Input value={editingBooking.platform} onChange={e => setEditingBooking((p: any) => ({...p, platform: e.target.value}))} placeholder="Platform" className={inputCls} />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div><label className="font-body text-xs text-muted-foreground">Check-in</label><Input type="date" value={editingBooking.check_in} onChange={e => setEditingBooking((p: any) => ({...p, check_in: e.target.value}))} className={inputCls} /></div>
+                        <div><label className="font-body text-xs text-muted-foreground">Check-out</label><Input type="date" value={editingBooking.check_out} onChange={e => setEditingBooking((p: any) => ({...p, check_out: e.target.value}))} className={inputCls} /></div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input value={editingBooking.room_rate} onChange={e => setEditingBooking((p: any) => ({...p, room_rate: e.target.value}))} type="number" placeholder="Room rate" className={inputCls} />
+                        <Input value={editingBooking.paid_amount} onChange={e => setEditingBooking((p: any) => ({...p, paid_amount: e.target.value}))} type="number" placeholder="Paid" className={inputCls} />
+                      </div>
+                      <div className="flex justify-end"><SaveCancelBtns onSave={saveBooking} onCancel={() => setEditingBooking(null)} /></div>
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0 flex-wrap justify-end">
-                      {isStaying && <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 font-body text-[10px] h-5">STAYING NOW</Badge>}
-                      {paymentStatus === 'paid' && <Badge className="bg-green-500/20 text-green-400 border-green-500/30 font-body text-[10px] h-5">PAID</Badge>}
-                      {paymentStatus === 'partial' && <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 font-body text-[10px] h-5">PARTIAL</Badge>}
-                      {paymentStatus === 'due' && <Badge className="bg-red-500/20 text-red-400 border-red-500/30 font-body text-[10px] h-5">DUE</Badge>}
+                  );
+                }
+                return (
+                  <div key={b.id} className="p-3 rounded border border-border space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <p className="font-body text-sm text-foreground font-medium">{guestMap.get(b.guest_id) || 'Unknown'}</p>
+                        <Badge className={`text-[10px] font-body ${platformColor(b.platform)}`}>{b.platform || '–'}</Badge>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {!isPaid && <Badge variant="destructive" className="font-body text-[10px]">DUE</Badge>}
+                        {status === 'STAYING' && <Badge className="bg-green-500/20 text-green-300 border-green-500/30 text-[10px] font-body">STAYING</Badge>}
+                        <EditBtn onClick={() => setEditingBooking({ ...b, room_rate: String(b.room_rate), paid_amount: String(b.paid_amount), adults: String(b.adults), addons_total: String(b.addons_total), commission_applied: String(b.commission_applied) })} />
+                        <DelBtn onClick={() => deleteRow('resort_ops_bookings', b.id)} />
+                      </div>
                     </div>
+                    <p className="font-body text-xs text-muted-foreground">
+                      {unitMap.get(b.unit_id)?.name || '–'} · {b.check_in} → {b.check_out} · {b.adults} pax
+                    </p>
+                    <p className="font-body text-xs text-muted-foreground">
+                      Rate: ₱{fmt(Number(b.room_rate))} · Paid: ₱{fmt(Number(b.paid_amount))}
+                      {Number(b.commission_applied) > 0 && ` · Comm: ₱${fmt(Number(b.commission_applied))}`}
+                    </p>
+                    {b.notes && <p className="font-body text-xs text-muted-foreground italic">{b.notes}</p>}
                   </div>
-
-                  {/* Row 2: Dates with today highlights */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`font-body text-xs px-1.5 py-0.5 rounded ${arrivesToday ? 'bg-green-500/20 text-green-400 font-medium' : 'text-muted-foreground'}`}>
-                      {b.check_in}
-                    </span>
-                    <span className="font-body text-xs text-muted-foreground">→</span>
-                    <span className={`font-body text-xs px-1.5 py-0.5 rounded ${departsToday ? 'bg-red-500/20 text-red-400 font-medium' : 'text-muted-foreground'}`}>
-                      {b.check_out}
-                    </span>
-                    {arrivesToday && <Badge className="bg-green-500/20 text-green-400 border-green-500/30 font-body text-[10px] h-5">ARRIVES TODAY</Badge>}
-                    {departsToday && <Badge className="bg-red-500/20 text-red-400 border-red-500/30 font-body text-[10px] h-5">DEPARTS TODAY</Badge>}
-                  </div>
-
-                  {/* Row 3: Financial summary */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between font-body text-xs">
-                      <span className="text-foreground font-bold">Total: ₱{fmt(rate)}</span>
-                      <span className="text-green-400">Paid: ₱{fmt(paid)}</span>
-                      {balance > 0 && <span className="text-red-400 font-medium">DUE: ₱{fmt(balance)}</span>}
-                    </div>
-                    <Progress value={paidPct} className="h-1.5" />
-                  </div>
-
-                  {/* Row 4: Quick actions */}
-                  <div className="flex items-center justify-between pt-1 border-t border-border/50">
-                    <div className="flex gap-0.5">
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-green-400 flex-shrink-0" title="Quick payment"
-                        onClick={() => {
-                          setEditingBooking({ ...b, room_rate: String(b.room_rate), paid_amount: String(b.room_rate), adults: String(b.adults), addons_total: String(b.addons_total), commission_applied: String(b.commission_applied) });
-                        }}>
-                        <Banknote className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-blue-400 flex-shrink-0" title="Extend stay"
-                        onClick={() => {
-                          setEditingBooking({ ...b, room_rate: String(b.room_rate), paid_amount: String(b.paid_amount), adults: String(b.adults), addons_total: String(b.addons_total), commission_applied: String(b.commission_applied) });
-                        }}>
-                        <CalendarPlus className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-accent flex-shrink-0" title="Print invoice"
-                        onClick={() => toast.info(`Invoice for ${guestMap.get(b.guest_id) || 'guest'}`)}>
-                        <Printer className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                    <div className="flex gap-0.5">
-                      <EditBtn onClick={() => setEditingBooking({ ...b, room_rate: String(b.room_rate), paid_amount: String(b.paid_amount), adults: String(b.adults), addons_total: String(b.addons_total), commission_applied: String(b.commission_applied) })} />
-                      <DelBtn onClick={() => deleteRow('resort_ops_bookings', b.id)} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            {monthBookings.length === 0 && <p className="font-body text-sm text-muted-foreground text-center py-4">No bookings this month</p>}
+                );
+              })}
           </div>
-          {/* Add booking inline */}
+          {/* Add booking form */}
           <div className="space-y-2 pt-2 border-t border-border">
             <div className="grid grid-cols-2 gap-2">
               <Select value={newBooking.guest_id} onValueChange={v => setNewBooking(p => ({...p, guest_id: v}))}>
-                <SelectTrigger className="bg-secondary border-border text-foreground font-body"><SelectValue placeholder="Guest" /></SelectTrigger>
+                <SelectTrigger className={inputCls}><SelectValue placeholder="Guest" /></SelectTrigger>
                 <SelectContent>{guests.map((g: any) => <SelectItem key={g.id} value={g.id}>{g.full_name}</SelectItem>)}</SelectContent>
               </Select>
               <Select value={newBooking.unit_id} onValueChange={v => setNewBooking(p => ({...p, unit_id: v}))}>
-                <SelectTrigger className="bg-secondary border-border text-foreground font-body"><SelectValue placeholder="Unit" /></SelectTrigger>
+                <SelectTrigger className={inputCls}><SelectValue placeholder="Unit" /></SelectTrigger>
                 <SelectContent>{units.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <Input placeholder="Platform" value={newBooking.platform} onChange={e => setNewBooking(p => ({...p, platform: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <Input placeholder="Platform" value={newBooking.platform} onChange={e => setNewBooking(p => ({...p, platform: e.target.value}))} className={inputCls} />
             <div className="grid grid-cols-2 gap-2">
-              <div><label className="font-body text-xs text-muted-foreground">Check-in</label><Input type="date" value={newBooking.check_in} onChange={e => setNewBooking(p => ({...p, check_in: e.target.value}))} className="bg-secondary border-border text-foreground font-body" /></div>
-              <div><label className="font-body text-xs text-muted-foreground">Check-out</label><Input type="date" value={newBooking.check_out} onChange={e => setNewBooking(p => ({...p, check_out: e.target.value}))} className="bg-secondary border-border text-foreground font-body" /></div>
+              <div><label className="font-body text-xs text-muted-foreground">Check-in</label><Input type="date" value={newBooking.check_in} onChange={e => setNewBooking(p => ({...p, check_in: e.target.value}))} className={inputCls} /></div>
+              <div><label className="font-body text-xs text-muted-foreground">Check-out</label><Input type="date" value={newBooking.check_out} onChange={e => setNewBooking(p => ({...p, check_out: e.target.value}))} className={inputCls} /></div>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Room rate" type="number" value={newBooking.room_rate} onChange={e => setNewBooking(p => ({...p, room_rate: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-              <Input placeholder="Paid amount" type="number" value={newBooking.paid_amount} onChange={e => setNewBooking(p => ({...p, paid_amount: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+              <Input placeholder="Room rate" type="number" value={newBooking.room_rate} onChange={e => setNewBooking(p => ({...p, room_rate: e.target.value}))} className={inputCls} />
+              <Input placeholder="Paid amount" type="number" value={newBooking.paid_amount} onChange={e => setNewBooking(p => ({...p, paid_amount: e.target.value}))} className={inputCls} />
             </div>
             <Button size="sm" onClick={addBooking} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Booking</Button>
           </div>
@@ -668,7 +783,7 @@ const ResortOpsDashboard = () => {
         </CardContent>
       </Card>
 
-      {/* ── Expenses Ledger ── */}
+      {/* ── Expenses Ledger (VAT-Compliant) ── */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
           <CardTitle className="font-display text-sm tracking-wider">Expenses</CardTitle>
@@ -699,10 +814,12 @@ const ResortOpsDashboard = () => {
           {(() => {
             const filtered = expenseCategoryFilter === 'all' ? monthExpenses : monthExpenses.filter((e: any) => e.category === expenseCategoryFilter);
             const total = filtered.reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
+            const totalVat = filtered.reduce((s: number, e: any) => s + Number(e.vat_amount || 0), 0);
             const cats = new Set(filtered.map((e: any) => e.category)).size;
             return (
               <div className="flex flex-wrap gap-3 px-2 py-2 rounded bg-secondary border border-border font-body text-xs text-muted-foreground">
                 <span>Total: <span className="text-foreground font-medium">₱{fmt(total)}</span></span>
+                <span>Input VAT: <span className="text-foreground font-medium">₱{fmtDec(totalVat)}</span></span>
                 <span>Categories: <span className="text-foreground font-medium">{cats}</span></span>
                 <span>Period: <span className="text-foreground font-medium">{monthLabel(selectedMonth)}</span></span>
               </div>
@@ -714,25 +831,22 @@ const ResortOpsDashboard = () => {
             {(expenseCategoryFilter === 'all' ? monthExpenses : monthExpenses.filter((e: any) => e.category === expenseCategoryFilter)).map((e: any) => (
               editingExpense?.id === e.id ? (
                 <div key={e.id} className="p-3 rounded border border-primary/50 space-y-2">
-                  <Input value={editingExpense.name} onChange={ev => setEditingExpense((p: any) => ({...p, name: ev.target.value}))} placeholder="Name" className={inputCls} />
-                  <Select value={editingExpense.category} onValueChange={v => setEditingExpense((p: any) => ({...p, category: v}))}>
-                    <SelectTrigger className={inputCls}><SelectValue placeholder="Category" /></SelectTrigger>
-                    <SelectContent>{EXPENSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input value={editingExpense.amount} onChange={ev => setEditingExpense((p: any) => ({...p, amount: ev.target.value}))} placeholder="Amount" type="number" className={inputCls} />
-                    <Input value={editingExpense.expense_date} onChange={ev => setEditingExpense((p: any) => ({...p, expense_date: ev.target.value}))} type="date" className={inputCls} />
-                  </div>
-                  <Textarea value={editingExpense.notes || ''} onChange={ev => setEditingExpense((p: any) => ({...p, notes: ev.target.value}))} placeholder="Notes (optional)" className="bg-secondary border-border text-foreground font-body text-xs min-h-[60px]" />
-                  <Input value={editingExpense.image_url || ''} onChange={ev => setEditingExpense((p: any) => ({...p, image_url: ev.target.value}))} placeholder="Image/Receipt URL (optional)" className={inputCls} />
+                  <ExpenseFormFields data={editingExpense} onChange={setEditingExpense} />
                   <div className="flex justify-end"><SaveCancelBtns onSave={saveExpense} onCancel={() => setEditingExpense(null)} /></div>
                 </div>
               ) : (
-                <div key={e.id} className="flex items-center justify-between py-2 px-2 border-b border-border">
+                <div key={e.id} className="flex items-start justify-between py-2 px-2 border-b border-border">
                   <div className="flex-1 min-w-0">
-                    <p className="font-body text-sm text-foreground font-medium">{e.name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-body text-sm text-foreground font-medium">{e.name}</p>
+                      <Badge variant="outline" className="font-body text-[10px]">{e.vat_status || 'Non-VAT'}</Badge>
+                      {!e.is_paid && <Badge variant="destructive" className="font-body text-[10px]">UNPAID</Badge>}
+                    </div>
                     <p className="font-body text-xs text-muted-foreground">{e.category} · {e.expense_date}</p>
-                    {e.notes && <p className="font-body text-xs text-muted-foreground truncate max-w-[200px]">{e.notes}</p>}
+                    {e.supplier_tin && <p className="font-body text-xs text-muted-foreground">TIN: {e.supplier_tin}</p>}
+                    {e.description && <p className="font-body text-xs text-muted-foreground truncate max-w-[250px]">{e.description}</p>}
+                    {e.notes && <p className="font-body text-xs text-muted-foreground truncate max-w-[200px] italic">{e.notes}</p>}
+                    {Number(e.vat_amount) > 0 && <p className="font-body text-xs text-muted-foreground">VAT: ₱{fmtDec(Number(e.vat_amount))}</p>}
                   </div>
                   <div className="flex items-center gap-1">
                     {e.image_url && (
@@ -741,7 +855,14 @@ const ResortOpsDashboard = () => {
                       </a>
                     )}
                     <span className="font-body text-sm text-foreground mr-1">₱{fmt(Number(e.amount))}</span>
-                    <EditBtn onClick={() => setEditingExpense({ ...e, amount: String(e.amount) })} />
+                    <EditBtn onClick={() => setEditingExpense({
+                      ...e, amount: String(e.amount), withholding_tax: String(e.withholding_tax || 0),
+                      supplier_tin: e.supplier_tin || '', vat_status: e.vat_status || 'Non-VAT',
+                      invoice_number: e.invoice_number || '', official_receipt_number: e.official_receipt_number || '',
+                      description: e.description || '', payment_method: e.payment_method || 'Cash',
+                      is_paid: e.is_paid !== false, project_unit: e.project_unit || '',
+                      notes: e.notes || '', image_url: e.image_url || '',
+                    })} />
                     <DelBtn onClick={() => deleteRow('resort_ops_expenses', e.id)} />
                   </div>
                 </div>
@@ -752,20 +873,10 @@ const ResortOpsDashboard = () => {
           {/* Add Expense Form */}
           {showAddExpenseForm ? (
             <div className="p-3 rounded border border-border space-y-2">
-              <Input placeholder="Name" value={newExpense.name} onChange={e => setNewExpense(p => ({...p, name: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-              <Select value={newExpense.category} onValueChange={v => setNewExpense(p => ({...p, category: v}))}>
-                <SelectTrigger className="bg-secondary border-border text-foreground font-body"><SelectValue placeholder="Category" /></SelectTrigger>
-                <SelectContent>{EXPENSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-              </Select>
-              <div className="grid grid-cols-2 gap-2">
-                <Input placeholder="Amount" type="number" value={newExpense.amount} onChange={e => setNewExpense(p => ({...p, amount: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-                <Input type="date" value={newExpense.expense_date} onChange={e => setNewExpense(p => ({...p, expense_date: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-              </div>
-              <Textarea placeholder="Notes (optional)" value={newExpense.notes} onChange={e => setNewExpense(p => ({...p, notes: e.target.value}))} className="bg-secondary border-border text-foreground font-body text-sm min-h-[60px]" />
-              <Input placeholder="Image/Receipt URL (optional)" value={newExpense.image_url} onChange={e => setNewExpense(p => ({...p, image_url: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+              <ExpenseFormFields data={newExpense} onChange={setNewExpense} />
               <div className="flex gap-2">
                 <Button size="sm" onClick={addExpense} className="flex-1"><Check className="w-4 h-4 mr-1" /> Save</Button>
-                <Button size="sm" variant="outline" onClick={() => { setShowAddExpenseForm(false); setNewExpense({ name: '', category: '', amount: '', expense_date: '', notes: '', image_url: '' }); }}>Cancel</Button>
+                <Button size="sm" variant="outline" onClick={() => { setShowAddExpenseForm(false); setNewExpense({ ...EMPTY_EXPENSE }); }}>Cancel</Button>
               </div>
             </div>
           ) : (
@@ -811,44 +922,41 @@ const ResortOpsDashboard = () => {
                         <SelectItem value="critical">Critical</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Input value={editingTask.description || ''} onChange={e => setEditingTask((p: any) => ({...p, description: e.target.value}))} placeholder="Description" className={inputCls} />
+                    <Textarea value={editingTask.description || ''} onChange={e => setEditingTask((p: any) => ({...p, description: e.target.value}))} placeholder="Description" className="bg-secondary border-border text-foreground font-body text-sm min-h-[60px]" />
                     <div className="flex justify-end"><SaveCancelBtns onSave={saveTask} onCancel={() => setEditingTask(null)} /></div>
                   </div>
                 );
               }
               return (
-                <div key={t.id} className={`p-3 rounded border space-y-1 ${overdue ? 'border-destructive bg-destructive/10' : 'border-border'}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {isCritical && <span className="w-2 h-2 rounded-full bg-destructive animate-pulse flex-shrink-0" />}
-                      <button className="font-body text-sm text-foreground text-left flex-1 min-w-0" onClick={() => toggleTaskStatus(t.id, t.status)}>
-                        <span className={t.status === 'done' ? 'line-through text-muted-foreground' : ''}>{t.title}</span>
-                      </button>
-                    </div>
-                    <div className="flex gap-0.5">
-                      <EditBtn onClick={() => setEditingTask({ ...t })} />
-                      <DelBtn onClick={() => deleteRow('resort_ops_tasks', t.id)} />
+                <div key={t.id} className={`flex items-center justify-between py-2 px-2 border-b border-border ${isCritical ? 'border-l-2 border-l-red-500' : ''}`}>
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <Button size="icon" variant="ghost" className="h-6 w-6 flex-shrink-0" onClick={() => toggleTaskStatus(t.id, t.status)}>
+                      {t.status === 'done' ? <Check className="w-3.5 h-3.5 text-green-400" /> : <div className={`w-3 h-3 rounded-full border ${t.status === 'in_progress' ? 'border-amber-400 bg-amber-400/20' : 'border-muted-foreground'}`} />}
+                    </Button>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-body text-sm ${t.status === 'done' ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{t.title}</p>
+                      <p className="font-body text-xs text-muted-foreground">{t.category} · {t.due_date}
+                        {overdue && <span className="text-red-400 ml-1">OVERDUE</span>}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant={t.priority === 'critical' ? 'destructive' : t.priority === 'high' ? 'default' : 'secondary'}
-                      className="font-body text-[10px]">{t.priority}</Badge>
-                    <Badge variant="outline" className="font-body text-[10px]">{t.status}</Badge>
-                    <span className="font-body text-xs text-muted-foreground">{t.category}</span>
-                    <span className="font-body text-xs text-muted-foreground ml-auto">{t.due_date}</span>
+                  <div className="flex items-center gap-1">
+                    <Badge variant={t.priority === 'critical' ? 'destructive' : t.priority === 'high' ? 'default' : 'secondary'} className="font-body text-[10px]">{t.priority}</Badge>
+                    <EditBtn onClick={() => setEditingTask({ ...t })} />
+                    <DelBtn onClick={() => deleteRow('resort_ops_tasks', t.id)} />
                   </div>
                 </div>
               );
             })}
           </div>
           <div className="space-y-2 pt-2 border-t border-border">
-            <Input placeholder="Title" value={newTask.title} onChange={e => setNewTask(p => ({...p, title: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+            <Input placeholder="Task title" value={newTask.title} onChange={e => setNewTask(p => ({...p, title: e.target.value}))} className={inputCls} />
             <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Category" value={newTask.category} onChange={e => setNewTask(p => ({...p, category: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-              <Input type="date" value={newTask.due_date} onChange={e => setNewTask(p => ({...p, due_date: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+              <Input placeholder="Category" value={newTask.category} onChange={e => setNewTask(p => ({...p, category: e.target.value}))} className={inputCls} />
+              <Input type="date" value={newTask.due_date} onChange={e => setNewTask(p => ({...p, due_date: e.target.value}))} className={inputCls} />
             </div>
             <Select value={newTask.priority} onValueChange={v => setNewTask(p => ({...p, priority: v}))}>
-              <SelectTrigger className="bg-secondary border-border text-foreground font-body"><SelectValue /></SelectTrigger>
+              <SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="low">Low</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
@@ -861,41 +969,38 @@ const ResortOpsDashboard = () => {
         </CardContent>
       </Card>
 
-      {/* ── Assets on Hand ── */}
+      {/* ── Assets ── */}
       <Card className="bg-card border-border">
-        <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Assets on Hand</CardTitle></CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Assets & Accounts</CardTitle></CardHeader>
         <CardContent className="space-y-2">
           <div className="space-y-2">
-            {assets.map((a: any) => (
+            {assets.map((a: any) =>
               editingAsset?.id === a.id ? (
-                <div key={a.id} className="p-3 rounded border border-primary/50 space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input value={editingAsset.name} onChange={e => setEditingAsset((p: any) => ({...p, name: e.target.value}))} placeholder="Name" className={inputCls} />
-                    <Input value={editingAsset.type} onChange={e => setEditingAsset((p: any) => ({...p, type: e.target.value}))} placeholder="Type" className={inputCls} />
-                  </div>
-                  <Input value={editingAsset.balance} onChange={e => setEditingAsset((p: any) => ({...p, balance: e.target.value}))} placeholder="Balance" type="number" className={inputCls} />
-                  <div className="flex justify-end"><SaveCancelBtns onSave={saveAsset} onCancel={() => setEditingAsset(null)} /></div>
+                <div key={a.id} className="flex items-center gap-2 p-2 rounded border border-primary/50">
+                  <Input value={editingAsset.name} onChange={e => setEditingAsset((p: any) => ({...p, name: e.target.value}))} className={`${inputCls} flex-1`} />
+                  <Input value={editingAsset.type} onChange={e => setEditingAsset((p: any) => ({...p, type: e.target.value}))} placeholder="Type" className={`${inputCls} w-24`} />
+                  <Input value={editingAsset.balance} onChange={e => setEditingAsset((p: any) => ({...p, balance: e.target.value}))} type="number" placeholder="Balance" className={`${inputCls} w-28`} />
+                  <SaveCancelBtns onSave={saveAsset} onCancel={() => setEditingAsset(null)} />
                 </div>
               ) : (
                 <div key={a.id} className="flex items-center justify-between py-2 px-2 border-b border-border">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-body text-sm text-foreground font-medium">{a.name}</p>
-                    <p className="font-body text-xs text-muted-foreground">{a.type} · Updated: {a.last_updated ? format(new Date(a.last_updated), 'MMM d, yyyy') : '—'}</p>
+                  <div className="flex-1">
+                    <p className="font-body text-sm text-foreground">{a.name} <span className="text-muted-foreground text-xs">({a.type})</span></p>
                   </div>
-                  <span className="font-body text-sm text-foreground mr-2">₱{fmt(Number(a.balance))}</span>
-                  <div className="flex gap-0.5">
+                  <div className="flex items-center gap-1">
+                    <span className="font-body text-sm text-foreground">₱{fmt(Number(a.balance))}</span>
                     <EditBtn onClick={() => setEditingAsset({ ...a, balance: String(a.balance) })} />
                     <DelBtn onClick={() => deleteRow('resort_ops_assets', a.id)} />
                   </div>
                 </div>
               )
-            ))}
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-2 pt-2">
-            <Input placeholder="Name" value={newAsset.name} onChange={e => setNewAsset(p => ({...p, name: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-            <Input placeholder="Type" value={newAsset.type} onChange={e => setNewAsset(p => ({...p, type: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+          <div className="grid grid-cols-3 gap-2">
+            <Input placeholder="Name" value={newAsset.name} onChange={e => setNewAsset(p => ({...p, name: e.target.value}))} className={inputCls} />
+            <Input placeholder="Type" value={newAsset.type} onChange={e => setNewAsset(p => ({...p, type: e.target.value}))} className={inputCls} />
+            <Input placeholder="Balance" type="number" value={newAsset.balance} onChange={e => setNewAsset(p => ({...p, balance: e.target.value}))} className={inputCls} />
           </div>
-          <Input placeholder="Balance" type="number" value={newAsset.balance} onChange={e => setNewAsset(p => ({...p, balance: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
           <Button size="sm" onClick={addAsset} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Asset</Button>
         </CardContent>
       </Card>
@@ -905,39 +1010,39 @@ const ResortOpsDashboard = () => {
         <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Incoming Payments</CardTitle></CardHeader>
         <CardContent className="space-y-2">
           <div className="space-y-2">
-            {monthPayments.map((p: any) => (
+            {monthPayments.map((p: any) =>
               editingPayment?.id === p.id ? (
-                <div key={p.id} className="p-3 rounded border border-primary/50 space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input value={editingPayment.source} onChange={e => setEditingPayment((prev: any) => ({...prev, source: e.target.value}))} placeholder="Source" className={inputCls} />
-                    <Input value={editingPayment.amount} onChange={e => setEditingPayment((prev: any) => ({...prev, amount: e.target.value}))} placeholder="Amount" type="number" className={inputCls} />
-                  </div>
-                  <div><label className="font-body text-xs text-muted-foreground">Expected date</label><Input type="date" value={editingPayment.expected_date} onChange={e => setEditingPayment((prev: any) => ({...prev, expected_date: e.target.value}))} className={inputCls} /></div>
-                  <div className="flex justify-end"><SaveCancelBtns onSave={savePayment} onCancel={() => setEditingPayment(null)} /></div>
+                <div key={p.id} className="flex items-center gap-2 p-2 rounded border border-primary/50">
+                  <Input value={editingPayment.source} onChange={e => setEditingPayment((pr: any) => ({...pr, source: e.target.value}))} className={`${inputCls} flex-1`} />
+                  <Input value={editingPayment.amount} onChange={e => setEditingPayment((pr: any) => ({...pr, amount: e.target.value}))} type="number" className={`${inputCls} w-28`} />
+                  <Input type="date" value={editingPayment.expected_date} onChange={e => setEditingPayment((pr: any) => ({...pr, expected_date: e.target.value}))} className={`${inputCls} w-36`} />
+                  <SaveCancelBtns onSave={savePayment} onCancel={() => setEditingPayment(null)} />
                 </div>
               ) : (
                 <div key={p.id} className="flex items-center justify-between py-2 px-2 border-b border-border">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-body text-sm text-foreground font-medium">{p.source}</p>
-                    <p className="font-body text-xs text-muted-foreground">Expected: {p.expected_date}</p>
+                  <div className="flex-1">
+                    <p className="font-body text-sm text-foreground">{p.source}</p>
+                    <p className="font-body text-xs text-muted-foreground">{p.expected_date}</p>
                   </div>
-                  <span className="font-body text-sm text-foreground mr-2">₱{fmt(Number(p.amount))}</span>
-                  <div className="flex gap-0.5">
+                  <div className="flex items-center gap-1">
+                    <span className="font-body text-sm text-foreground">₱{fmt(Number(p.amount))}</span>
                     <EditBtn onClick={() => setEditingPayment({ ...p, amount: String(p.amount) })} />
                     <DelBtn onClick={() => deleteRow('resort_ops_incoming_payments', p.id)} />
                   </div>
                 </div>
               )
-            ))}
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-2 pt-2">
-            <Input placeholder="Source" value={newPayment.source} onChange={e => setNewPayment(p => ({...p, source: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-            <Input placeholder="Amount" type="number" value={newPayment.amount} onChange={e => setNewPayment(p => ({...p, amount: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+          <div className="grid grid-cols-3 gap-2">
+            <Input placeholder="Source" value={newPayment.source} onChange={e => setNewPayment(p => ({...p, source: e.target.value}))} className={inputCls} />
+            <Input placeholder="Amount" type="number" value={newPayment.amount} onChange={e => setNewPayment(p => ({...p, amount: e.target.value}))} className={inputCls} />
+            <Input type="date" value={newPayment.expected_date} onChange={e => setNewPayment(p => ({...p, expected_date: e.target.value}))} className={inputCls} />
           </div>
-          <div><label className="font-body text-xs text-muted-foreground">Expected date</label><Input type="date" value={newPayment.expected_date} onChange={e => setNewPayment(p => ({...p, expected_date: e.target.value}))} className="bg-secondary border-border text-foreground font-body" /></div>
           <Button size="sm" onClick={addPayment} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Payment</Button>
         </CardContent>
       </Card>
+
+      {showWebhook && <WebhookSettings />}
     </div>
   );
 };
