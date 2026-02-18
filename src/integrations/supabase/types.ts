@@ -605,7 +605,10 @@ export type Database = {
           created_at: string
           expense_date: string
           id: string
+          image_url: string | null
           name: string
+          notes: string | null
+          updated_at: string | null
         }
         Insert: {
           amount?: number
@@ -613,7 +616,10 @@ export type Database = {
           created_at?: string
           expense_date: string
           id?: string
+          image_url?: string | null
           name: string
+          notes?: string | null
+          updated_at?: string | null
         }
         Update: {
           amount?: number
@@ -621,7 +627,10 @@ export type Database = {
           created_at?: string
           expense_date?: string
           id?: string
+          image_url?: string | null
           name?: string
+          notes?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }

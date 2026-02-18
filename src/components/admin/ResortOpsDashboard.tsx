@@ -8,9 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Plus, Trash2, AlertTriangle, Upload, Pencil, Check, X, Banknote, CalendarPlus, Printer, Settings } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Plus, Trash2, AlertTriangle, Upload, Pencil, Check, X, Banknote, CalendarPlus, Printer, Settings, BarChart3, FileUp, ExternalLink } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import ImportReservationsModal from './ImportReservationsModal';
+import ExpenseReportsModal from './ExpenseReportsModal';
+import ExpenseBulkImportModal from './ExpenseBulkImportModal';
 import WebhookSettings from './WebhookSettings';
 import { format, startOfMonth, endOfMonth, getDaysInMonth, eachDayOfInterval, isWithinInterval, parseISO, isBefore } from 'date-fns';
 
@@ -18,6 +21,13 @@ const MONTHS = [
   '2025-10', '2025-11', '2025-12',
   '2026-01', '2026-02', '2026-03', '2026-04', '2026-05',
   '2026-06', '2026-07', '2026-08', '2026-09',
+];
+
+export const EXPENSE_CATEGORIES = [
+  'Food & Beverage', 'Utilities (Electric/Water/Gas/Fuel)', 'Labor/Staff', 'Housekeeping',
+  'Maintenance/Repairs', 'Operations/Supplies', 'Marketing/Admin', 'Professional Services',
+  'Permits/Licenses', 'Transportation', 'Guest Services', 'Taxes/Government',
+  'Capital Expenditures', 'Miscellaneous',
 ];
 
 const monthLabel = (m: string) => {
@@ -141,7 +151,7 @@ const ResortOpsDashboard = () => {
   }, [units, monthBookings, daysInMonth, occupancyData]);
 
   // ── Inline add forms state ──
-  const [newExpense, setNewExpense] = useState({ name: '', category: '', amount: '', expense_date: '' });
+  const [newExpense, setNewExpense] = useState({ name: '', category: '', amount: '', expense_date: '', notes: '', image_url: '' });
   const [newTask, setNewTask] = useState({ title: '', category: '', due_date: '', priority: 'medium', description: '' });
   const [newAsset, setNewAsset] = useState({ name: '', type: '', balance: '' });
   const [newPayment, setNewPayment] = useState({ source: '', amount: '', expected_date: '' });
@@ -149,6 +159,10 @@ const ResortOpsDashboard = () => {
   const [newGuest, setNewGuest] = useState({ full_name: '', email: '', phone: '' });
   const [newBooking, setNewBooking] = useState({ guest_id: '', unit_id: '', platform: '', check_in: '', check_out: '', adults: '1', room_rate: '', addons_total: '0', paid_amount: '0', commission_applied: '0' });
   const [importOpen, setImportOpen] = useState(false);
+  const [expenseReportsOpen, setExpenseReportsOpen] = useState(false);
+  const [expenseBulkImportOpen, setExpenseBulkImportOpen] = useState(false);
+  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('all');
+  const [showAddExpenseForm, setShowAddExpenseForm] = useState(false);
   const [ledgerFilter, setLedgerFilter] = useState<'all' | 'staying' | 'arriving' | 'departing' | 'unpaid'>('all');
   const [showWebhook, setShowWebhook] = useState(false);
 
@@ -168,8 +182,12 @@ const ResortOpsDashboard = () => {
 
   const addExpense = async () => {
     if (!newExpense.name || !newExpense.amount || !newExpense.expense_date) return;
-    await from('resort_ops_expenses').insert({ name: newExpense.name, category: newExpense.category, amount: parseFloat(newExpense.amount), expense_date: newExpense.expense_date });
-    setNewExpense({ name: '', category: '', amount: '', expense_date: '' });
+    await from('resort_ops_expenses').insert({
+      name: newExpense.name, category: newExpense.category, amount: parseFloat(newExpense.amount),
+      expense_date: newExpense.expense_date, notes: newExpense.notes || null, image_url: newExpense.image_url || null,
+    });
+    setNewExpense({ name: '', category: '', amount: '', expense_date: '', notes: '', image_url: '' });
+    setShowAddExpenseForm(false);
     invalidateAll();
     toast.success('Expense added');
   };
@@ -271,7 +289,11 @@ const ResortOpsDashboard = () => {
 
   const saveExpense = async () => {
     if (!editingExpense) return;
-    await from('resort_ops_expenses').update({ name: editingExpense.name, category: editingExpense.category, amount: parseFloat(editingExpense.amount) || 0, expense_date: editingExpense.expense_date }).eq('id', editingExpense.id);
+    await from('resort_ops_expenses').update({
+      name: editingExpense.name, category: editingExpense.category,
+      amount: parseFloat(editingExpense.amount) || 0, expense_date: editingExpense.expense_date,
+      notes: editingExpense.notes || null, image_url: editingExpense.image_url || null,
+    }).eq('id', editingExpense.id);
     setEditingExpense(null);
     invalidateAll();
     toast.success('Expense updated');
@@ -648,18 +670,61 @@ const ResortOpsDashboard = () => {
 
       {/* ── Expenses Ledger ── */}
       <Card className="bg-card border-border">
-        <CardHeader className="pb-3"><CardTitle className="font-display text-sm tracking-wider">Expenses</CardTitle></CardHeader>
-        <CardContent className="space-y-2">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="font-display text-sm tracking-wider">Expenses</CardTitle>
+          <div className="flex gap-1.5">
+            <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setExpenseReportsOpen(true)}>
+              <BarChart3 className="w-3.5 h-3.5 mr-1" /> Reports
+            </Button>
+            <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setExpenseBulkImportOpen(true)}>
+              <FileUp className="w-3.5 h-3.5 mr-1" /> Import
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Category Filter */}
+          <div className="flex flex-wrap gap-1.5">
+            <Select value={expenseCategoryFilter} onValueChange={setExpenseCategoryFilter}>
+              <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs h-8 w-auto min-w-[160px]">
+                <SelectValue placeholder="All Categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {EXPENSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Summary Bar */}
+          {(() => {
+            const filtered = expenseCategoryFilter === 'all' ? monthExpenses : monthExpenses.filter((e: any) => e.category === expenseCategoryFilter);
+            const total = filtered.reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
+            const cats = new Set(filtered.map((e: any) => e.category)).size;
+            return (
+              <div className="flex flex-wrap gap-3 px-2 py-2 rounded bg-secondary border border-border font-body text-xs text-muted-foreground">
+                <span>Total: <span className="text-foreground font-medium">₱{fmt(total)}</span></span>
+                <span>Categories: <span className="text-foreground font-medium">{cats}</span></span>
+                <span>Period: <span className="text-foreground font-medium">{monthLabel(selectedMonth)}</span></span>
+              </div>
+            );
+          })()}
+
+          {/* Expense List */}
           <div className="space-y-2">
-            {monthExpenses.map((e: any) => (
+            {(expenseCategoryFilter === 'all' ? monthExpenses : monthExpenses.filter((e: any) => e.category === expenseCategoryFilter)).map((e: any) => (
               editingExpense?.id === e.id ? (
                 <div key={e.id} className="p-3 rounded border border-primary/50 space-y-2">
+                  <Input value={editingExpense.name} onChange={ev => setEditingExpense((p: any) => ({...p, name: ev.target.value}))} placeholder="Name" className={inputCls} />
+                  <Select value={editingExpense.category} onValueChange={v => setEditingExpense((p: any) => ({...p, category: v}))}>
+                    <SelectTrigger className={inputCls}><SelectValue placeholder="Category" /></SelectTrigger>
+                    <SelectContent>{EXPENSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                  </Select>
                   <div className="grid grid-cols-2 gap-2">
-                    <Input value={editingExpense.name} onChange={ev => setEditingExpense((p: any) => ({...p, name: ev.target.value}))} placeholder="Name" className={inputCls} />
-                    <Input value={editingExpense.category} onChange={ev => setEditingExpense((p: any) => ({...p, category: ev.target.value}))} placeholder="Category" className={inputCls} />
                     <Input value={editingExpense.amount} onChange={ev => setEditingExpense((p: any) => ({...p, amount: ev.target.value}))} placeholder="Amount" type="number" className={inputCls} />
                     <Input value={editingExpense.expense_date} onChange={ev => setEditingExpense((p: any) => ({...p, expense_date: ev.target.value}))} type="date" className={inputCls} />
                   </div>
+                  <Textarea value={editingExpense.notes || ''} onChange={ev => setEditingExpense((p: any) => ({...p, notes: ev.target.value}))} placeholder="Notes (optional)" className="bg-secondary border-border text-foreground font-body text-xs min-h-[60px]" />
+                  <Input value={editingExpense.image_url || ''} onChange={ev => setEditingExpense((p: any) => ({...p, image_url: ev.target.value}))} placeholder="Image/Receipt URL (optional)" className={inputCls} />
                   <div className="flex justify-end"><SaveCancelBtns onSave={saveExpense} onCancel={() => setEditingExpense(null)} /></div>
                 </div>
               ) : (
@@ -667,9 +732,15 @@ const ResortOpsDashboard = () => {
                   <div className="flex-1 min-w-0">
                     <p className="font-body text-sm text-foreground font-medium">{e.name}</p>
                     <p className="font-body text-xs text-muted-foreground">{e.category} · {e.expense_date}</p>
+                    {e.notes && <p className="font-body text-xs text-muted-foreground truncate max-w-[200px]">{e.notes}</p>}
                   </div>
-                  <span className="font-body text-sm text-foreground mr-2">₱{fmt(Number(e.amount))}</span>
-                  <div className="flex gap-0.5">
+                  <div className="flex items-center gap-1">
+                    {e.image_url && (
+                      <a href={e.image_url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary">
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                    <span className="font-body text-sm text-foreground mr-1">₱{fmt(Number(e.amount))}</span>
                     <EditBtn onClick={() => setEditingExpense({ ...e, amount: String(e.amount) })} />
                     <DelBtn onClick={() => deleteRow('resort_ops_expenses', e.id)} />
                   </div>
@@ -677,15 +748,43 @@ const ResortOpsDashboard = () => {
               )
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-2 pt-2">
-            <Input placeholder="Name" value={newExpense.name} onChange={e => setNewExpense(p => ({...p, name: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-            <Input placeholder="Category" value={newExpense.category} onChange={e => setNewExpense(p => ({...p, category: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-            <Input placeholder="Amount" type="number" value={newExpense.amount} onChange={e => setNewExpense(p => ({...p, amount: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-            <Input type="date" value={newExpense.expense_date} onChange={e => setNewExpense(p => ({...p, expense_date: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
-          </div>
-          <Button size="sm" onClick={addExpense} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Expense</Button>
+
+          {/* Add Expense Form */}
+          {showAddExpenseForm ? (
+            <div className="p-3 rounded border border-border space-y-2">
+              <Input placeholder="Name" value={newExpense.name} onChange={e => setNewExpense(p => ({...p, name: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+              <Select value={newExpense.category} onValueChange={v => setNewExpense(p => ({...p, category: v}))}>
+                <SelectTrigger className="bg-secondary border-border text-foreground font-body"><SelectValue placeholder="Category" /></SelectTrigger>
+                <SelectContent>{EXPENSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              </Select>
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Amount" type="number" value={newExpense.amount} onChange={e => setNewExpense(p => ({...p, amount: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+                <Input type="date" value={newExpense.expense_date} onChange={e => setNewExpense(p => ({...p, expense_date: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+              </div>
+              <Textarea placeholder="Notes (optional)" value={newExpense.notes} onChange={e => setNewExpense(p => ({...p, notes: e.target.value}))} className="bg-secondary border-border text-foreground font-body text-sm min-h-[60px]" />
+              <Input placeholder="Image/Receipt URL (optional)" value={newExpense.image_url} onChange={e => setNewExpense(p => ({...p, image_url: e.target.value}))} className="bg-secondary border-border text-foreground font-body" />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={addExpense} className="flex-1"><Check className="w-4 h-4 mr-1" /> Save</Button>
+                <Button size="sm" variant="outline" onClick={() => { setShowAddExpenseForm(false); setNewExpense({ name: '', category: '', amount: '', expense_date: '', notes: '', image_url: '' }); }}>Cancel</Button>
+              </div>
+            </div>
+          ) : (
+            <Button size="sm" onClick={() => setShowAddExpenseForm(true)} className="w-full"><Plus className="w-4 h-4 mr-1" /> Add Expense</Button>
+          )}
         </CardContent>
       </Card>
+      <ExpenseReportsModal
+        open={expenseReportsOpen}
+        onOpenChange={setExpenseReportsOpen}
+        expenses={monthExpenses}
+        monthLabel={monthLabel(selectedMonth)}
+        onCategoryClick={(cat) => setExpenseCategoryFilter(cat)}
+      />
+      <ExpenseBulkImportModal
+        open={expenseBulkImportOpen}
+        onOpenChange={setExpenseBulkImportOpen}
+        onComplete={invalidateAll}
+      />
 
       {/* ── Tasks ── */}
       <Card className="bg-card border-border">
