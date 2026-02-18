@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Trash2, AlertTriangle, Upload, Pencil, Check, X, Banknote, CalendarPlus, Printer, Settings, BarChart3, FileUp, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Upload, Pencil, Check, X, Banknote, CalendarPlus, Printer, Settings, BarChart3, FileUp, ExternalLink, Camera, Image } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import ImportReservationsModal from './ImportReservationsModal';
 import ExpenseReportsModal from './ExpenseReportsModal';
@@ -474,7 +474,47 @@ const ResortOpsDashboard = () => {
           </div>
         </div>
         <Textarea placeholder="Notes (optional)" value={data.notes} onChange={e => onChange({...data, notes: e.target.value})} className="bg-secondary border-border text-foreground font-body text-sm min-h-[60px]" />
-        <Input placeholder="Image/Receipt URL (optional)" value={data.image_url} onChange={e => onChange({...data, image_url: e.target.value})} className={inputCls} />
+        {/* Receipt image: URL input OR camera/file upload */}
+        <div className="space-y-1.5">
+          <div className="flex gap-2">
+            <Input placeholder="Image/Receipt URL (optional)" value={data.image_url} onChange={e => onChange({...data, image_url: e.target.value})} className={`${inputCls} flex-1`} />
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5MB'); return; }
+                  const ext = file.name.split('.').pop() || 'jpg';
+                  const path = `expenses/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+                  toast.loading('Uploading receipt...', { id: 'receipt-upload' });
+                  const { error } = await supabase.storage.from('receipts').upload(path, file);
+                  if (error) { toast.error(`Upload failed: ${error.message}`, { id: 'receipt-upload' }); return; }
+                  const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(path);
+                  onChange({...data, image_url: urlData.publicUrl});
+                  toast.success('Receipt uploaded', { id: 'receipt-upload' });
+                }}
+              />
+              <div className="flex items-center justify-center h-10 px-3 rounded-md border border-border bg-secondary text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                <Camera className="w-4 h-4" />
+              </div>
+            </label>
+          </div>
+          {data.image_url && (
+            <div className="flex items-center gap-2 px-2 py-1 rounded bg-muted/50 border border-border">
+              <Image className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+              <a href={data.image_url} target="_blank" rel="noopener noreferrer" className="font-body text-xs text-primary hover:underline truncate flex-1">
+                {data.image_url.includes('receipts/') ? 'View uploaded receipt' : data.image_url}
+              </a>
+              <Button size="icon" variant="ghost" className="h-5 w-5 flex-shrink-0" onClick={() => onChange({...data, image_url: ''})}>
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
