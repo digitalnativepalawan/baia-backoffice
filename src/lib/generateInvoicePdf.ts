@@ -19,127 +19,172 @@ function formatCurrency(amount: number): string {
 
 export async function generateInvoicePdf(order: InvoiceOrder, profile: ResortProfile | null): Promise<void> {
   const doc = new jsPDF({ unit: 'mm', format: 'a5' });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  let y = 12;
+  const pw = doc.internal.pageSize.getWidth();
+  const ml = 14; // margin left
+  const mr = pw - 14; // margin right
+  let y = 16;
 
-  // --- Resort Name Header ---
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text(profile?.resort_name || 'Resort', pageWidth / 2, y, { align: 'center' });
-  y += 6;
+  // ── Header: Resort name (light weight, spaced letters) ──
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(22);
+  doc.setTextColor(40, 40, 40);
+  const resortName = (profile?.resort_name || 'Resort').toUpperCase();
+  doc.text(resortName, pw / 2, y, { align: 'center', charSpace: 3 });
+  y += 5;
 
   if (profile?.tagline) {
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(9);
-    doc.text(profile.tagline, pageWidth / 2, y, { align: 'center' });
+    doc.setFontSize(8);
+    doc.setTextColor(130, 130, 130);
+    doc.text(profile.tagline, pw / 2, y, { align: 'center' });
     y += 4;
   }
 
+  // Thin accent line
+  y += 2;
+  doc.setDrawColor(200, 180, 140);
+  doc.setLineWidth(0.4);
+  doc.line(pw / 2 - 20, y, pw / 2 + 20, y);
+  y += 8;
+
+  // ── Business details (left) + Invoice meta (right) ──
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 100, 100);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  if (profile?.address) {
-    doc.text(profile.address, pageWidth / 2, y, { align: 'center' });
-    y += 4;
-  }
+
+  const leftLines: string[] = [];
+  if (profile?.address) leftLines.push(profile.address);
   const contactParts: string[] = [];
   if (profile?.phone) contactParts.push(profile.phone);
   if (profile?.email) contactParts.push(profile.email);
-  if (contactParts.length) {
-    doc.text(contactParts.join('  |  '), pageWidth / 2, y, { align: 'center' });
-    y += 4;
-  }
+  if (contactParts.length) leftLines.push(contactParts.join('  ·  '));
+  if (profile?.website_url) leftLines.push(profile.website_url);
 
-  // --- Divider ---
-  y += 2;
-  doc.setDrawColor(180);
-  doc.line(10, y, pageWidth - 10, y);
-  y += 6;
+  const leftY = y;
+  leftLines.forEach((line, i) => {
+    doc.text(line, ml, leftY + i * 4);
+  });
 
-  // --- Invoice Title ---
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('OFFICIAL INVOICE', pageWidth / 2, y, { align: 'center' });
-  y += 7;
-
-  // --- Order Info ---
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  // Right side: date + type
   const orderDate = new Date(order.created_at).toLocaleString('en-PH', {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
-  doc.text(`Date: ${orderDate}`, 12, y);
-  y += 5;
-
   const typeLabels: Record<string, string> = {
     Room: 'Room Delivery', DineIn: 'Dine In', Beach: 'Beach Delivery', WalkIn: 'Walk-In',
   };
   const typeLabel = typeLabels[order.order_type] || order.order_type;
-  doc.text(`Type: ${typeLabel}${order.location_detail ? ` - ${order.location_detail}` : ''}`, 12, y);
-  y += 6;
 
-  // --- Divider ---
-  doc.line(10, y, pageWidth - 10, y);
-  y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(130, 130, 130);
+  doc.setFontSize(7);
+  doc.text('DATE', mr, leftY, { align: 'right' });
+  doc.text('TYPE', mr, leftY + 8, { align: 'right' });
 
-  // --- Items ---
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(50, 50, 50);
+  doc.setFontSize(7.5);
+  doc.text(orderDate, mr, leftY + 4, { align: 'right' });
+  doc.text(`${typeLabel}${order.location_detail ? ` — ${order.location_detail}` : ''}`, mr, leftY + 12, { align: 'right' });
+
+  y = leftY + Math.max(leftLines.length * 4, 16) + 4;
+
+  // ── Invoice title ──
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
+  doc.setTextColor(160, 140, 100);
+  doc.text('INVOICE', pw / 2, y, { align: 'center', charSpace: 4 });
+  y += 8;
+
+  // ── Table header ──
+  doc.setFillColor(245, 243, 238);
+  doc.rect(ml, y - 3.5, mr - ml, 5, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 100, 100);
+  doc.text('ITEM', ml + 2, y);
+  doc.text('QTY', pw / 2 + 8, y, { align: 'center' });
+  doc.text('PRICE', mr - 20, y, { align: 'right' });
+  doc.text('TOTAL', mr - 2, y, { align: 'right' });
+  y += 5;
+
+  // ── Line items ──
   const items = order.items || [];
-  items.forEach((item: any) => {
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+
+  items.forEach((item: any, idx: number) => {
     const qty = item.qty || item.quantity;
-    const name = `${qty}x ${item.name}`;
-    const price = formatCurrency(item.price * qty);
-    doc.setFont('helvetica', 'normal');
-    doc.text(name, 12, y);
-    doc.text(price, pageWidth - 12, y, { align: 'right' });
+    const lineTotal = item.price * qty;
+
+    // Alternate row tint
+    if (idx % 2 === 0) {
+      doc.setFillColor(250, 249, 247);
+      doc.rect(ml, y - 3, mr - ml, 5, 'F');
+    }
+
+    doc.setTextColor(50, 50, 50);
+    doc.text(item.name, ml + 2, y);
+    doc.setTextColor(100, 100, 100);
+    doc.text(String(qty), pw / 2 + 8, y, { align: 'center' });
+    doc.text(formatCurrency(item.price), mr - 20, y, { align: 'right' });
+    doc.setTextColor(50, 50, 50);
+    doc.text(formatCurrency(lineTotal), mr - 2, y, { align: 'right' });
     y += 5;
   });
 
-  y += 3;
-  doc.line(10, y, pageWidth - 10, y);
+  // ── Divider ──
+  y += 2;
+  doc.setDrawColor(220, 220, 215);
+  doc.setLineWidth(0.3);
+  doc.line(ml, y, mr, y);
   y += 6;
 
-  // --- Totals ---
+  // ── Totals ──
   const subtotal = items.reduce((sum: number, i: any) => sum + (i.price * (i.qty || i.quantity)), 0);
-  doc.text('Subtotal', 12, y);
-  doc.text(formatCurrency(subtotal), pageWidth - 12, y, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text('Subtotal', ml + 2, y);
+  doc.text(formatCurrency(subtotal), mr - 2, y, { align: 'right' });
   y += 5;
 
-  doc.text('Service Charge (10%)', 12, y);
-  doc.text(formatCurrency(order.service_charge), pageWidth - 12, y, { align: 'right' });
-  y += 5;
+  doc.text('Service Charge (10%)', ml + 2, y);
+  doc.text(formatCurrency(order.service_charge), mr - 2, y, { align: 'right' });
+  y += 6;
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  // Grand total with accent background
   const grandTotal = subtotal + order.service_charge;
-  doc.text('TOTAL', 12, y);
-  doc.text(formatCurrency(grandTotal), pageWidth - 12, y, { align: 'right' });
-  y += 7;
+  doc.setFillColor(245, 243, 238);
+  doc.rect(ml, y - 3.5, mr - ml, 6, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(40, 40, 40);
+  doc.text('TOTAL', ml + 2, y);
+  doc.text(formatCurrency(grandTotal), mr - 2, y, { align: 'right' });
+  y += 8;
 
-  // --- Payment ---
+  // ── Payment ──
   if (order.payment_type) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.line(10, y, pageWidth - 10, y);
-    y += 5;
-    doc.text(`Payment: ${order.payment_type}`, 12, y);
+    doc.setFontSize(7.5);
+    doc.setTextColor(130, 130, 130);
+    doc.text(`Payment: ${order.payment_type}`, ml + 2, y);
     y += 7;
   }
 
-  // --- Footer ---
-  doc.line(10, y, pageWidth - 10, y);
+  // ── Footer ──
+  y += 4;
+  doc.setDrawColor(220, 220, 215);
+  doc.setLineWidth(0.2);
+  doc.line(pw / 2 - 15, y, pw / 2 + 15, y);
   y += 6;
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(9);
-  doc.text('Thank you for dining with us!', pageWidth / 2, y, { align: 'center' });
-  y += 5;
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  if (profile?.website_url) {
-    doc.text(profile.website_url, pageWidth / 2, y, { align: 'center' });
-  }
+  doc.setFontSize(7.5);
+  doc.setTextColor(150, 150, 150);
+  doc.text('Thank you for dining with us', pw / 2, y, { align: 'center' });
 
-  // --- Save ---
+  // ── Save ──
   doc.save(`invoice-${order.id.slice(0, 8)}.pdf`);
 }
 
