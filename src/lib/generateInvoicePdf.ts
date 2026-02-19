@@ -17,48 +17,23 @@ function formatCurrency(amount: number): string {
   return `P${amount.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
-const INVOICE_LOGO_PATH = '/invoice-logo.png';
-
-async function loadImageAsBase64(url: string): Promise<string | null> {
-  try {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject();
-      img.src = url;
-    });
-    const canvas = document.createElement('canvas');
-    // Use higher resolution for crisp output
-    const scale = 3;
-    canvas.width = img.width * scale;
-    canvas.height = img.height * scale;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.scale(scale, scale);
-    ctx.drawImage(img, 0, 0, img.width, img.height);
-    return canvas.toDataURL('image/png');
-  } catch {
-    return null;
-  }
-}
-
 export async function generateInvoicePdf(order: InvoiceOrder, profile: ResortProfile | null): Promise<void> {
   const doc = new jsPDF({ unit: 'mm', format: 'a5' });
   const pageWidth = doc.internal.pageSize.getWidth();
   let y = 12;
 
-  // --- Hardcoded Logo ---
-  const logoData = await loadImageAsBase64(INVOICE_LOGO_PATH);
-  if (logoData) {
-    // Logo is wide (landscape), use width-based sizing
-    const logoW = 50;
-    const logoH = 18;
-    doc.addImage(logoData, 'PNG', (pageWidth - logoW) / 2, y, logoW, logoH);
-    y += logoH + 3;
-  }
+  // --- Resort Name Header ---
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text(profile?.resort_name || 'Resort', pageWidth / 2, y, { align: 'center' });
+  y += 6;
 
-  // --- Resort Header (logo only, no text) ---
+  if (profile?.tagline) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(9);
+    doc.text(profile.tagline, pageWidth / 2, y, { align: 'center' });
+    y += 4;
+  }
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
@@ -160,7 +135,9 @@ export async function generateInvoicePdf(order: InvoiceOrder, profile: ResortPro
   y += 5;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.text('www.bingabeach.com', pageWidth / 2, y, { align: 'center' });
+  if (profile?.website_url) {
+    doc.text(profile.website_url, pageWidth / 2, y, { align: 'center' });
+  }
 
   // --- Save ---
   doc.save(`invoice-${order.id.slice(0, 8)}.pdf`);
@@ -188,7 +165,8 @@ export function buildInvoiceWhatsAppText(order: InvoiceOrder, profile: ResortPro
   ];
 
   if (order.payment_type) lines.push(`Payment: ${order.payment_type}`);
-  lines.push('', 'Thank you for dining with us!', 'www.bingabeach.com');
+  lines.push('', 'Thank you for dining with us!');
+  if (profile?.website_url) lines.push(profile.website_url);
 
   return lines.join('\n');
 }
