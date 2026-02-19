@@ -95,7 +95,7 @@ const InventoryDashboard = () => {
     toast.success('Ingredient deleted');
   };
 
-  const lowStockItems = ingredients.filter((i: any) => i.current_stock <= i.low_stock_threshold && i.low_stock_threshold > 0);
+  const lowStockItems = ingredients.filter((i: any) => i.current_stock < i.low_stock_threshold && i.low_stock_threshold > 0);
 
   const filtered = ingredients.filter((i: any) => {
     if (!search.trim()) return true;
@@ -155,7 +155,7 @@ const InventoryDashboard = () => {
 
       {/* Ingredients list */}
       {filtered.map((ing: any) => {
-        const isLow = ing.current_stock <= ing.low_stock_threshold && ing.low_stock_threshold > 0;
+        const isLow = ing.current_stock < ing.low_stock_threshold && ing.low_stock_threshold > 0;
         const dishCount = (usageMap[ing.id] || []).length;
         return (
           <button key={ing.id} onClick={() => openEdit(ing)}
