@@ -8,9 +8,10 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter } from '
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Minus, Plus, Trash2, Send, CheckCircle2 } from 'lucide-react';
+import { Minus, Plus, Trash2, Send, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Separator } from '@/components/ui/separator';
+import { checkStock, type Shortage } from '@/lib/stockCheck';
 
 interface CartDrawerProps {
   open: boolean;
@@ -28,6 +29,8 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [orderSummary, setOrderSummary] = useState({ itemCount: 0, grandTotal: 0 });
+  const [stockWarning, setStockWarning] = useState<Shortage[]>([]);
+  const [overrideStock, setOverrideStock] = useState(false);
 
   // Order type selection state (for guests who haven't pre-selected)
   const [selectedOrderType, setSelectedOrderType] = useState(initialOrderType);
@@ -99,6 +102,18 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
       toast.error('Please select a payment type');
       return;
     }
+
+    // Stock check before ordering
+    if (!overrideStock) {
+      const result = await checkStock(cart.items.map(i => ({ name: i.name, quantity: i.quantity })));
+      if (!result.canFulfill) {
+        setStockWarning(result.shortages);
+        toast.error('Some items are out of stock');
+        return;
+      }
+    }
+    setStockWarning([]);
+    setOverrideStock(false);
 
     setSubmitting(true);
     try {
@@ -345,6 +360,29 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
                 </>
               )}
             </div>
+
+            {/* Stock shortage warning */}
+            {stockWarning.length > 0 && (
+              <div className="mx-4 mt-3 p-3 rounded-lg border border-destructive/40 bg-destructive/10 space-y-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-destructive" />
+                  <span className="font-display text-xs tracking-wider text-destructive">Insufficient Stock</span>
+                </div>
+                {stockWarning.map((s, i) => (
+                  <p key={i} className="font-body text-xs text-foreground">
+                    {s.itemName}: needs {s.needed} {s.unit} of {s.ingredientName} (only {s.available} left)
+                  </p>
+                ))}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { setOverrideStock(true); setStockWarning([]); }}
+                  className="font-display text-xs tracking-wider w-full mt-1"
+                >
+                  Override & Send Anyway
+                </Button>
+              </div>
+            )}
 
             {cart.items.length > 0 && (
               <DrawerFooter className="pt-2">

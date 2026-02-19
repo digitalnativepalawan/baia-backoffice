@@ -564,21 +564,36 @@ const AdminPage = () => {
                 const q = menuSearch.toLowerCase();
                 return item.name.toLowerCase().includes(q) || item.category.toLowerCase().includes(q);
               })
-              .map(item => (
-              <button key={item.id} onClick={() => openEditItem(item)}
-                className="w-full text-left p-3 border border-border hover:border-gold/50 transition-colors">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-display text-sm text-foreground">{item.name}</p>
-                    <p className="font-body text-xs text-cream-dim">{item.category}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-display text-sm text-foreground">₱{item.price}</p>
-                    {!item.available && <span className="font-body text-xs text-destructive">Unavailable</span>}
-                  </div>
-                </div>
-              </button>
-            ))}
+              .map(item => {
+                const foodCost = item.food_cost || 0;
+                const margin = item.price > 0 && foodCost > 0
+                  ? Math.round(((item.price - foodCost) / item.price) * 100)
+                  : null;
+                return (
+                  <button key={item.id} onClick={() => openEditItem(item)}
+                    className="w-full text-left p-3 border border-border hover:border-gold/50 transition-colors">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-display text-sm text-foreground">{item.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-body text-xs text-cream-dim">{item.category}</p>
+                          {foodCost > 0 ? (
+                            <span className="font-body text-xs text-cream-dim">
+                              · Cost ₱{foodCost} · {margin}% margin
+                            </span>
+                          ) : (
+                            <span className="font-body text-xs text-amber-400">· No cost data</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-display text-sm text-foreground">₱{item.price}</p>
+                        {!item.available && <span className="font-body text-xs text-destructive">Unavailable</span>}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
           </TabsContent>
 
           {/* ORDERS TAB — Kitchen Pipeline + Tabs */}

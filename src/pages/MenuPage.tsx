@@ -4,7 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useCart } from '@/lib/cart';
 import { useResortProfile } from '@/hooks/useResortProfile';
+import { getMenuItemStockStatus } from '@/lib/stockCheck';
 import { ShoppingBag, Plus, Minus, UtensilsCrossed, ClipboardList, Search, X, Home } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,6 +59,13 @@ const MenuPage = () => {
       const { data } = await supabase.from('menu_items').select('*').eq('available', true).order('sort_order');
       return (data || []) as MenuItem[];
     },
+  });
+
+  // Stock status for sold-out/low-stock badges
+  const { data: stockStatus = {} } = useQuery({
+    queryKey: ['menu-stock-status'],
+    queryFn: getMenuItemStockStatus,
+    refetchInterval: 30000,
   });
 
   // Derive categories from items as fallback when menu_categories is empty
@@ -181,30 +190,48 @@ const MenuPage = () => {
               <p className="font-body text-sm text-cream-dim text-center py-12">No items found</p>
             ) : (
               <div className="flex flex-col gap-1">
-                {filteredItems.map((item, idx) => (
-                  <button
-                    key={item.id}
-                    onClick={() => { setSelectedItem(item); setAddQuantity(1); }}
-                    className="text-left animate-fade-in group py-3 px-3 -mx-3 rounded-lg active:bg-foreground/5 transition-colors"
-                    style={{ animationDelay: `${idx * 40}ms`, animationFillMode: 'both' }}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <span className="font-display text-sm text-foreground group-hover:text-gold transition-colors block">
-                          {item.name}
+                {filteredItems.map((item, idx) => {
+                  const status = stockStatus[item.id];
+                  const isSoldOut = status?.soldOut || false;
+                  const isLowStock = status?.lowStock || false;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => { if (!isSoldOut) { setSelectedItem(item); setAddQuantity(1); } }}
+                      disabled={isSoldOut}
+                      className={`text-left animate-fade-in group py-3 px-3 -mx-3 rounded-lg transition-colors ${
+                        isSoldOut ? 'opacity-50 cursor-not-allowed' : 'active:bg-foreground/5'
+                      }`}
+                      style={{ animationDelay: `${idx * 40}ms`, animationFillMode: 'both' }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-display text-sm transition-colors block ${
+                              isSoldOut ? 'text-muted-foreground line-through' : 'text-foreground group-hover:text-gold'
+                            }`}>
+                              {item.name}
+                            </span>
+                            {isSoldOut && (
+                              <Badge variant="destructive" className="text-[10px] py-0 px-1.5">Sold Out</Badge>
+                            )}
+                            {!isSoldOut && isLowStock && (
+                              <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-amber-500/50 text-amber-400">Low Stock</Badge>
+                            )}
+                          </div>
+                          {item.description && (
+                            <p className="font-body text-xs text-cream-dim mt-0.5 leading-relaxed line-clamp-2">
+                              {item.description}
+                            </p>
+                          )}
+                        </div>
+                        <span className={`font-display text-sm whitespace-nowrap pt-0.5 ${isSoldOut ? 'text-muted-foreground' : 'text-gold'}`}>
+                          ₱{item.price.toLocaleString()}
                         </span>
-                        {item.description && (
-                          <p className="font-body text-xs text-cream-dim mt-0.5 leading-relaxed line-clamp-2">
-                            {item.description}
-                          </p>
-                        )}
                       </div>
-                      <span className="font-display text-sm text-gold whitespace-nowrap pt-0.5">
-                        ₱{item.price.toLocaleString()}
-                      </span>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </main>
