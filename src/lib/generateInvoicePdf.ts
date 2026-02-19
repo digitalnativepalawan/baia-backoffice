@@ -32,34 +32,42 @@ export async function generateInvoicePdf(
   const showSc = invoiceSettings?.show_service_charge ?? true;
   const showPay = invoiceSettings?.show_payment_method ?? true;
 
-  // ── Header: Resort name (clean, no extra letter spacing) ──
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(40, 40, 40);
+  // ── Header: Resort name (sleek, normal weight) ──
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(16);
+  doc.setTextColor(50, 50, 50);
   const resortName = (profile?.resort_name || 'Resort').toUpperCase();
   doc.text(resortName, ml, y);
 
   if (profile?.tagline) {
     y += 5;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(130, 130, 130);
+    doc.setFontSize(7);
+    doc.setTextColor(140, 140, 140);
     doc.text(profile.tagline, ml, y);
   }
-  y += 6;
+  y += 7;
 
-  // Business details (left)
+  // ── Two-column: Business details (left) | Date & type (right) ──
+  const colSplit = pw / 2 + 2; // max width for left column text
+  const leftStartY = y;
+
+  // Left: address + contact (wrap long address)
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  doc.setTextColor(110, 110, 110);
-  if (profile?.address) { doc.text(profile.address, ml, y); y += 3.5; }
+  doc.setTextColor(120, 120, 120);
+  if (profile?.address) {
+    const addressLines = doc.splitTextToSize(profile.address, colSplit - ml - 4);
+    doc.text(addressLines, ml, y);
+    y += addressLines.length * 3.5;
+  }
   const contactParts: string[] = [];
   if (profile?.phone) contactParts.push(profile.phone);
   if (profile?.email) contactParts.push(profile.email);
   if (contactParts.length) { doc.text(contactParts.join('  ·  '), ml, y); y += 3.5; }
   if (profile?.website_url) { doc.text(profile.website_url, ml, y); y += 3.5; }
 
-  // Right side: date + type
+  // Right: date + type (positioned from the same starting Y)
   const orderDate = new Date(order.created_at);
   const dateFmt = orderDate.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
   const timeFmt = orderDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
@@ -68,29 +76,35 @@ export async function generateInvoicePdf(
   };
   const typeLabel = typeLabels[order.order_type] || order.order_type;
 
-  const rightY = y - (profile?.address ? 10.5 : 3.5);
+  let ry = leftStartY;
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  doc.setTextColor(150, 150, 150);
-  doc.text('DATE', mr, rightY, { align: 'right' });
+  doc.setFontSize(6);
+  doc.setTextColor(160, 160, 160);
+  doc.text('DATE', mr, ry, { align: 'right' });
+  ry += 3.5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(60, 60, 60);
-  doc.text(`${dateFmt}  ${timeFmt}`, mr, rightY + 3.5, { align: 'right' });
+  doc.text(`${dateFmt}  ${timeFmt}`, mr, ry, { align: 'right' });
+  ry += 5;
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  doc.setTextColor(150, 150, 150);
-  doc.text('TYPE', mr, rightY + 8, { align: 'right' });
+  doc.setFontSize(6);
+  doc.setTextColor(160, 160, 160);
+  doc.text('TYPE', mr, ry, { align: 'right' });
+  ry += 3.5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(60, 60, 60);
-  doc.text(`${typeLabel}${order.location_detail ? ` — ${order.location_detail}` : ''}`, mr, rightY + 11.5, { align: 'right' });
+  doc.text(`${typeLabel}${order.location_detail ? ` — ${order.location_detail}` : ''}`, mr, ry, { align: 'right' });
+
+  // Ensure y is past both columns
+  y = Math.max(y, ry + 4);
+  y += 3;
 
   // Divider
-  y += 3;
-  doc.setDrawColor(210, 210, 205);
-  doc.setLineWidth(0.3);
+  doc.setDrawColor(215, 215, 210);
+  doc.setLineWidth(0.25);
   doc.line(ml, y, mr, y);
   y += 7;
 
