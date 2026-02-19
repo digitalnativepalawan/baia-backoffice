@@ -21,6 +21,7 @@ import TabInvoice from '@/components/admin/TabInvoice';
 import RecipeEditor from '@/components/admin/RecipeEditor';
 import InventoryDashboard from '@/components/admin/InventoryDashboard';
 import ResortOpsDashboard from '@/components/admin/ResortOpsDashboard';
+import InvoiceSettingsForm from '@/components/admin/InvoiceSettingsForm';
 
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 
@@ -408,6 +409,8 @@ const AdminPage = () => {
                 <Button onClick={saveSettings} className="font-display tracking-wider w-full">Save Settings</Button>
               </div>
             </section>
+
+            <InvoiceSettingsForm />
 
             <section>
               <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Units / Rooms</h3>

@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useResortProfile } from '@/hooks/useResortProfile';
+import { useInvoiceSettings } from '@/hooks/useInvoiceSettings';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
@@ -38,6 +39,7 @@ const TYPE_LABELS: Record<string, string> = {
 const TabInvoice = ({ tabId, onClose }: TabInvoiceProps) => {
   const qc = useQueryClient();
   const { data: profile } = useResortProfile();
+  const { data: invoiceSettings } = useInvoiceSettings();
   const brandName = profile?.resort_name || 'Resort';
   const [paymentMethod, setPaymentMethod] = useState('');
   const [closing, setClosing] = useState(false);
@@ -108,12 +110,13 @@ const TabInvoice = ({ tabId, onClose }: TabInvoiceProps) => {
 
   if (!tab) return null;
 
+  const scPct = invoiceSettings?.service_charge_pct ?? 10;
   const subtotal = orders.reduce((s, o) => s + Number(o.total), 0);
   const totalServiceCharge = orders.reduce((s, o) => s + Number(o.service_charge || 0), 0);
   const grandTotal = subtotal + totalServiceCharge;
 
   const cartTotal = cart.reduce((s, c) => s + c.price * c.qty, 0);
-  const cartServiceCharge = Math.round(cartTotal * 0.1);
+  const cartServiceCharge = Math.round(cartTotal * (scPct / 100));
 
   const updateCart = (item: { id: string; name: string; price: number }, delta: number) => {
     setCart(prev => {
@@ -214,27 +217,37 @@ const TabInvoice = ({ tabId, onClose }: TabInvoiceProps) => {
       </button>
 
       {/* Invoice header */}
-      <div className="text-center py-3 border border-border rounded-lg bg-secondary/30">
+      <div className="border border-border rounded-lg p-4 bg-secondary/30">
         {profile?.logo_url && (
-          <img src={profile.logo_url} alt={brandName} className="w-12 h-12 object-contain mx-auto mb-1" />
+          <img src={profile.logo_url} alt={brandName} className="w-10 h-10 object-contain mb-2" />
         )}
-        <p className="font-display text-xs tracking-[0.3em] text-cream-dim uppercase">{brandName}</p>
-        <p className="font-display text-lg text-foreground tracking-wider mt-1">Tab Invoice</p>
-        <div className="flex justify-center gap-2 mt-2">
-          <span className="font-body text-xs bg-secondary px-2 py-0.5 rounded text-cream-dim">
-            {TYPE_LABELS[tab.location_type] || tab.location_type}
-          </span>
-          <span className="font-body text-xs bg-secondary px-2 py-0.5 rounded text-cream-dim">
-            {tab.location_detail}
-          </span>
+        <p className="font-display text-base text-foreground">{brandName}</p>
+        {profile?.address && <p className="font-body text-[11px] text-cream-dim mt-0.5">{profile.address}</p>}
+        {profile?.phone && <p className="font-body text-[11px] text-cream-dim">{profile.phone}</p>}
+
+        <div className="flex justify-between items-start mt-3">
+          <div className="flex gap-2">
+            <span className="font-body text-[11px] bg-secondary px-2 py-0.5 rounded text-cream-dim">
+              {TYPE_LABELS[tab.location_type] || tab.location_type}
+            </span>
+            <span className="font-body text-[11px] bg-secondary px-2 py-0.5 rounded text-cream-dim">
+              {tab.location_detail}
+            </span>
+          </div>
+          <div className="text-right">
+            <p className="font-body text-[11px] text-cream-dim">
+              {format(new Date(tab.created_at), 'MMM d, yyyy')}
+            </p>
+            <p className="font-body text-[11px] text-cream-dim">
+              {format(new Date(tab.created_at), 'h:mm a')}
+            </p>
+          </div>
         </div>
+
         {tab.guest_name && (
-          <p className="font-body text-sm text-foreground mt-1">{tab.guest_name}</p>
+          <p className="font-body text-sm text-foreground mt-2">{tab.guest_name}</p>
         )}
-        <p className="font-body text-[10px] text-cream-dim mt-1">
-          Opened: {format(new Date(tab.created_at), 'MMM d, yyyy h:mm a')}
-        </p>
-        <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-display tracking-wider ${
+        <span className={`inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-display tracking-wider ${
           tab.status === 'Open' ? 'bg-green-900/50 text-green-300' : 'bg-muted text-cream-dim'
         }`}>
           {tab.status}
@@ -347,27 +360,43 @@ const TabInvoice = ({ tabId, onClose }: TabInvoiceProps) => {
       {/* Grand totals */}
       <div className="border border-border rounded-lg p-3 bg-secondary/30">
         <div className="flex justify-between font-body text-sm mb-1">
-          <span className="text-cream-dim">Total Food & Drinks</span>
+          <span className="text-cream-dim">Subtotal</span>
           <span className="text-foreground">₱{subtotal.toLocaleString()}</span>
         </div>
-        <div className="flex justify-between font-body text-sm mb-2">
-          <span className="text-cream-dim">Total Service Charge (10%)</span>
-          <span className="text-foreground">₱{totalServiceCharge.toLocaleString()}</span>
-        </div>
+        {(invoiceSettings?.show_service_charge !== false) && (
+          <div className="flex justify-between font-body text-sm mb-2">
+            <span className="text-cream-dim">Service Charge ({scPct}%)</span>
+            <span className="text-foreground">₱{totalServiceCharge.toLocaleString()}</span>
+          </div>
+        )}
         <Separator />
         <div className="flex justify-between font-display text-xl tracking-wider mt-2">
-          <span className="text-foreground">Grand Total</span>
+          <span className="text-foreground">Total</span>
           <span className="text-foreground">₱{grandTotal.toLocaleString()}</span>
         </div>
       </div>
 
-      {/* Invoice download/share (when orders exist) */}
+      {/* Invoice footer info */}
+      {orders.length > 0 && (
+        <div className="text-center space-y-1 py-2">
+          <p className="font-body text-xs text-cream-dim">{invoiceSettings?.thank_you_message || 'Thank you for dining with us!'}</p>
+          {invoiceSettings?.business_hours && <p className="font-body text-[10px] text-cream-dim">{invoiceSettings.business_hours}</p>}
+          {(profile?.instagram_url || profile?.website_url) && (
+            <p className="font-body text-[10px] text-cream-dim">
+              {[profile?.instagram_url && `IG: ${profile.instagram_url.replace(/https?:\/\/(www\.)?instagram\.com\//, '@').replace(/\/$/, '')}`, profile?.website_url].filter(Boolean).join('  |  ')}
+            </p>
+          )}
+          {invoiceSettings?.tin_number && <p className="font-body text-[10px] text-cream-dim">TIN: {invoiceSettings.tin_number}</p>}
+        </div>
+      )}
+
+      {/* Invoice download/share */}
       {orders.length > 0 && (
         <div className="flex gap-2">
           <Button variant="outline" className="flex-1 font-body text-xs gap-1.5 min-h-[44px]"
             onClick={async () => {
               try {
-                await generateInvoicePdf(combinedOrder, profile ?? null);
+                await generateInvoicePdf(combinedOrder, profile ?? null, invoiceSettings);
                 toast.success('Invoice downloaded');
               } catch { toast.error('Failed to generate invoice'); }
             }}>
@@ -375,7 +404,7 @@ const TabInvoice = ({ tabId, onClose }: TabInvoiceProps) => {
           </Button>
           <Button variant="outline" className="flex-1 font-body text-xs gap-1.5 min-h-[44px]"
             onClick={() => {
-              const text = buildInvoiceWhatsAppText(combinedOrder, profile ?? null);
+              const text = buildInvoiceWhatsAppText(combinedOrder, profile ?? null, invoiceSettings);
               window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
             }}>
             <MessageCircle className="w-4 h-4" /> WhatsApp

@@ -267,6 +267,45 @@ export type Database = {
           },
         ]
       }
+      invoice_settings: {
+        Row: {
+          business_hours: string
+          created_at: string
+          footer_text: string
+          id: string
+          service_charge_pct: number
+          show_payment_method: boolean
+          show_service_charge: boolean
+          thank_you_message: string
+          tin_number: string
+          updated_at: string
+        }
+        Insert: {
+          business_hours?: string
+          created_at?: string
+          footer_text?: string
+          id?: string
+          service_charge_pct?: number
+          show_payment_method?: boolean
+          show_service_charge?: boolean
+          thank_you_message?: string
+          tin_number?: string
+          updated_at?: string
+        }
+        Update: {
+          business_hours?: string
+          created_at?: string
+          footer_text?: string
+          id?: string
+          service_charge_pct?: number
+          show_payment_method?: boolean
+          show_service_charge?: boolean
+          thank_you_message?: string
+          tin_number?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       menu_categories: {
         Row: {
           active: boolean
