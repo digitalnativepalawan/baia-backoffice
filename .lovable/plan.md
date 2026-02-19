@@ -1,116 +1,32 @@
 
 
-# Add Category Functionality to Expenses Section
+# Remove Guests Management Card from Resort Ops
 
-This is a significant enhancement to the Expenses section in Resort Ops. Here's the full plan.
+## What's Changing
 
-## 1. Database Migration
+Remove the standalone "Guests" card (the list you see in the screenshot with edit/delete buttons) from the admin Resort Ops dashboard. Guest names already appear in the Reservations ledger, so this card is redundant.
 
-The `resort_ops_expenses` table already has `name`, `category`, `amount`, `expense_date`. We need to add:
+## What Stays
 
-- `notes` (text, nullable)
-- `image_url` (text, nullable)
-- `updated_at` (timestamptz, default now())
+- The `resort_ops_guests` table stays in the database -- it's still used by reservations and the Sirvoy webhook to link bookings to guests.
+- The guest dropdown in the "Add Booking" form stays so you can assign guests to reservations.
+- The `guestMap` lookup stays so reservation cards can display guest names.
+- CSV import for reservations continues to auto-create guests as needed.
 
-Also attach the existing `update_updated_at_column` trigger so `updated_at` auto-updates on edits.
+## Changes
 
-## 2. Define Category Constants
+### ResortOpsDashboard.tsx
 
-Create a shared constant array of the 14 expense categories to be used across the add form, edit form, filter dropdown, and reports:
+1. **Remove the Guests card UI** (lines 743-777) -- the entire Card component with the guest list, edit forms, add form, and Add Guest button.
 
-```
-Food & Beverage, Utilities (Electric/Water/Gas/Fuel), Labor/Staff, Housekeeping,
-Maintenance/Repairs, Operations/Supplies, Marketing/Admin, Professional Services,
-Permits/Licenses, Transportation, Guest Services, Taxes/Government,
-Capital Expenditures, Miscellaneous
-```
+2. **Remove guest-only state variables and functions**:
+   - `newGuest` state and `setNewGuest`
+   - `editingGuest` state and `setEditingGuest`
+   - `addGuest()` function
+   - `saveGuest()` function
 
-## 3. Update Add Expense Form (lines 680-686)
+3. **Keep** the `guests` query, `guestMap`, and guest dropdown in booking forms -- these are needed for reservations.
 
-Replace the current 4-input grid + button with an expanded form:
+### No database changes
 
-- **Name**: text input (unchanged)
-- **Category**: `<Select>` dropdown with the 14 categories (replaces free-text input)
-- **Amount**: number input (unchanged)
-- **Date**: date input (unchanged)
-- **Notes**: `<Textarea>` (optional, new)
-- **Image URL**: text input (optional, new)
-- **Save / Cancel** buttons
-
-Update `newExpense` state to include `notes` and `image_url` fields. Update `addExpense()` to send these new fields.
-
-## 4. Update Edit Expense Form (lines 656-664)
-
-Same fields as Add form. Replace the free-text category input with the dropdown. Add notes and image_url fields. Update `saveExpense()` to persist the new fields.
-
-## 5. Category Filter
-
-Add a filter dropdown above the expense list (below the card header):
-
-- "All Categories" default option + all 14 categories
-- New state: `expenseCategoryFilter`
-- Filter `monthExpenses` by selected category before rendering
-
-Stack filters on mobile (flex-wrap).
-
-## 6. Category Summary Bar
-
-Above the expense list, show a small summary line:
-
-```
-Total: P XX,XXX | Categories: N | This period: [Month Year]
-```
-
-Calculated from the filtered `monthExpenses`.
-
-## 7. Expense Reports Modal
-
-Add a "Reports" button next to "+ Add Expense". When clicked, show a Dialog with:
-
-- **Summary cards**: Total Expenses amount, number of categories used
-- **Bar chart** (using recharts, already installed): expenses by category
-- **Breakdown table**: Category | Total Amount | # of Expenses | % of Total
-- **Clickable rows**: clicking a category closes the modal and sets the category filter
-- **Export buttons**: CSV download and PDF export (using jspdf, already installed)
-
-## 8. Bulk Import
-
-Add an "Import" button that opens a dialog with:
-
-- A downloadable CSV template with columns: `Date, Name, Category, Amount, Notes, Image URL`
-- A file upload input accepting `.csv`
-- Parse the CSV, validate rows, and bulk insert into `resort_ops_expenses`
-- Show summary of imported rows with error count
-
-## 9. Expense List Display Update
-
-Update each expense row to show notes (truncated) and an image link icon when `image_url` is present.
-
-## Technical Details
-
-### Files Modified
-
-| File | Changes |
-|---|---|
-| `src/components/admin/ResortOpsDashboard.tsx` | Add category constants, filter state, reports modal state, update add/edit forms, add summary bar, add reports button, add bulk import button. This file is already large (~846 lines) so the new Expense Reports and Bulk Import dialogs will be extracted into a new component. |
-| `src/components/admin/ExpenseReportsModal.tsx` | **New file** - Dialog with bar chart, breakdown table, CSV/PDF export |
-| `src/components/admin/ExpenseBulkImportModal.tsx` | **New file** - CSV template download, file upload, parse and insert |
-
-### Database Migration
-
-```sql
-ALTER TABLE resort_ops_expenses
-  ADD COLUMN IF NOT EXISTS notes text,
-  ADD COLUMN IF NOT EXISTS image_url text,
-  ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
-
-CREATE TRIGGER set_updated_at
-  BEFORE UPDATE ON resort_ops_expenses
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
-```
-
-### No new RLS policies needed
-
-The table already has full public CRUD policies matching the rest of the resort ops tables.
-
+The `resort_ops_guests` table remains unchanged. It is actively used by the booking system and webhook integration. No data will be deleted.
