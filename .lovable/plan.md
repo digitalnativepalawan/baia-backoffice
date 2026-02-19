@@ -1,119 +1,106 @@
 
 
-# Preload Ingredient Cost Data and Finalize Production System
+# Invoice Redesign: Uniform, Professional, Admin-Customizable
 
-## Current State
+## Overview
 
-The inventory + recipe deduction + stock check system is **already fully implemented** in code:
-- `stockCheck.ts` -- checks stock before ordering, shows sold-out/low-stock badges
-- `CartDrawer.tsx` -- pre-order validation with override option
-- `MenuPage.tsx` -- sold-out/low-stock badges on menu items
-- `inventoryDeduction.ts` -- deducts at "Preparing" status
-- `InventoryDashboard.tsx` -- consumption logs, filters, value summary
-- `AdminPage.tsx` -- food cost and margin % display per dish
+Redesign the PDF invoice and on-screen invoice view to be clean, modern, and professional. Add a new `invoice_settings` database table so admins can customize the invoice appearance (footer text, business hours, TIN, thank-you message, service charge %, and display preferences). Update the PDF generator and TabInvoice component to pull from these settings.
 
-**The problem**: All 66 ingredients have `cost_per_unit = 0`, making food costing, margin calculations, and inventory value all show zero.
+## Database Change
 
-## What This Plan Does
+### New table: `invoice_settings`
 
-### Step 1: Update Ingredient Cost Data (Database Updates)
+A single-row settings table (similar to the existing `settings` table pattern) with:
 
-Bulk update `cost_per_unit` for all ingredients using the Manila baseline prices provided:
+| Column | Type | Default |
+|--------|------|---------|
+| id | uuid | gen_random_uuid() |
+| thank_you_message | text | 'Thank you for dining with us!' |
+| business_hours | text | 'Open daily: 7AM - 10PM' |
+| footer_text | text | '' |
+| tin_number | text | '' |
+| service_charge_pct | numeric | 10 |
+| show_service_charge | boolean | true |
+| show_payment_method | boolean | true |
+| created_at | timestamptz | now() |
+| updated_at | timestamptz | now() |
 
-| Ingredient | Unit | Cost/Unit |
-|---|---|---|
-| Eggs | pcs | 8.00 |
-| Bread | slices | 4.00 |
-| Rice | grams | 0.06 |
-| Corned Beef | grams | 0.22 |
-| Shrimp | grams | 0.48 |
-| Tuna | grams | 0.52 |
-| Spanish Mackerel | grams | 0.38 |
-| Chicken | grams | 0.24 |
-| Pork Cutlet | grams | 0.32 |
-| Mixed Seafood | grams | 0.45 |
-| Linguine/Paccheri/Tagliatelle/Rice Noodles Pasta | grams | 0.14 |
-| Flour | grams | 0.055 |
-| Milk | ml | 0.09 |
-| Butter | grams | 0.42 |
-| Olive Oil | ml | 0.65 |
-| Cooking Oil | ml | 0.18 |
-| White Rum | ml | 0.60 |
-| Coffee Beans | grams | 0.90 |
-| Italian Cheese Blend | grams | 0.90 |
-| Parmesan Cheese | grams | 1.20 |
-| Pecorino Cheese | grams | 1.40 |
-| Mascarpone | grams | 1.00 |
-| Yogurt | grams | 0.18 |
-| Granola | grams | 0.48 |
-| Honey | ml | 0.42 |
-| Maple Syrup | ml | 0.90 |
-| Sugar | grams | 0.075 |
-| Tomato | grams | 0.09 |
-| Onion | grams | 0.07 |
-| Garlic | grams | 0.20 |
-| Chili | grams | 0.18 |
-| Bell Pepper | grams | 0.22 |
-| Basil | grams | 1.00 |
-| Mint Leaves | grams | 1.00 |
-| Lemon / Calamansi | ml | 0.12 |
-| Soda Water | ml | 0.06 |
-| Whipped Cream | grams | 0.55 |
-| Chocolate Chips | grams | 0.48 |
-| Peanuts | grams | 0.18 |
-| Capers | grams | 1.10 |
-| Olives | grams | 0.65 |
-| Tomato Marinara Sauce | grams | 0.18 |
-| Tamarind Sauce | grams | 0.20 |
-| Aioli | grams | 0.35 |
-| Wasabi Mayo | grams | 0.35 |
-| Hollandaise Sauce | grams | 0.35 |
-| Cream | ml | 0.09 |
-| Banana | grams | 0.08 |
-| Potato | grams | 0.05 |
-| Chorizo | grams | 0.40 |
-| Watermelon | grams | 0.04 |
-| Mango | grams | 0.08 |
-| Pineapple | grams | 0.06 |
-| Fresh Fruits | grams | 0.08 |
-| Coconut | grams | 0.06 |
-| Cocoa Powder | grams | 0.30 |
-| Bean Sprouts | grams | 0.05 |
-| Eggplant | grams | 0.06 |
-| Cilantro | grams | 0.80 |
-| Soy Sauce | ml | 0.10 |
-| Fish Sauce | ml | 0.08 |
-| Vinegar | ml | 0.05 |
-| Curry Sauce | grams | 0.20 |
-| Cured Pork / Guanciale | grams | 0.80 |
+RLS: Public read/insert/update (matching existing pattern for settings tables).
 
-This is approximately 64 UPDATE statements, executed via the data insert tool (not migration).
+## File Changes
 
-### Step 2: Update Menu Item Food Costs
+### 1. `src/lib/generateInvoicePdf.ts` -- Full Redesign
 
-Using the benchmark table provided, update each menu item's `food_cost` field so margin % displays correctly in the admin panel. This uses the actual target food cost derived from the benchmark margins:
+**Header changes:**
+- Remove `charSpace: 3` from resort name -- render as normal text with clean kerning
+- Split layout: left side = business name + address + contact; right side = date, time, order type
+- Use proper font weights: light labels, bold values
+- Add thin horizontal rule divider below header
 
-For each dish: `food_cost = price * (1 - margin/100)`
+**Table improvements:**
+- Clean column headers with subtle background
+- Proper alignment: item left, qty center, price right, total right
+- Alternating row tints (keep existing)
 
-Example: Corned Beef with Eggs = 118 * (1 - 0.66) = ~40
+**Totals:**
+- Pull service charge % from invoice_settings instead of hardcoding "10%"
+- Grand total with accent background (keep existing)
 
-### Step 3: No Code Changes Needed
+**Footer (new):**
+- Thin divider line
+- Thank-you message from `invoice_settings`
+- Business hours from `invoice_settings`
+- Social media handles from `resort_profile` (Instagram, website)
+- TIN number from `invoice_settings` (if set)
+- Footer custom text from `invoice_settings` (if set)
 
-All the code for stock checking, badges, cart validation, deduction, consumption logs, and food cost display is already implemented and working. Once the data is populated, everything will activate automatically:
+**Function signature update:**
+- Accept optional `invoiceSettings` parameter alongside `profile`
 
-- Inventory Dashboard will show real inventory value
-- "No Cost" badges will disappear from ingredients
-- "No cost data" warnings will disappear from menu items
-- Food cost and margin % will display correctly per dish
-- The "missing cost" alert banner will go away
+### 2. `src/components/admin/TabInvoice.tsx` -- On-Screen Invoice Redesign
 
-## Result
+**Header section:**
+- Remove `tracking-[0.3em]` letter spacing from resort name
+- Reorganize: left-align business details, right-align date/type
+- Cleaner, more minimal card design
 
-After these data updates, the system will be production-ready with:
-- Real-time stock availability on menu (Available / Low Stock / Sold Out)
-- Pre-order stock validation in cart with admin override
-- Automatic deduction at "Preparing" status
-- Accurate food cost and margin % per dish
-- Inventory value tracking
-- Consumption logs and usage reports
+**Footer section (new):**
+- Display thank-you message, business hours, social handles below grand total
+- Pull from `invoice_settings` query
+
+**Pass invoice settings to PDF generator** when downloading.
+
+### 3. New component: `src/components/admin/InvoiceSettingsForm.tsx`
+
+Admin form with fields for:
+- Thank-you message (textarea)
+- Business hours (text input)
+- Additional footer text (textarea)
+- TIN/VAT number (text input)
+- Service charge % (number input)
+- Toggle: show/hide service charge breakdown
+- Toggle: show/hide payment method
+
+Uses the same inline CRUD pattern as ResortProfileForm (single-row upsert).
+
+### 4. `src/pages/AdminPage.tsx`
+
+- Import and render `InvoiceSettingsForm` inside the Setup tab, after Kitchen Settings section
+- Add section header "Invoice Settings"
+
+### 5. New hook: `src/hooks/useInvoiceSettings.ts`
+
+Simple react-query hook to fetch the single row from `invoice_settings`, similar to `useResortProfile`.
+
+### 6. `buildInvoiceWhatsAppText` update
+
+- Include footer info (business hours, website) in WhatsApp text
+- Use dynamic service charge label
+
+## Technical Notes
+
+- The resort_profile already has logo_url, address, phone, email, website_url, social links -- these will continue to be used for the invoice header (no duplication)
+- Invoice-specific settings (footer text, TIN, service charge %) go in the new `invoice_settings` table
+- No changes to existing tables
+- The `charSpace` removal fixes the "B A I A  P A L A W A N" spacing issue in the PDF
 
