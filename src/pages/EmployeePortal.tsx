@@ -251,7 +251,10 @@ const EmployeePortal = () => {
           ]).map(({ key, label, icon: Icon }) => (
             <Button key={key} size="sm" variant={tab === key ? 'default' : 'outline'}
               onClick={() => {
-                if (key === 'dashboard') { navigate('/manager'); return; }
+                if (key === 'dashboard') {
+                  navigate(empPermissions.includes('admin') ? '/admin' : '/manager');
+                  return;
+                }
                 setTab(key);
               }}
               className="font-display text-xs tracking-wider flex-1 gap-1">

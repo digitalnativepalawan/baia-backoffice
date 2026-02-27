@@ -44,7 +44,7 @@ const ManagerPage = () => {
   // Orders data for the orders tab
   const { data: orders = [] } = useQuery({
     queryKey: ['orders-manager'],
-    enabled: permissions.includes('orders'),
+    enabled: permissions.includes('orders') || permissions.includes('admin'),
     queryFn: async () => {
       const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(200);
       return data || [];
@@ -53,7 +53,7 @@ const ManagerPage = () => {
 
   // Realtime
   useEffect(() => {
-    if (!permissions.includes('orders')) return;
+    if (!permissions.includes('orders') && !permissions.includes('admin')) return;
     const channel = supabase
       .channel('manager-orders-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
@@ -117,7 +117,10 @@ const ManagerPage = () => {
     );
   }
 
-  const allowedTabs = permissions.map(p => TAB_MAP[p]).filter(Boolean);
+  const isAdmin = permissions.includes('admin');
+  const allowedTabs = isAdmin
+    ? Object.values(TAB_MAP)
+    : permissions.map(p => TAB_MAP[p]).filter(Boolean);
   const defaultTab = allowedTabs[0]?.value || 'orders';
 
   return (
@@ -140,7 +143,7 @@ const ManagerPage = () => {
             ))}
           </TabsList>
 
-          {permissions.includes('orders') && (
+          {(isAdmin || permissions.includes('orders')) && (
             <TabsContent value="orders" className="space-y-4">
               <div className="flex gap-1 flex-wrap">
                 {['New', 'Preparing', 'Served', 'Paid'].map(s => (
@@ -159,23 +162,23 @@ const ManagerPage = () => {
             </TabsContent>
           )}
 
-          {permissions.includes('reports') && (
+          {(isAdmin || permissions.includes('reports')) && (
             <TabsContent value="reports"><ReportsDashboard /></TabsContent>
           )}
 
-          {permissions.includes('inventory') && (
+          {(isAdmin || permissions.includes('inventory')) && (
             <TabsContent value="inventory"><InventoryDashboard /></TabsContent>
           )}
 
-          {permissions.includes('payroll') && (
+          {(isAdmin || permissions.includes('payroll')) && (
             <TabsContent value="payroll"><PayrollDashboard /></TabsContent>
           )}
 
-          {permissions.includes('resort_ops') && (
+          {(isAdmin || permissions.includes('resort_ops')) && (
             <TabsContent value="resort-ops"><ResortOpsDashboard /></TabsContent>
           )}
 
-          {permissions.includes('rooms') && (
+          {(isAdmin || permissions.includes('rooms')) && (
             <TabsContent value="rooms"><RoomsDashboard /></TabsContent>
           )}
         </Tabs>
