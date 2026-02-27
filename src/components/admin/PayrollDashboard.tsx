@@ -6,12 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Check, X, DollarSign, Clock, Users, Download, Banknote, Star, Settings } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, X, DollarSign, Clock, Users, Download, Banknote, Star, Settings, Phone, MessageCircle, Lock, ListTodo } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays, startOfWeek, startOfMonth, previousSunday, nextSaturday, isSunday, addDays, getDay } from 'date-fns';
 import { usePayrollSettings } from '@/hooks/usePayrollSettings';
+import EmployeeTaskList from '@/components/employee/EmployeeTaskList';
 
 type DateFilter = 'today' | 'yesterday' | 'week' | 'month' | 'all';
-type SubView = 'employees' | 'shifts' | 'summary' | 'payments' | 'settings';
+type SubView = 'employees' | 'shifts' | 'summary' | 'payments' | 'tasks' | 'settings';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -49,6 +50,13 @@ const PayrollDashboard = () => {
   const [bonusReason, setBonusReason] = useState('');
   const [bonusIsEOM, setBonusIsEOM] = useState(false);
   const [showBonusForm, setShowBonusForm] = useState(false);
+
+  // Contact & PIN state
+  const [pinEmployeeId, setPinEmployeeId] = useState<string | null>(null);
+  const [pinValue, setPinValue] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editMessenger, setEditMessenger] = useState('');
+  const [contactEditId, setContactEditId] = useState<string | null>(null);
 
   const { data: employees = [] } = useQuery({
     queryKey: ['employees-all'],
@@ -512,10 +520,11 @@ const PayrollDashboard = () => {
       {/* Sub-view toggle */}
       <div className="flex gap-1 flex-wrap">
         {([
-          { key: 'employees' as SubView, label: 'Employees', icon: Users },
+          { key: 'employees' as SubView, label: 'Team', icon: Users },
           { key: 'shifts' as SubView, label: 'Shifts', icon: Clock },
           { key: 'summary' as SubView, label: 'Payroll', icon: DollarSign },
           { key: 'payments' as SubView, label: 'Payments', icon: Banknote },
+          { key: 'tasks' as SubView, label: 'Tasks', icon: ListTodo },
           { key: 'settings' as SubView, label: 'Settings', icon: Settings },
         ]).map(({ key, label, icon: Icon }) => (
           <Button key={key} size="sm" variant={subView === key ? 'default' : 'outline'}
@@ -556,11 +565,32 @@ const PayrollDashboard = () => {
               ) : (
                 <>
                   <div className="flex-1">
-                    <span className="font-body text-sm text-foreground">{emp.name}</span>
-                    <span className="font-body text-xs text-muted-foreground ml-2">{getRateDisplay(emp)}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-body text-sm text-foreground">{emp.name}</span>
+                      {(emp as any).phone && (
+                        <a href={`tel:${(emp as any).phone}`} className="text-muted-foreground hover:text-primary"><Phone className="w-3 h-3" /></a>
+                      )}
+                      {(emp as any).messenger_link && (
+                        <a href={(emp as any).messenger_link.startsWith('http') ? (emp as any).messenger_link : `https://m.me/${(emp as any).messenger_link}`}
+                          target="_blank" rel="noopener" className="text-muted-foreground hover:text-primary"><MessageCircle className="w-3 h-3" /></a>
+                      )}
+                    </div>
+                    <span className="font-body text-xs text-muted-foreground">{getRateDisplay(emp)}</span>
                     <span className="font-body text-xs text-primary ml-2">Paid: ₱{(allTimePaid[emp.id] || 0).toFixed(0)}</span>
+                    {(emp as any).password_hash && <Lock className="w-3 h-3 text-primary inline ml-1.5" />}
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                      title="Set PIN" onClick={() => { setPinEmployeeId(pinEmployeeId === emp.id ? null : emp.id); setPinValue(''); }}>
+                      <Lock className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                      title="Contact info" onClick={() => {
+                        if (contactEditId === emp.id) { setContactEditId(null); return; }
+                        setContactEditId(emp.id); setEditPhone((emp as any).phone || ''); setEditMessenger((emp as any).messenger_link || '');
+                      }}>
+                      <Phone className="w-3.5 h-3.5" />
+                    </Button>
                     <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground"
                       onClick={() => {
                         setEditingId(emp.id);
@@ -578,6 +608,41 @@ const PayrollDashboard = () => {
                     <Switch checked={emp.active} onCheckedChange={v => toggleActive(emp.id, v)} />
                   </div>
                 </>
+              )}
+              {/* PIN form */}
+              {pinEmployeeId === emp.id && !editingId && (
+                <div className="flex gap-2 items-center mt-2 w-full">
+                  <Input type="password" value={pinValue} onChange={e => setPinValue(e.target.value)}
+                    placeholder="New PIN" className="bg-secondary border-border text-foreground font-body text-sm h-8 flex-1" />
+                  <Button size="sm" className="font-display text-xs tracking-wider h-8" disabled={!pinValue}
+                    onClick={async () => {
+                      const { error } = await supabase.functions.invoke('employee-auth', {
+                        body: { action: 'set-password', employee_id: emp.id, pin: pinValue },
+                      });
+                      if (error) { toast.error('Failed to set PIN'); return; }
+                      setPinEmployeeId(null); setPinValue('');
+                      qc.invalidateQueries({ queryKey: ['employees-all'] });
+                      toast.success(`PIN set for ${emp.name}`);
+                    }}>Set</Button>
+                  <Button size="sm" variant="outline" className="h-8" onClick={() => setPinEmployeeId(null)}><X className="w-3.5 h-3.5" /></Button>
+                </div>
+              )}
+              {/* Contact edit */}
+              {contactEditId === emp.id && !editingId && (
+                <div className="flex gap-2 items-center mt-2 w-full flex-wrap">
+                  <Input value={editPhone} onChange={e => setEditPhone(e.target.value)}
+                    placeholder="Phone number" className="bg-secondary border-border text-foreground font-body text-sm h-8 flex-1 min-w-[120px]" />
+                  <Input value={editMessenger} onChange={e => setEditMessenger(e.target.value)}
+                    placeholder="Messenger link/username" className="bg-secondary border-border text-foreground font-body text-sm h-8 flex-1 min-w-[120px]" />
+                  <Button size="sm" className="font-display text-xs tracking-wider h-8"
+                    onClick={async () => {
+                      await supabase.from('employees').update({ phone: editPhone.trim(), messenger_link: editMessenger.trim() } as any).eq('id', emp.id);
+                      setContactEditId(null);
+                      qc.invalidateQueries({ queryKey: ['employees-all'] });
+                      toast.success('Contact info saved');
+                    }}>Save</Button>
+                  <Button size="sm" variant="outline" className="h-8" onClick={() => setContactEditId(null)}><X className="w-3.5 h-3.5" /></Button>
+                </div>
               )}
             </div>
           ))}
@@ -1012,6 +1077,16 @@ const PayrollDashboard = () => {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* TASKS SUB-VIEW */}
+      {subView === 'tasks' && (
+        <div className="space-y-3">
+          <h3 className="font-display text-sm tracking-wider text-foreground flex items-center gap-1.5">
+            <ListTodo className="w-4 h-4 text-primary" /> Employee Tasks
+          </h3>
+          <EmployeeTaskList employees={employees.map(e => ({ id: e.id, name: e.name }))} createdBy="admin" />
         </div>
       )}
 

@@ -8,6 +8,7 @@ import OrderType from "./pages/OrderType";
 import MenuPage from "./pages/MenuPage";
 import AdminPage from "./pages/AdminPage";
 import EmployeePage from "./pages/EmployeePage";
+import EmployeePortal from "./pages/EmployeePortal";
 import NotFound from "./pages/NotFound";
 
 
@@ -25,6 +26,7 @@ const App = () => (
           <Route path="/menu" element={<MenuPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/employee" element={<EmployeePage />} />
+          <Route path="/employee-portal" element={<EmployeePortal />} />
           
           <Route path="*" element={<NotFound />} />
         </Routes>

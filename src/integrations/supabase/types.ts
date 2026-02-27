@@ -96,35 +96,94 @@ export type Database = {
           },
         ]
       }
+      employee_tasks: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          description: string
+          due_date: string | null
+          employee_id: string
+          id: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string
+          due_date?: string | null
+          employee_id: string
+          id?: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string
+          due_date?: string | null
+          employee_id?: string
+          id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_tasks_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employees: {
         Row: {
           active: boolean
           created_at: string
           daily_rate: number
+          display_name: string
           hourly_rate: number
           id: string
+          messenger_link: string
           monthly_rate: number
           name: string
+          password_hash: string
+          phone: string
           rate_type: string
         }
         Insert: {
           active?: boolean
           created_at?: string
           daily_rate?: number
+          display_name?: string
           hourly_rate?: number
           id?: string
+          messenger_link?: string
           monthly_rate?: number
           name: string
+          password_hash?: string
+          phone?: string
           rate_type?: string
         }
         Update: {
           active?: boolean
           created_at?: string
           daily_rate?: number
+          display_name?: string
           hourly_rate?: number
           id?: string
+          messenger_link?: string
           monthly_rate?: number
           name?: string
+          password_hash?: string
+          phone?: string
           rate_type?: string
         }
         Relationships: []
