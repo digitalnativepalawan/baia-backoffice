@@ -5,12 +5,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Home, Clock, LogOut, ListTodo, Banknote, Settings, Star } from 'lucide-react';
+import { Home, Clock, LogOut, ListTodo, Banknote, Settings, Star, LayoutDashboard } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import EmployeeTaskList from '@/components/employee/EmployeeTaskList';
 
-type Tab = 'clock' | 'tasks' | 'pay' | 'settings';
+type Tab = 'clock' | 'tasks' | 'pay' | 'settings' | 'dashboard';
 
 const EmployeePortal = () => {
   const navigate = useNavigate();
@@ -65,6 +65,17 @@ const EmployeePortal = () => {
       const { data } = await (supabase.from('payroll_payments') as any).select('*')
         .eq('employee_id', empId!).order('paid_at', { ascending: false }).limit(50);
       return (data || []) as any[];
+    },
+  });
+
+  // Permissions for dashboard access
+  const { data: empPermissions = [] } = useQuery({
+    queryKey: ['emp-permissions', empId],
+    enabled: !!empId,
+    queryFn: async () => {
+      const { data } = await (supabase.from('employee_permissions' as any) as any)
+        .select('permission').eq('employee_id', empId!);
+      return ((data || []) as any[]).map((p: any) => p.permission as string);
     },
   });
 
@@ -217,15 +228,20 @@ const EmployeePortal = () => {
         </div>
 
         {/* Tab nav */}
-        <div className="flex gap-1 mb-4">
+        <div className="flex gap-1 mb-4 flex-wrap">
           {([
             { key: 'clock' as Tab, label: 'Clock', icon: Clock },
             { key: 'tasks' as Tab, label: 'Tasks', icon: ListTodo },
             { key: 'pay' as Tab, label: 'Pay', icon: Banknote },
             { key: 'settings' as Tab, label: 'Settings', icon: Settings },
+            ...(empPermissions.length > 0 ? [{ key: 'dashboard' as Tab, label: 'Dashboard', icon: LayoutDashboard }] : []),
           ]).map(({ key, label, icon: Icon }) => (
             <Button key={key} size="sm" variant={tab === key ? 'default' : 'outline'}
-              onClick={() => setTab(key)} className="font-display text-xs tracking-wider flex-1 gap-1">
+              onClick={() => {
+                if (key === 'dashboard') { navigate('/manager'); return; }
+                setTab(key);
+              }}
+              className="font-display text-xs tracking-wider flex-1 gap-1">
               <Icon className="w-3.5 h-3.5" /> {label}
             </Button>
           ))}

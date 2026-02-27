@@ -52,6 +52,35 @@ export type Database = {
           },
         ]
       }
+      employee_permissions: {
+        Row: {
+          created_at: string
+          employee_id: string
+          id: string
+          permission: string
+        }
+        Insert: {
+          created_at?: string
+          employee_id: string
+          id?: string
+          permission: string
+        }
+        Update: {
+          created_at?: string
+          employee_id?: string
+          id?: string
+          permission?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_permissions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_shifts: {
         Row: {
           clock_in: string
@@ -300,6 +329,123 @@ export type Database = {
           vendor?: string | null
         }
         Relationships: []
+      }
+      guest_documents: {
+        Row: {
+          created_at: string
+          document_type: string
+          guest_id: string
+          id: string
+          image_url: string
+          notes: string | null
+        }
+        Insert: {
+          created_at?: string
+          document_type?: string
+          guest_id: string
+          id?: string
+          image_url: string
+          notes?: string | null
+        }
+        Update: {
+          created_at?: string
+          document_type?: string
+          guest_id?: string
+          id?: string
+          image_url?: string
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_documents_guest_id_fkey"
+            columns: ["guest_id"]
+            isOneToOne: false
+            referencedRelation: "resort_ops_guests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      guest_notes: {
+        Row: {
+          booking_id: string | null
+          content: string
+          created_at: string
+          created_by: string
+          id: string
+          note_type: string
+          unit_name: string
+        }
+        Insert: {
+          booking_id?: string | null
+          content?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          note_type?: string
+          unit_name?: string
+        }
+        Update: {
+          booking_id?: string | null
+          content?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          note_type?: string
+          unit_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_notes_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "resort_ops_bookings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      guest_tours: {
+        Row: {
+          booking_id: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          pax: number
+          price: number
+          status: string
+          tour_date: string
+          tour_name: string
+        }
+        Insert: {
+          booking_id?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          pax?: number
+          price?: number
+          status?: string
+          tour_date?: string
+          tour_name?: string
+        }
+        Update: {
+          booking_id?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          pax?: number
+          price?: number
+          status?: string
+          tour_date?: string
+          tour_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_tours_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "resort_ops_bookings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ingredients: {
         Row: {
