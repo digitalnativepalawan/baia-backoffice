@@ -22,6 +22,8 @@ import RecipeEditor from '@/components/admin/RecipeEditor';
 import InventoryDashboard from '@/components/admin/InventoryDashboard';
 import ResortOpsDashboard from '@/components/admin/ResortOpsDashboard';
 import InvoiceSettingsForm from '@/components/admin/InvoiceSettingsForm';
+import StaffAccessManager from '@/components/admin/StaffAccessManager';
+import RoomsDashboard from '@/components/admin/RoomsDashboard';
 
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 
@@ -388,6 +390,7 @@ const AdminPage = () => {
             
             <TabsTrigger value="payroll" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">Payroll</TabsTrigger>
             <TabsTrigger value="resort-ops" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">Resort Ops</TabsTrigger>
+            <TabsTrigger value="rooms" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">Rooms</TabsTrigger>
           </TabsList>
 
           {/* SETTINGS TAB */}
@@ -515,6 +518,7 @@ const AdminPage = () => {
                 </div>
               </div>
             </section>
+            <StaffAccessManager />
           </TabsContent>
 
           {/* MENU TAB */}
@@ -746,6 +750,11 @@ const AdminPage = () => {
           {/* RESORT OPS TAB */}
           <TabsContent value="resort-ops">
             <ResortOpsDashboard />
+          </TabsContent>
+
+          {/* ROOMS TAB */}
+          <TabsContent value="rooms">
+            <RoomsDashboard />
           </TabsContent>
         </Tabs>
       </div>
