@@ -24,6 +24,7 @@ import ResortOpsDashboard from '@/components/admin/ResortOpsDashboard';
 import InvoiceSettingsForm from '@/components/admin/InvoiceSettingsForm';
 import StaffAccessManager from '@/components/admin/StaffAccessManager';
 import RoomsDashboard from '@/components/admin/RoomsDashboard';
+import AdminLoginGate from '@/components/admin/AdminLoginGate';
 
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 
@@ -367,6 +368,7 @@ const AdminPage = () => {
     : ['New', 'Preparing', 'Served', 'Paid'];
 
   return (
+    <AdminLoginGate>
     <div className="min-h-screen bg-navy-texture overflow-x-hidden">
       <div className="max-w-2xl mx-auto px-4 py-6">
         {/* Header */}
@@ -907,6 +909,7 @@ const AdminPage = () => {
         </DialogContent>
       </Dialog>
     </div>
+    </AdminLoginGate>
   );
 };
 

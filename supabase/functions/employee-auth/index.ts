@@ -5,7 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// Simple hash/verify using Web Crypto API (no Worker needed)
 async function hashPin(pin: string): Promise<string> {
   const encoder = new TextEncoder();
   const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -82,6 +81,31 @@ Deno.serve(async (req) => {
       }
       const { password_hash, ...safeEmp } = emp;
       return new Response(JSON.stringify({ employee: safeEmp }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Admin verification: verify PIN + check 'admin' permission
+    if (action === 'admin-verify') {
+      if (!name || !pin) {
+        return new Response(JSON.stringify({ error: 'name and pin required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const { data: emp, error } = await supabase.from('employees').select('*').eq('name', name).eq('active', true).single();
+      if (error || !emp) {
+        return new Response(JSON.stringify({ error: 'Employee not found' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      if (!emp.password_hash) {
+        return new Response(JSON.stringify({ error: 'No PIN set. Ask admin to set your PIN.' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const valid = await verifyPin(pin, emp.password_hash);
+      if (!valid) {
+        return new Response(JSON.stringify({ error: 'Invalid PIN' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      // Check admin permission
+      const { data: perms } = await supabase.from('employee_permissions').select('permission').eq('employee_id', emp.id).eq('permission', 'admin');
+      if (!perms || perms.length === 0) {
+        return new Response(JSON.stringify({ error: 'Access denied. Admin permission required.' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const { password_hash, ...safeEmp } = emp;
+      return new Response(JSON.stringify({ employee: safeEmp, isAdmin: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
