@@ -33,8 +33,19 @@ export async function sendMessengerMessage(
     toast.info('Could not copy to clipboard — please copy manually');
   }
 
-  // Open Messenger conversation
-  const messengerUrl = `https://m.me/${employee.messenger_link.trim()}`;
+  // Open Messenger conversation — handle full Facebook URLs or plain usernames
+  const raw = employee.messenger_link.trim();
+  let username = raw;
+  if (raw.includes('facebook.com')) {
+    // Extract username from URLs like https://www.facebook.com/davidlesmith
+    const parts = raw.replace(/\/+$/, '').split('/');
+    username = parts[parts.length - 1];
+  } else if (raw.startsWith('http')) {
+    // Some other URL format — try to extract last path segment
+    const parts = raw.replace(/\/+$/, '').split('/');
+    username = parts[parts.length - 1];
+  }
+  const messengerUrl = `https://m.me/${username}`;
   window.open(messengerUrl, '_blank');
   toast.info('Messenger opened — paste and send your message');
 }

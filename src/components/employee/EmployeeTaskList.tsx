@@ -13,7 +13,7 @@ import { useResortProfile } from '@/hooks/useResortProfile';
 interface Props {
   employeeId?: string; // filter to one employee (portal) or all (admin)
   createdBy?: 'admin' | 'employee';
-  employees?: { id: string; name: string; messenger_link?: string; whatsapp_number?: string; active?: boolean; display_name?: string }[];
+  employees?: { id: string; name: string; messenger_link?: string; whatsapp_number?: string; active?: boolean; display_name?: string; preferred_contact_method?: string }[];
 }
 
 const EmployeeTaskList = ({ employeeId, createdBy = 'admin', employees = [] }: Props) => {
@@ -46,6 +46,35 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', employees = [] }: P
     return true;
   });
 
+  const autoSendTask = (targetId: string, taskTitle: string, taskDesc: string, taskDue: string) => {
+    const emp = employees.find(e => e.id === targetId);
+    if (!emp || emp.active === false) return;
+
+    const displayName = emp.display_name || emp.name;
+    const due = taskDue ? `\nDue: ${format(new Date(taskDue), 'MMM d, h:mm a')}` : '';
+    const msg = `Hi ${displayName},\n\nTask: ${taskTitle}${taskDesc ? '\n' + taskDesc : ''}${due}\n\n— ${resortProfile?.resort_name || 'Resort'} Admin`;
+
+    const pref = emp.preferred_contact_method || 'whatsapp';
+
+    if (pref === 'whatsapp' && emp.whatsapp_number) {
+      openWhatsApp(emp.whatsapp_number, msg);
+    } else if (pref === 'messenger' && emp.messenger_link) {
+      sendMessengerMessage(
+        { name: emp.name, display_name: emp.display_name, messenger_link: emp.messenger_link, active: true },
+        `Task: ${taskTitle}${taskDesc ? '\n' + taskDesc : ''}${due}`,
+        resortProfile?.resort_name || 'Resort'
+      );
+    } else if (emp.whatsapp_number) {
+      openWhatsApp(emp.whatsapp_number, msg);
+    } else if (emp.messenger_link) {
+      sendMessengerMessage(
+        { name: emp.name, display_name: emp.display_name, messenger_link: emp.messenger_link, active: true },
+        `Task: ${taskTitle}${taskDesc ? '\n' + taskDesc : ''}${due}`,
+        resortProfile?.resort_name || 'Resort'
+      );
+    }
+  };
+
   const addTask = async () => {
     const targetId = employeeId || assignee;
     if (!title.trim() || !targetId) return;
@@ -56,9 +85,13 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', employees = [] }: P
       due_date: dueDate ? new Date(dueDate).toISOString() : null,
       created_by: createdBy,
     });
+    const savedTitle = title.trim();
+    const savedDesc = description.trim();
+    const savedDue = dueDate;
     setTitle(''); setDescription(''); setDueDate(''); setShowForm(false);
     qc.invalidateQueries({ queryKey: ['employee-tasks'] });
     toast.success('Task added');
+    autoSendTask(targetId, savedTitle, savedDesc, savedDue);
   };
 
   const toggleComplete = async (task: any) => {
