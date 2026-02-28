@@ -7,14 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { format, parseISO } from 'date-fns';
-import { CalendarIcon, Download, Upload, Pencil, Trash2, Clock, Check, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
+import { Download, Upload, Pencil, Trash2, Clock, Check, X } from 'lucide-react';
 
 type Employee = { id: string; name: string; hourly_rate: number };
 type TimeEntry = {
@@ -37,10 +33,10 @@ const TimesheetDashboard = () => {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [filterStart, setFilterStart] = useState<Date | undefined>();
-  const [filterEnd, setFilterEnd] = useState<Date | undefined>();
-  const [calcStart, setCalcStart] = useState<Date | undefined>();
-  const [calcEnd, setCalcEnd] = useState<Date | undefined>();
+  const [filterStart, setFilterStart] = useState('');
+  const [filterEnd, setFilterEnd] = useState('');
+  const [calcStart, setCalcStart] = useState('');
+  const [calcEnd, setCalcEnd] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ clock_in: '', clock_out: '', is_paid: false, paid_amount: '' });
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -61,7 +57,6 @@ const TimesheetDashboard = () => {
     },
   });
 
-  // Realtime
   useEffect(() => {
     const ch = supabase.channel('time-entries-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'time_entries' }, () => {
@@ -76,12 +71,10 @@ const TimesheetDashboard = () => {
     return m;
   }, [employees]);
 
-  // Calculate Hours & Pay
   const calcResults = useMemo(() => {
     if (!calcStart) return null;
-    const startStr = format(calcStart, 'yyyy-MM-dd');
-    const endStr = calcEnd ? format(calcEnd, 'yyyy-MM-dd') : '9999-12-31';
-    const filtered = entries.filter(e => e.entry_date >= startStr && e.entry_date <= endStr);
+    const endStr = calcEnd || '9999-12-31';
+    const filtered = entries.filter(e => e.entry_date >= calcStart && e.entry_date <= endStr);
     const byEmp: Record<string, number> = {};
     filtered.forEach(e => {
       const h = diffHours(e.clock_in, e.clock_out);
@@ -97,14 +90,12 @@ const TimesheetDashboard = () => {
     return { totalHours: Math.round(totalHours * 100) / 100, totalPay: Math.round(totalPay * 100) / 100, breakdown };
   }, [calcStart, calcEnd, entries, empMap]);
 
-  // Clock Out
   const clockOut = async (id: string) => {
     await supabase.from('time_entries').update({ clock_out: new Date().toISOString() }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['time-entries'] });
     toast.success('Clocked out');
   };
 
-  // Start edit
   const startEdit = (e: TimeEntry) => {
     setEditingId(e.id);
     setEditForm({
@@ -137,17 +128,10 @@ const TimesheetDashboard = () => {
     toast.success('Entry deleted');
   };
 
-  // CSV Download
   const downloadCSV = () => {
     let filtered = entries;
-    if (filterStart) {
-      const s = format(filterStart, 'yyyy-MM-dd');
-      filtered = filtered.filter(e => e.entry_date >= s);
-    }
-    if (filterEnd) {
-      const s = format(filterEnd, 'yyyy-MM-dd');
-      filtered = filtered.filter(e => e.entry_date <= s);
-    }
+    if (filterStart) filtered = filtered.filter(e => e.entry_date >= filterStart);
+    if (filterEnd) filtered = filtered.filter(e => e.entry_date <= filterEnd);
     const rows = filtered.map(e => {
       const emp = empMap[e.employee_id];
       const hours = diffHours(e.clock_in, e.clock_out);
@@ -164,13 +148,11 @@ const TimesheetDashboard = () => {
     URL.revokeObjectURL(url);
   };
 
-  // Bulk CSV Upload
   const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const text = await file.text();
     const lines = text.split('\n').slice(1).filter(l => l.trim());
-    // parse CSV with quoted values
     const parseRow = (line: string) => {
       const result: string[] = []; let cur = ''; let inQuote = false;
       for (const ch of line) {
@@ -203,31 +185,19 @@ const TimesheetDashboard = () => {
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const DatePicker = ({ date, onSelect, placeholder }: { date?: Date; onSelect: (d: Date | undefined) => void; placeholder: string }) => (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline" className={cn("justify-start text-left font-body text-xs h-9", !date && "text-muted-foreground")}>
-          <CalendarIcon className="mr-1 h-3 w-3" />
-          {date ? format(date, 'MMM d') : placeholder}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar mode="single" selected={date} onSelect={onSelect} className="p-3 pointer-events-auto" />
-      </PopoverContent>
-    </Popover>
-  );
-
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="font-display text-lg tracking-wider text-foreground flex-grow">Timesheet Management</h2>
-        <DatePicker date={filterStart} onSelect={setFilterStart} placeholder="Start" />
-        <DatePicker date={filterEnd} onSelect={setFilterEnd} placeholder="End" />
-        <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-display text-xs" onClick={downloadCSV}>
+        <Input type="date" value={filterStart} onChange={e => setFilterStart(e.target.value)}
+          className="bg-secondary border-border text-foreground font-body text-xs h-9 w-32" />
+        <Input type="date" value={filterEnd} onChange={e => setFilterEnd(e.target.value)}
+          className="bg-secondary border-border text-foreground font-body text-xs h-9 w-32" />
+        <Button size="sm" variant="outline" className="font-display text-xs h-9" onClick={downloadCSV}>
           <Download className="h-3 w-3 mr-1" /> CSV
         </Button>
-        <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white font-display text-xs" onClick={() => fileRef.current?.click()}>
+        <Button size="sm" variant="outline" className="font-display text-xs h-9" onClick={() => fileRef.current?.click()}>
           <Upload className="h-3 w-3 mr-1" /> Bulk
         </Button>
         <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleBulkUpload} />
@@ -242,11 +212,13 @@ const TimesheetDashboard = () => {
           <div className="flex flex-wrap gap-2 items-end">
             <div>
               <Label className="font-body text-xs text-muted-foreground">Start Date</Label>
-              <DatePicker date={calcStart} onSelect={setCalcStart} placeholder="Start *" />
+              <Input type="date" value={calcStart} onChange={e => setCalcStart(e.target.value)}
+                className="bg-secondary border-border text-foreground font-body text-xs h-9 w-36" />
             </div>
             <div>
               <Label className="font-body text-xs text-muted-foreground">End Date</Label>
-              <DatePicker date={calcEnd} onSelect={setCalcEnd} placeholder="End (opt)" />
+              <Input type="date" value={calcEnd} onChange={e => setCalcEnd(e.target.value)}
+                className="bg-secondary border-border text-foreground font-body text-xs h-9 w-36" />
             </div>
           </div>
           {calcResults && (
@@ -270,124 +242,78 @@ const TimesheetDashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Time Entries */}
-      {isMobile ? (
-        <div className="space-y-2">
-          {entries.map(entry => {
-            const emp = empMap[entry.employee_id];
-            const hours = diffHours(entry.clock_in, entry.clock_out);
-            const isEditing = editingId === entry.id;
+      {/* Time Entries - always stacked cards */}
+      <div className="space-y-2">
+        {entries.length === 0 && (
+          <p className="font-body text-sm text-muted-foreground text-center py-8">No time entries yet</p>
+        )}
+        {entries.map(entry => {
+          const emp = empMap[entry.employee_id];
+          const hours = diffHours(entry.clock_in, entry.clock_out);
+          const isEditing = editingId === entry.id;
 
-            if (isEditing) {
-              return (
-                <Card key={entry.id} className="bg-card border-border">
-                  <CardContent className="p-3 space-y-2">
-                    <Label className="font-body text-xs text-muted-foreground">Clock In</Label>
-                    <Input type="datetime-local" value={editForm.clock_in} onChange={e => setEditForm(p => ({ ...p, clock_in: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs h-8" />
-                    <Label className="font-body text-xs text-muted-foreground">Clock Out</Label>
-                    <Input type="datetime-local" value={editForm.clock_out} onChange={e => setEditForm(p => ({ ...p, clock_out: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs h-8" />
-                    <div className="flex items-center gap-2">
-                      <Label className="font-body text-xs text-muted-foreground">Paid</Label>
-                      <input type="checkbox" checked={editForm.is_paid} onChange={e => setEditForm(p => ({ ...p, is_paid: e.target.checked }))} />
-                      <Input placeholder="Amount" value={editForm.paid_amount} onChange={e => setEditForm(p => ({ ...p, paid_amount: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs h-8 w-24" />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={saveEdit} className="font-display text-xs h-8"><Check className="h-3 w-3 mr-1" />Save</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} className="font-display text-xs h-8"><X className="h-3 w-3 mr-1" />Cancel</Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            }
-
+          if (isEditing) {
             return (
               <Card key={entry.id} className="bg-card border-border">
-                <CardContent className="p-3 space-y-1">
-                  <div className="flex justify-between items-start">
-                    <div className="font-body text-sm font-semibold text-foreground">{emp?.name || 'Unknown'}</div>
-                    <Badge variant={entry.is_paid ? 'default' : 'secondary'} className="text-[10px]">{entry.is_paid ? 'Paid' : 'Unpaid'}</Badge>
+                <CardContent className="p-3 space-y-2">
+                  <div className="font-body text-sm font-semibold text-foreground">{emp?.name || 'Unknown'}</div>
+                  <div>
+                    <Label className="font-body text-xs text-muted-foreground">Clock In</Label>
+                    <Input type="datetime-local" value={editForm.clock_in} onChange={e => setEditForm(p => ({ ...p, clock_in: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs h-9" />
                   </div>
-                  <div className="font-body text-xs text-muted-foreground">{entry.entry_date}</div>
-                  <div className="font-body text-xs text-foreground">{fmt12(entry.clock_in)} → {entry.clock_out ? fmt12(entry.clock_out) : <span className="text-green-400">Active</span>}</div>
-                  <div className="font-body text-xs text-muted-foreground">{hours > 0 ? `${hours.toFixed(1)}h` : '-'} {entry.paid_amount ? `· ₱${entry.paid_amount}` : ''}</div>
-                  <div className="flex gap-1 pt-1">
-                    {!entry.clock_out && <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => clockOut(entry.id)}><Clock className="h-3 w-3" /></Button>}
-                    <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => startEdit(entry)}><Pencil className="h-3 w-3" /></Button>
-                    <Button size="sm" variant="outline" className="h-8 w-8 p-0 text-destructive" onClick={() => setDeleteId(entry.id)}><Trash2 className="h-3 w-3" /></Button>
+                  <div>
+                    <Label className="font-body text-xs text-muted-foreground">Clock Out</Label>
+                    <Input type="datetime-local" value={editForm.clock_out} onChange={e => setEditForm(p => ({ ...p, clock_out: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs h-9" />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1.5 font-body text-xs text-muted-foreground">
+                      <input type="checkbox" checked={editForm.is_paid} onChange={e => setEditForm(p => ({ ...p, is_paid: e.target.checked }))} />
+                      Paid
+                    </label>
+                    <Input placeholder="₱ Amount" value={editForm.paid_amount} onChange={e => setEditForm(p => ({ ...p, paid_amount: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs h-9 w-28" />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={saveEdit} className="font-display text-xs h-9 flex-1"><Check className="h-3 w-3 mr-1" />Save</Button>
+                    <Button size="sm" variant="outline" onClick={() => setEditingId(null)} className="font-display text-xs h-9 flex-1"><X className="h-3 w-3 mr-1" />Cancel</Button>
                   </div>
                 </CardContent>
               </Card>
             );
-          })}
-        </div>
-      ) : (
-        <Card className="bg-card border-border">
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="font-display text-xs">Employee</TableHead>
-                  <TableHead className="font-display text-xs">Date</TableHead>
-                  <TableHead className="font-display text-xs">Clock In</TableHead>
-                  <TableHead className="font-display text-xs">Clock Out</TableHead>
-                  <TableHead className="font-display text-xs">Hours</TableHead>
-                  <TableHead className="font-display text-xs">Status</TableHead>
-                  <TableHead className="font-display text-xs">Paid Amt</TableHead>
-                  <TableHead className="font-display text-xs">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {entries.map(entry => {
-                  const emp = empMap[entry.employee_id];
-                  const hours = diffHours(entry.clock_in, entry.clock_out);
-                  const isEditing = editingId === entry.id;
+          }
 
-                  if (isEditing) {
-                    return (
-                      <TableRow key={entry.id}>
-                        <TableCell className="font-body text-xs">{emp?.name}</TableCell>
-                        <TableCell className="font-body text-xs">{entry.entry_date}</TableCell>
-                        <TableCell><Input type="datetime-local" value={editForm.clock_in} onChange={e => setEditForm(p => ({ ...p, clock_in: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs h-7 w-36" /></TableCell>
-                        <TableCell><Input type="datetime-local" value={editForm.clock_out} onChange={e => setEditForm(p => ({ ...p, clock_out: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs h-7 w-36" /></TableCell>
-                        <TableCell className="font-body text-xs">-</TableCell>
-                        <TableCell>
-                          <input type="checkbox" checked={editForm.is_paid} onChange={e => setEditForm(p => ({ ...p, is_paid: e.target.checked }))} />
-                        </TableCell>
-                        <TableCell><Input value={editForm.paid_amount} onChange={e => setEditForm(p => ({ ...p, paid_amount: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs h-7 w-20" /></TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={saveEdit}><Check className="h-3 w-3" /></Button>
-                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setEditingId(null)}><X className="h-3 w-3" /></Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  }
-
-                  return (
-                    <TableRow key={entry.id}>
-                      <TableCell className="font-body text-xs text-foreground">{emp?.name || 'Unknown'}</TableCell>
-                      <TableCell className="font-body text-xs text-muted-foreground">{entry.entry_date}</TableCell>
-                      <TableCell className="font-body text-xs text-foreground">{fmt12(entry.clock_in)}</TableCell>
-                      <TableCell className="font-body text-xs text-foreground">{entry.clock_out ? fmt12(entry.clock_out) : <span className="text-green-400">Active</span>}</TableCell>
-                      <TableCell className="font-body text-xs text-foreground">{hours > 0 ? hours.toFixed(1) : '-'}</TableCell>
-                      <TableCell><Badge variant={entry.is_paid ? 'default' : 'secondary'} className="text-[10px]">{entry.is_paid ? 'Paid' : 'Unpaid'}</Badge></TableCell>
-                      <TableCell className="font-body text-xs text-foreground">{entry.paid_amount ? `₱${entry.paid_amount}` : '-'}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          {!entry.clock_out && <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => clockOut(entry.id)}><Clock className="h-3 w-3" /></Button>}
-                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => startEdit(entry)}><Pencil className="h-3 w-3" /></Button>
-                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" onClick={() => setDeleteId(entry.id)}><Trash2 className="h-3 w-3" /></Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+          return (
+            <Card key={entry.id} className="bg-card border-border">
+              <CardContent className="p-3">
+                <div className="flex justify-between items-start mb-1">
+                  <div className="font-body text-sm font-semibold text-foreground">{emp?.name || 'Unknown'}</div>
+                  <Badge variant={entry.is_paid ? 'default' : 'secondary'} className="text-[10px]">{entry.is_paid ? 'Paid' : 'Unpaid'}</Badge>
+                </div>
+                <div className="font-body text-xs text-muted-foreground mb-0.5">{entry.entry_date}</div>
+                <div className="flex items-center gap-1 font-body text-xs text-foreground mb-0.5">
+                  <Clock className="h-3 w-3 text-muted-foreground" />
+                  {fmt12(entry.clock_in)} → {entry.clock_out ? fmt12(entry.clock_out) : <span className="text-accent">Active</span>}
+                </div>
+                <div className="font-body text-xs text-muted-foreground">
+                  {hours > 0 ? `${hours.toFixed(1)}h` : '-'} {entry.paid_amount ? `· ₱${entry.paid_amount}` : ''}
+                </div>
+                <div className="flex gap-1 pt-2">
+                  {!entry.clock_out && (
+                    <Button size="sm" variant="outline" className="h-10 w-10 p-0" onClick={() => clockOut(entry.id)}>
+                      <Clock className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="h-10 w-10 p-0" onClick={() => startEdit(entry)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-10 w-10 p-0 text-destructive" onClick={() => setDeleteId(entry.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
       {/* Delete confirmation */}
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>

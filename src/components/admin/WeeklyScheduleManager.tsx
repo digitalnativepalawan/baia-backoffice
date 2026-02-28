@@ -2,15 +2,16 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { format, startOfWeek, addDays, isToday, parseISO } from 'date-fns';
-import { Plus, Pencil, Trash2, Calendar as CalIcon } from 'lucide-react';
+import { format, startOfWeek, addDays, isToday } from 'date-fns';
+import { Plus, Pencil, Trash2, Calendar as CalIcon, Clock, Users } from 'lucide-react';
 
 type Employee = { id: string; name: string };
 type Schedule = {
@@ -45,6 +46,7 @@ const WeeklyScheduleManager = () => {
   const [shiftModal, setShiftModal] = useState<{ mode: 'add' | 'edit'; schedule?: Schedule; date?: string; empId?: string } | null>(null);
   const [shiftForm, setShiftForm] = useState({ employee_id: '', schedule_date: '', time_in: '07:00', time_out: '16:00' });
   const [empWeekModal, setEmpWeekModal] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ['employees-schedule'],
@@ -66,7 +68,6 @@ const WeeklyScheduleManager = () => {
     },
   });
 
-  // Realtime
   useEffect(() => {
     const ch = supabase.channel('schedules-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'weekly_schedules' }, () => {
@@ -134,8 +135,10 @@ const WeeklyScheduleManager = () => {
     qc.invalidateQueries({ queryKey: ['weekly-schedules'] });
   };
 
-  const deleteShift = async (id: string) => {
-    await supabase.from('weekly_schedules').delete().eq('id', id);
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    await supabase.from('weekly_schedules').delete().eq('id', deleteId);
+    setDeleteId(null);
     qc.invalidateQueries({ queryKey: ['weekly-schedules'] });
     toast.success('Shift deleted');
   };
@@ -145,14 +148,14 @@ const WeeklyScheduleManager = () => {
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const todaySchedules = schedules.filter(s => s.schedule_date === todayStr);
 
-  // MOBILE VIEW
+  // MOBILE VIEW — stacked cards
   if (isMobile) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg tracking-wider text-foreground">Today's Schedule</h2>
-          <Button size="sm" variant="outline" className="font-display text-xs h-9" onClick={() => openAdd(todayStr)}>
-            <Plus className="h-3 w-3 mr-1" /> Add
+          <Button size="sm" variant="outline" className="font-display text-xs h-10 min-w-[44px]" onClick={() => openAdd(todayStr)}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add
           </Button>
         </div>
 
@@ -162,14 +165,23 @@ const WeeklyScheduleManager = () => {
 
         {todaySchedules.map(s => (
           <Card key={s.id} className="bg-card border-border" onClick={() => setEmpWeekModal(s.employee_id)}>
-            <CardContent className="p-3 flex justify-between items-center">
-              <div>
-                <div className="font-body text-sm font-semibold text-foreground">{empMap[s.employee_id]?.name || 'Unknown'}</div>
-                <div className="font-body text-xs text-muted-foreground">{fmtTime(s.time_in)} – {fmtTime(s.time_out)}</div>
-              </div>
-              <div className="flex gap-1">
-                <Button size="sm" variant="ghost" className="h-10 w-10 p-0" onClick={e => { e.stopPropagation(); openEdit(s); }}><Pencil className="h-3 w-3" /></Button>
-                <Button size="sm" variant="ghost" className="h-10 w-10 p-0 text-destructive" onClick={e => { e.stopPropagation(); deleteShift(s.id); }}><Trash2 className="h-3 w-3" /></Button>
+            <CardContent className="p-3">
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="font-body text-sm font-semibold text-foreground">{empMap[s.employee_id]?.name || 'Unknown'}</div>
+                  <div className="flex items-center gap-1 font-body text-xs text-muted-foreground mt-0.5">
+                    <Clock className="h-3 w-3" />
+                    {fmtTime(s.time_in)} – {fmtTime(s.time_out)}
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" className="h-10 w-10 p-0" onClick={e => { e.stopPropagation(); openEdit(s); }}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-10 w-10 p-0 text-destructive" onClick={e => { e.stopPropagation(); setDeleteId(s.id); }}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -187,11 +199,14 @@ const WeeklyScheduleManager = () => {
                 const dayScheds = scheduleMap[`${empWeekModal}_${dateStr}`] || [];
                 return (
                   <Card key={dateStr} className="bg-secondary border-border">
-                    <CardContent className="p-2">
-                      <div className="font-body text-xs font-semibold text-foreground">{format(d, 'EEE, MMM d')}</div>
+                    <CardContent className="p-3">
+                      <div className="font-body text-xs font-semibold text-foreground mb-1">{format(d, 'EEE, MMM d')}</div>
                       {dayScheds.length === 0 && <div className="font-body text-xs text-muted-foreground">Off</div>}
                       {dayScheds.map(s => (
-                        <div key={s.id} className="font-body text-xs text-foreground">{fmtTime(s.time_in)} – {fmtTime(s.time_out)}</div>
+                        <div key={s.id} className="flex items-center gap-1 font-body text-xs text-foreground">
+                          <Clock className="h-3 w-3 text-muted-foreground" />
+                          {fmtTime(s.time_in)} – {fmtTime(s.time_out)}
+                        </div>
                       ))}
                     </CardContent>
                   </Card>
@@ -205,61 +220,93 @@ const WeeklyScheduleManager = () => {
         <ShiftModal shiftModal={shiftModal} shiftForm={shiftForm} setShiftForm={setShiftForm}
           employees={employees} saveShift={saveShift} addBrokenShift={addBrokenShift}
           onClose={() => setShiftModal(null)} />
+
+        {/* Delete confirmation */}
+        <DeleteConfirm deleteId={deleteId} setDeleteId={setDeleteId} onConfirm={confirmDelete} />
       </div>
     );
   }
 
-  // DESKTOP VIEW
+  // DESKTOP VIEW — calendar grid matching screenshot
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="font-display text-lg tracking-wider text-foreground flex-grow">Weekly Schedule Manager</h2>
-        <Input type="date" value={format(weekStart, 'yyyy-MM-dd')}
-          onChange={e => { if (e.target.value) setWeekStart(startOfWeek(new Date(e.target.value + 'T00:00:00'), { weekStartsOn: 0 })); }}
-          className="bg-secondary border-border text-foreground font-body text-xs h-9 w-40" />
+      {/* Header */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 flex-grow">
+          <CalIcon className="h-5 w-5 text-muted-foreground" />
+          <h2 className="font-display text-lg tracking-wider text-foreground">Weekly Schedule Manager</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-body text-xs text-muted-foreground">Start Week:</span>
+          <Input type="date" value={format(weekStart, 'yyyy-MM-dd')}
+            onChange={e => { if (e.target.value) setWeekStart(startOfWeek(new Date(e.target.value + 'T00:00:00'), { weekStartsOn: 0 })); }}
+            className="bg-secondary border-border text-foreground font-body text-xs h-9 w-40" />
+        </div>
         <Button size="sm" variant="outline" className="font-display text-xs h-9" onClick={goCurrentWeek}>
-          <CalIcon className="h-3 w-3 mr-1" /> Current Week
+          Current Week
         </Button>
-        <span className="font-body text-xs text-muted-foreground">
-          Week of {format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d')}
+        <span className="font-body text-xs text-accent">
+          Week of {format(weekStart, 'MMM d')} - {format(addDays(weekStart, 6), 'MMM d')}
         </span>
       </div>
 
+      {/* Calendar Grid */}
       <Card className="bg-card border-border overflow-x-auto">
         <CardContent className="p-0">
-          <table className="w-full text-xs">
+          <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left p-2 font-display text-foreground min-w-[100px]">Employee</th>
+                <th className="text-center p-3 font-display text-muted-foreground min-w-[100px] border-r border-border">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <Users className="h-4 w-4" />
+                    <span>Employee</span>
+                  </div>
+                </th>
                 {weekDates.map((d, i) => (
-                  <th key={i} className={`text-center p-2 font-display min-w-[100px] ${isToday(d) ? 'text-primary' : 'text-foreground'}`}>
-                    {DAYS[i]}<br /><span className="text-[10px] text-muted-foreground">{format(d, 'M/d')}</span>
+                  <th key={i} className={`text-center p-3 font-display min-w-[110px] border-r border-border last:border-r-0 ${isToday(d) ? 'text-accent bg-accent/5' : 'text-foreground'}`}>
+                    <div>{DAYS[i]}</div>
+                    <div className="text-[10px] text-muted-foreground font-body">{format(d, 'd')}</div>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {employees.map(emp => (
-                <tr key={emp.id} className="border-b border-border hover:bg-secondary/50">
-                  <td className="p-2 font-body text-foreground font-semibold">{emp.name}</td>
+                <tr key={emp.id} className="border-b border-border last:border-b-0">
+                  <td className="p-3 font-body text-foreground font-semibold text-sm border-r border-border align-top">
+                    {emp.name}
+                  </td>
                   {weekDates.map((d, i) => {
                     const dateStr = format(d, 'yyyy-MM-dd');
                     const dayScheds = scheduleMap[`${emp.id}_${dateStr}`] || [];
                     return (
-                      <td key={i} className="p-1 text-center align-top group">
-                        {dayScheds.map(s => (
-                          <div key={s.id} className="relative group/shift bg-secondary rounded px-1 py-0.5 mb-0.5 text-[10px] font-body text-foreground">
-                            {fmtTime(s.time_in)}–{fmtTime(s.time_out)}
-                            <div className="absolute top-0 right-0 hidden group-hover/shift:flex gap-0.5">
-                              <button onClick={() => openEdit(s)} className="p-0.5 hover:text-primary"><Pencil className="h-2.5 w-2.5" /></button>
-                              <button onClick={() => deleteShift(s.id)} className="p-0.5 hover:text-destructive"><Trash2 className="h-2.5 w-2.5" /></button>
+                      <td key={i} className={`p-2 text-center align-top border-r border-border last:border-r-0 group ${isToday(d) ? 'bg-accent/5' : ''}`}>
+                        <div className="space-y-1.5 min-h-[48px] flex flex-col items-center justify-start">
+                          {dayScheds.map(s => (
+                            <div key={s.id} className="relative bg-secondary rounded-md px-2 py-2 text-left w-full group/shift">
+                              <div className="flex items-start gap-1">
+                                <Clock className="h-3 w-3 text-muted-foreground mt-0.5 shrink-0" />
+                                <div className="font-body text-[11px] text-foreground leading-tight">
+                                  <div className="font-semibold">{fmtTime(s.time_in)}</div>
+                                  <div className="text-muted-foreground">-</div>
+                                  <div className="font-semibold">{fmtTime(s.time_out)}</div>
+                                </div>
+                              </div>
+                              <div className="absolute top-1 right-1 hidden group-hover/shift:flex gap-0.5">
+                                <button onClick={() => openEdit(s)} className="p-1 rounded hover:bg-background/50 text-muted-foreground hover:text-accent transition-colors">
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                                <button onClick={() => setDeleteId(s.id)} className="p-1 rounded hover:bg-background/50 text-muted-foreground hover:text-destructive transition-colors">
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                        <button onClick={() => openAdd(dateStr, emp.id)}
-                          className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Plus className="h-3 w-3 mx-auto" />
-                        </button>
+                          ))}
+                          <button onClick={() => openAdd(dateStr, emp.id)}
+                            className="text-muted-foreground hover:text-accent opacity-0 group-hover:opacity-100 transition-opacity p-1">
+                            <Plus className="h-4 w-4 mx-auto" />
+                          </button>
+                        </div>
                       </td>
                     );
                   })}
@@ -274,6 +321,9 @@ const WeeklyScheduleManager = () => {
       <ShiftModal shiftModal={shiftModal} shiftForm={shiftForm} setShiftForm={setShiftForm}
         employees={employees} saveShift={saveShift} addBrokenShift={addBrokenShift}
         onClose={() => setShiftModal(null)} />
+
+      {/* Delete confirmation */}
+      <DeleteConfirm deleteId={deleteId} setDeleteId={setDeleteId} onConfirm={confirmDelete} />
     </div>
   );
 };
@@ -318,12 +368,12 @@ const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, saveShift,
 
         <div className="flex flex-wrap gap-1">
           {PRESETS.map(p => (
-            <Button key={p.label} size="sm" variant="outline" className="font-display text-[10px] h-7"
+            <Button key={p.label} size="sm" variant="outline" className="font-display text-[10px] h-8"
               onClick={() => setShiftForm((f: any) => ({ ...f, time_in: p.time_in, time_out: p.time_out }))}>
               {p.label}
             </Button>
           ))}
-          <Button size="sm" variant="outline" className="font-display text-[10px] h-7" onClick={addBrokenShift}>
+          <Button size="sm" variant="outline" className="font-display text-[10px] h-8" onClick={addBrokenShift}>
             Broken Shift
           </Button>
         </div>
@@ -334,6 +384,24 @@ const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, saveShift,
       </div>
     </DialogContent>
   </Dialog>
+);
+
+// Delete Confirmation Dialog
+const DeleteConfirm = ({ deleteId, setDeleteId, onConfirm }: {
+  deleteId: string | null; setDeleteId: (id: string | null) => void; onConfirm: () => void;
+}) => (
+  <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+    <AlertDialogContent className="bg-card border-border">
+      <AlertDialogHeader>
+        <AlertDialogTitle className="font-display text-foreground">Delete Shift?</AlertDialogTitle>
+        <AlertDialogDescription className="font-body text-muted-foreground">This action cannot be undone.</AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel className="font-display">Cancel</AlertDialogCancel>
+        <AlertDialogAction onClick={onConfirm} className="bg-destructive text-destructive-foreground font-display">Delete</AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
 );
 
 export default WeeklyScheduleManager;
