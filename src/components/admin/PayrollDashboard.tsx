@@ -10,6 +10,7 @@ import { Plus, Pencil, Trash2, Check, X, DollarSign, Clock, Users, Download, Ban
 import { format, startOfDay, endOfDay, subDays, startOfWeek, startOfMonth, previousSunday, nextSaturday, isSunday, addDays, getDay } from 'date-fns';
 import { usePayrollSettings } from '@/hooks/usePayrollSettings';
 import EmployeeTaskList from '@/components/employee/EmployeeTaskList';
+import StaffAccessManager from '@/components/admin/StaffAccessManager';
 
 type DateFilter = 'today' | 'yesterday' | 'week' | 'month' | 'all';
 type SubView = 'employees' | 'shifts' | 'summary' | 'payments' | 'tasks' | 'settings';
@@ -699,6 +700,8 @@ const PayrollDashboard = () => {
               <Plus className="w-3.5 h-3.5" /> Add Employee
             </Button>
           </div>
+
+          <StaffAccessManager />
 
           {/* Bonuses section */}
           <div className="mt-6 space-y-3">
