@@ -79,8 +79,12 @@ Deno.serve(async (req) => {
       if (!valid) {
         return new Response(JSON.stringify({ error: 'Invalid PIN' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
+      // Also fetch permissions so the client knows the role
+      const { data: perms } = await supabase.from('employee_permissions').select('permission').eq('employee_id', emp.id);
+      const permList = (perms || []).map((p: any) => p.permission);
+      const isAdmin = permList.includes('admin');
       const { password_hash, ...safeEmp } = emp;
-      return new Response(JSON.stringify({ employee: safeEmp }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ employee: safeEmp, isAdmin, permissions: permList }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // Admin verification: verify PIN + check 'admin' permission

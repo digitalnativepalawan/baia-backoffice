@@ -47,7 +47,8 @@ const Index = () => {
       const s = {
         name: data.employee.name,
         employeeId: data.employee.id,
-        isAdmin: data.isAdmin,
+        isAdmin: data.isAdmin || false,
+        permissions: data.permissions || [],
         expiresAt: Date.now() + 8 * 60 * 60 * 1000,
       };
       sessionStorage.setItem(STAFF_SESSION_KEY, JSON.stringify(s));
@@ -114,6 +115,14 @@ const Index = () => {
                 className="font-body text-sm tracking-wider py-3 text-cream-dim/60 hover:text-cream-dim transition-colors"
               >
                 Admin
+              </button>
+            )}
+            {(session.isAdmin || (session.permissions && session.permissions.length > 0)) && (
+              <button
+                onClick={() => navigate('/manager')}
+                className="font-body text-sm tracking-wider py-3 text-cream-dim/60 hover:text-cream-dim transition-colors"
+              >
+                Manager
               </button>
             )}
             <button
