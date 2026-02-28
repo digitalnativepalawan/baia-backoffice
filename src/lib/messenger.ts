@@ -38,3 +38,57 @@ export async function sendMessengerMessage(
   window.open(messengerUrl, '_blank');
   toast.info('Messenger opened — paste and send your message');
 }
+
+interface WhatsAppTask {
+  title: string;
+  status: string;
+  due_date?: string | null;
+}
+
+interface WhatsAppShift {
+  clock_in: string;
+  clock_out?: string | null;
+  hours_worked?: number | null;
+}
+
+export function buildTeamWhatsAppMessage(
+  employeeName: string,
+  tasks: WhatsAppTask[],
+  shifts: WhatsAppShift[],
+  resortName: string
+): string {
+  let msg = `Hi ${employeeName},\n\n`;
+
+  const pendingTasks = tasks.filter(t => t.status !== 'completed');
+  if (pendingTasks.length > 0) {
+    msg += `📋 *Your Tasks:*\n`;
+    pendingTasks.forEach(t => {
+      const due = t.due_date ? ` (due ${new Date(t.due_date).toLocaleDateString()})` : '';
+      msg += `• ${t.title}${due}\n`;
+    });
+    msg += '\n';
+  }
+
+  if (shifts.length > 0) {
+    msg += `🕐 *Recent Shifts:*\n`;
+    shifts.slice(0, 5).forEach(s => {
+      const date = new Date(s.clock_in).toLocaleDateString();
+      const hrs = s.hours_worked ? ` — ${Number(s.hours_worked).toFixed(1)}h` : '';
+      msg += `• ${date}${hrs}\n`;
+    });
+    msg += '\n';
+  }
+
+  if (pendingTasks.length === 0 && shifts.length === 0) {
+    msg += `No pending tasks or recent shifts to report.\n\n`;
+  }
+
+  msg += `— ${resortName} Admin`;
+  return msg;
+}
+
+export function openWhatsApp(number: string, message: string) {
+  const cleaned = number.replace(/[^0-9+]/g, '');
+  const encoded = encodeURIComponent(message);
+  window.open(`https://wa.me/${cleaned}?text=${encoded}`, '_blank');
+}

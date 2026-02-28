@@ -211,6 +211,7 @@ export type Database = {
           phone: string
           preferred_contact_method: string
           rate_type: string
+          whatsapp_number: string
         }
         Insert: {
           active?: boolean
@@ -226,6 +227,7 @@ export type Database = {
           phone?: string
           preferred_contact_method?: string
           rate_type?: string
+          whatsapp_number?: string
         }
         Update: {
           active?: boolean
@@ -241,6 +243,7 @@ export type Database = {
           phone?: string
           preferred_contact_method?: string
           rate_type?: string
+          whatsapp_number?: string
         }
         Relationships: []
       }
