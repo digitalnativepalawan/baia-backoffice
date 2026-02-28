@@ -152,30 +152,30 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', employees = [] }: P
                   <p className={`font-body text-sm text-foreground ${task.status === 'completed' ? 'line-through' : ''}`}>{task.title}</p>
                   {task.description && <p className="font-body text-xs text-muted-foreground">{task.description}</p>}
                 </div>
-                <div className="flex items-center gap-1">
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => toggleComplete(task)}>
-                    <Check className={`w-3.5 h-3.5 ${task.status === 'completed' ? 'text-primary' : 'text-muted-foreground'}`} />
-                  </Button>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground" onClick={() => {
-                    setEditId(task.id); setEditTitle(task.title); setEditDesc(task.description || '');
-                    setEditDue(task.due_date ? format(new Date(task.due_date), "yyyy-MM-dd'T'HH:mm") : '');
-                  }}><Pencil className="w-3.5 h-3.5" /></Button>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteTask(task.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground"
-                    title="Send via Messenger"
-                    disabled={(() => { const emp = employees.find(e => e.id === task.employee_id); return !emp?.messenger_link || emp?.active === false; })()}
-                    onClick={() => {
-                      const emp = employees.find(e => e.id === task.employee_id);
-                      if (emp) sendMessengerMessage(
-                        { name: emp.name, display_name: emp.display_name, messenger_link: emp.messenger_link || '', active: emp.active !== false },
-                        `Task: ${task.title}${task.description ? '\n' + task.description : ''}`,
-                        resortProfile?.resort_name || 'Resort'
-                      );
-                    }}>
-                    <MessageCircle className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
+                <div className="flex items-center gap-0.5">
+                   <Button size="icon" variant="ghost" className="h-10 w-10" onClick={() => toggleComplete(task)}>
+                     <Check className={`w-5 h-5 ${task.status === 'completed' ? 'text-primary' : 'text-muted-foreground'}`} />
+                   </Button>
+                   <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground" onClick={() => {
+                     setEditId(task.id); setEditTitle(task.title); setEditDesc(task.description || '');
+                     setEditDue(task.due_date ? format(new Date(task.due_date), "yyyy-MM-dd'T'HH:mm") : '');
+                   }}><Pencil className="w-5 h-5" /></Button>
+                   <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive"
+                     onClick={() => deleteTask(task.id)}><Trash2 className="w-5 h-5" /></Button>
+                   <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground"
+                     title="Send via Messenger"
+                     disabled={(() => { const emp = employees.find(e => e.id === task.employee_id); return !emp?.messenger_link || emp?.active === false; })()}
+                     onClick={() => {
+                       const emp = employees.find(e => e.id === task.employee_id);
+                       if (emp) sendMessengerMessage(
+                         { name: emp.name, display_name: emp.display_name, messenger_link: emp.messenger_link || '', active: emp.active !== false },
+                         `Task: ${task.title}${task.description ? '\n' + task.description : ''}`,
+                         resortProfile?.resort_name || 'Resort'
+                       );
+                     }}>
+                     <MessageCircle className="w-5 h-5" />
+                   </Button>
+                 </div>
               </div>
               <div className="flex gap-2 items-center">
                 {task.due_date && (

@@ -117,14 +117,14 @@ const EmployeeContactConfig = () => {
               </div>
 
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => saveRow(emp)} disabled={!hasChanges}
-                  className="font-display text-xs tracking-wider flex-1 gap-1">
-                  <Save className="w-3.5 h-3.5" /> Save
+                <Button size="default" onClick={() => saveRow(emp)} disabled={!hasChanges}
+                  className="font-display text-xs tracking-wider flex-1 gap-1 min-h-[44px]">
+                  <Save className="w-5 h-5" /> Save
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => testMessenger(emp)}
+                <Button size="default" variant="outline" onClick={() => testMessenger(emp)}
                   disabled={!(getField(emp, 'messenger_link') as string)?.trim()}
-                  className="font-display text-xs tracking-wider gap-1">
-                  <MessageCircle className="w-3.5 h-3.5" /> Test
+                  className="font-display text-xs tracking-wider gap-1 min-h-[44px]">
+                  <MessageCircle className="w-5 h-5" /> Test
                 </Button>
               </div>
             </div>
