@@ -148,44 +148,86 @@ const WeeklyScheduleManager = () => {
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const todaySchedules = schedules.filter(s => s.schedule_date === todayStr);
 
-  // MOBILE VIEW — stacked cards
+  // MOBILE VIEW — full week stacked cards
   if (isMobile) {
+    // Group schedules by date for mobile
+    const schedulesByDate = (dateStr: string) =>
+      schedules.filter(s => s.schedule_date === dateStr);
+
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-lg tracking-wider text-foreground">Today's Schedule</h2>
-          <Button size="sm" variant="outline" className="font-display text-xs h-10 min-w-[44px]" onClick={() => openAdd(todayStr)}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Add
+        {/* Header with week nav */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-lg tracking-wider text-foreground">Weekly Schedule</h2>
+            <Button size="sm" variant="outline" className="font-display text-xs h-10 min-w-[44px]" onClick={() => openAdd()}>
+              <Plus className="h-3.5 w-3.5 mr-1" /> Add Shift
+            </Button>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <Button size="sm" variant="outline" className="h-10 w-10 p-0" onClick={() => setWeekStart(addDays(weekStart, -7))}>
+              <span className="text-lg">‹</span>
+            </Button>
+            <div className="flex-1 text-center">
+              <span className="font-body text-xs text-accent">
+                {format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d')}
+              </span>
+            </div>
+            <Button size="sm" variant="outline" className="h-10 w-10 p-0" onClick={() => setWeekStart(addDays(weekStart, 7))}>
+              <span className="text-lg">›</span>
+            </Button>
+          </div>
+          <Button size="sm" variant="outline" className="w-full font-display text-xs h-10" onClick={goCurrentWeek}>
+            Current Week
           </Button>
         </div>
 
-        {todaySchedules.length === 0 && (
-          <p className="font-body text-sm text-muted-foreground text-center py-8">No shifts scheduled today</p>
-        )}
-
-        {todaySchedules.map(s => (
-          <Card key={s.id} className="bg-card border-border" onClick={() => setEmpWeekModal(s.employee_id)}>
-            <CardContent className="p-3">
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="font-body text-sm font-semibold text-foreground">{empMap[s.employee_id]?.name || 'Unknown'}</div>
-                  <div className="flex items-center gap-1 font-body text-xs text-muted-foreground mt-0.5">
-                    <Clock className="h-3 w-3" />
-                    {fmtTime(s.time_in)} – {fmtTime(s.time_out)}
+        {/* 7 stacked day cards */}
+        {weekDates.map(d => {
+          const dateStr = format(d, 'yyyy-MM-dd');
+          const dayShifts = schedulesByDate(dateStr);
+          const today = isToday(d);
+          return (
+            <Card key={dateStr} className={`border-border ${today ? 'border-accent/50 bg-accent/5' : 'bg-card'}`}>
+              <CardContent className="p-3 space-y-2">
+                {/* Day header */}
+                <div className="flex items-center justify-between">
+                  <div className={`font-display text-sm tracking-wider ${today ? 'text-accent' : 'text-foreground'}`}>
+                    {format(d, 'EEE, MMM d')}
+                    {today && <span className="ml-2 font-body text-[10px] text-accent">(Today)</span>}
                   </div>
-                </div>
-                <div className="flex gap-1">
-                  <Button size="sm" variant="outline" className="h-10 w-10 p-0" onClick={e => { e.stopPropagation(); openEdit(s); }}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button size="sm" variant="outline" className="h-10 w-10 p-0 text-destructive" onClick={e => { e.stopPropagation(); setDeleteId(s.id); }}>
-                    <Trash2 className="h-3.5 w-3.5" />
+                  <Button size="sm" variant="outline" className="h-10 w-10 p-0" onClick={() => openAdd(dateStr)}>
+                    <Plus className="h-4 w-4" />
                   </Button>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+
+                {/* Shifts for this day */}
+                {dayShifts.length === 0 && (
+                  <p className="font-body text-xs text-muted-foreground py-2">No shifts</p>
+                )}
+                {dayShifts.map(s => (
+                  <div key={s.id} className="flex items-center justify-between bg-secondary rounded-md p-2">
+                    <div className="flex-1 min-w-0" onClick={() => setEmpWeekModal(s.employee_id)}>
+                      <div className="font-body text-sm font-semibold text-foreground truncate">{empMap[s.employee_id]?.name || 'Unknown'}</div>
+                      <div className="flex items-center gap-1 font-body text-xs text-muted-foreground mt-0.5">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        {fmtTime(s.time_in)} – {fmtTime(s.time_out)}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0 ml-2">
+                      <Button size="sm" variant="outline" className="h-10 w-10 p-0" onClick={() => openEdit(s)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-10 w-10 p-0 text-destructive" onClick={() => setDeleteId(s.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          );
+        })}
 
         {/* Employee Week Modal */}
         <Dialog open={!!empWeekModal} onOpenChange={() => setEmpWeekModal(null)}>
