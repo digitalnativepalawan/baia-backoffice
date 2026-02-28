@@ -13,7 +13,7 @@ import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 
 const UNITS = ['grams', 'ml', 'pcs', 'kg', 'liters', 'bottles', 'cans', 'slices'];
 
-const InventoryDashboard = () => {
+const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const qc = useQueryClient();
 
   const { data: ingredients = [] } = useQuery({

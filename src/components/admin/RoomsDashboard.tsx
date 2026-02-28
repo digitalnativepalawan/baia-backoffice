@@ -16,7 +16,7 @@ const from = (table: string) => supabase.from(table as any);
 
 type DetailTab = 'info' | 'orders' | 'documents' | 'notes' | 'tours' | 'vibe';
 
-const RoomsDashboard = () => {
+const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnly?: boolean; canViewDocuments?: boolean }) => {
   const qc = useQueryClient();
   const [selectedUnit, setSelectedUnit] = useState<any>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('info');
@@ -391,7 +391,7 @@ const RoomsDashboard = () => {
           {([
             { key: 'info' as DetailTab, label: 'Guest', icon: Users },
             { key: 'orders' as DetailTab, label: 'Orders', icon: UtensilsCrossed },
-            { key: 'documents' as DetailTab, label: 'Docs', icon: FileText },
+            ...(canViewDocuments ? [{ key: 'documents' as DetailTab, label: 'Docs', icon: FileText }] : []),
             { key: 'notes' as DetailTab, label: 'Notes', icon: StickyNote },
             { key: 'tours' as DetailTab, label: 'Tours', icon: MapPin },
             { key: 'vibe' as DetailTab, label: 'Vibe', icon: Sparkles },

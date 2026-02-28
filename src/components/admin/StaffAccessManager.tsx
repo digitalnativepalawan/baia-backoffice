@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { type PermissionLevel, getPermissionLevel } from '@/lib/permissions';
 
 const GRANULAR_PERMISSIONS = [
   { key: 'orders', label: 'Orders' },
@@ -12,6 +13,18 @@ const GRANULAR_PERMISSIONS = [
   { key: 'resort_ops', label: 'Resort Ops' },
   { key: 'rooms', label: 'Rooms' },
 ] as const;
+
+const LEVEL_LABELS: Record<PermissionLevel, string> = {
+  off: 'Off',
+  view: 'View',
+  edit: 'Edit',
+};
+
+const LEVEL_COLORS: Record<PermissionLevel, string> = {
+  off: 'bg-muted text-muted-foreground',
+  view: 'bg-blue-600/20 text-blue-400 border-blue-500/40',
+  edit: 'bg-emerald-600/20 text-emerald-400 border-emerald-500/40',
+};
 
 const StaffAccessManager = () => {
   const qc = useQueryClient();
@@ -32,20 +45,52 @@ const StaffAccessManager = () => {
     },
   });
 
-  const hasPermission = (empId: string, perm: string) =>
-    permissions.some(p => p.employee_id === empId && p.permission === perm);
+  const getEmpPermissions = (empId: string) =>
+    permissions.filter(p => p.employee_id === empId).map(p => p.permission);
 
-  const isAdmin = (empId: string) => hasPermission(empId, 'admin');
+  const isAdmin = (empId: string) =>
+    getEmpPermissions(empId).includes('admin');
 
-  const togglePermission = async (empId: string, perm: string) => {
-    const existing = permissions.find(p => p.employee_id === empId && p.permission === perm);
+  const toggleAdmin = async (empId: string) => {
+    const existing = permissions.find(p => p.employee_id === empId && p.permission === 'admin');
     if (existing) {
       await (supabase.from('employee_permissions' as any) as any).delete().eq('id', existing.id);
     } else {
-      await (supabase.from('employee_permissions' as any) as any).insert({ employee_id: empId, permission: perm });
+      await (supabase.from('employee_permissions' as any) as any).insert({ employee_id: empId, permission: 'admin' });
     }
     qc.invalidateQueries({ queryKey: ['employee-permissions'] });
     toast.success('Permission updated');
+  };
+
+  /** Cycle a section permission: off → view → edit → off */
+  const cyclePermission = async (empId: string, section: string) => {
+    const empPerms = getEmpPermissions(empId);
+    const current = getPermissionLevel(empPerms, section);
+
+    // Remove existing permissions for this section
+    const toRemove = permissions.filter(
+      p => p.employee_id === empId && (p.permission === section || p.permission === `${section}:view` || p.permission === `${section}:edit`)
+    );
+    for (const p of toRemove) {
+      await (supabase.from('employee_permissions' as any) as any).delete().eq('id', p.id);
+    }
+
+    // Insert next level
+    const nextLevel: PermissionLevel = current === 'off' ? 'view' : current === 'view' ? 'edit' : 'off';
+    if (nextLevel !== 'off') {
+      await (supabase.from('employee_permissions' as any) as any).insert({
+        employee_id: empId,
+        permission: `${section}:${nextLevel}`,
+      });
+    }
+
+    qc.invalidateQueries({ queryKey: ['employee-permissions'] });
+    toast.success(`${section} → ${LEVEL_LABELS[nextLevel]}`);
+  };
+
+  /** Toggle documents permission (off → view → edit → off) */
+  const cycleDocuments = async (empId: string) => {
+    await cyclePermission(empId, 'documents');
   };
 
   if (employees.length === 0) {
@@ -61,48 +106,69 @@ const StaffAccessManager = () => {
     <section>
       <h3 className="font-display text-sm tracking-wider text-foreground mb-2">Staff Access</h3>
       <p className="font-body text-xs text-muted-foreground mb-4">
-        Toggle which dashboard tabs each employee can access via the Manager view.
+        Tap each section badge to cycle: <span className="text-muted-foreground">Off</span> → <span className="text-blue-400">View</span> → <span className="text-emerald-400">Edit</span> → Off
       </p>
       <div className="space-y-4">
         {employees.map((emp: any) => {
-          const empIsAdmin = isAdmin(emp.id);
+          const empPerms = getEmpPermissions(emp.id);
+          const empIsAdmin = empPerms.includes('admin');
+
           return (
-          <div key={emp.id} className="border border-border rounded-lg p-3">
-            <p className="font-display text-sm text-foreground tracking-wider mb-2">
-              {emp.display_name || emp.name}
-            </p>
-
-            {/* Admin toggle — separated and distinct */}
-            <label className="flex items-center gap-2 cursor-pointer mb-1">
-              <Switch
-                checked={empIsAdmin}
-                onCheckedChange={() => togglePermission(emp.id, 'admin')}
-                className="data-[state=checked]:bg-amber-600"
-              />
-              <span className="font-display text-xs tracking-wider text-foreground">
-                Admin (Full Access)
-              </span>
-            </label>
-            {empIsAdmin && (
-              <p className="font-body text-[11px] text-amber-500/80 mb-2 ml-[3.25rem]">
-                Full access to all sections
+            <div key={emp.id} className="border border-border rounded-lg p-3">
+              <p className="font-display text-sm text-foreground tracking-wider mb-2">
+                {emp.display_name || emp.name}
               </p>
-            )}
 
-            {/* Granular permissions */}
-            <div className={`grid grid-cols-2 gap-2 mt-2 ${empIsAdmin ? 'opacity-40 pointer-events-none' : ''}`}>
-              {GRANULAR_PERMISSIONS.map(({ key, label }) => (
-                <label key={key} className="flex items-center gap-2 cursor-pointer">
-                  <Switch
-                    checked={empIsAdmin || hasPermission(emp.id, key)}
-                    onCheckedChange={() => togglePermission(emp.id, key)}
+              {/* Admin toggle */}
+              <label className="flex items-center gap-2 cursor-pointer mb-1">
+                <Switch
+                  checked={empIsAdmin}
+                  onCheckedChange={() => toggleAdmin(emp.id)}
+                  className="data-[state=checked]:bg-amber-600"
+                />
+                <span className="font-display text-xs tracking-wider text-foreground">
+                  Admin (Full Access)
+                </span>
+              </label>
+              {empIsAdmin && (
+                <p className="font-body text-[11px] text-amber-500/80 mb-2 ml-[3.25rem]">
+                  Full access to all sections
+                </p>
+              )}
+
+              {/* Granular permissions - 3-way badges */}
+              <div className={`space-y-1.5 mt-2 ${empIsAdmin ? 'opacity-40 pointer-events-none' : ''}`}>
+                {GRANULAR_PERMISSIONS.map(({ key, label }) => {
+                  const level = empIsAdmin ? 'edit' : getPermissionLevel(empPerms, key);
+                  return (
+                    <div key={key} className="flex items-center justify-between">
+                      <span className="font-body text-xs text-muted-foreground">{label}</span>
+                      <button
+                        onClick={() => cyclePermission(emp.id, key)}
+                        disabled={empIsAdmin}
+                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-display tracking-wider border transition-colors ${LEVEL_COLORS[level]}`}
+                      >
+                        {LEVEL_LABELS[level]}
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* Documents (Sensitive) — separate */}
+                <div className="flex items-center justify-between pt-1 border-t border-border/50 mt-1.5">
+                  <span className="font-body text-xs text-muted-foreground">
+                    📄 Documents <span className="text-[10px] text-amber-500/70">(Sensitive)</span>
+                  </span>
+                  <button
+                    onClick={() => cycleDocuments(emp.id)}
                     disabled={empIsAdmin}
-                  />
-                  <span className="font-body text-xs text-muted-foreground">{label}</span>
-                </label>
-              ))}
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-display tracking-wider border transition-colors ${LEVEL_COLORS[empIsAdmin ? 'edit' : getPermissionLevel(empPerms, 'documents')]}`}
+                  >
+                    {LEVEL_LABELS[empIsAdmin ? 'edit' : getPermissionLevel(empPerms, 'documents')]}
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
           );
         })}
       </div>

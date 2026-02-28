@@ -20,7 +20,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 type DateRange = 'today' | 'yesterday' | 'week' | 'month' | 'ytd' | 'custom';
 
-const ReportsDashboard = () => {
+const ReportsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const [range, setRange] = useState<DateRange>('today');
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();

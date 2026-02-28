@@ -19,7 +19,7 @@ type SubView = 'employees' | 'shifts' | 'summary' | 'payments' | 'tasks' | 'sett
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-const PayrollDashboard = () => {
+const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const qc = useQueryClient();
   const { data: resortProfile } = useResortProfile();
   const [subView, setSubView] = useState<SubView>('employees');

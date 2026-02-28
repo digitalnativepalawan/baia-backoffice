@@ -38,6 +38,39 @@ export type Database = {
         }
         Relationships: []
       }
+      audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          details: string
+          employee_id: string | null
+          employee_name: string
+          id: string
+          record_id: string
+          table_name: string
+        }
+        Insert: {
+          action?: string
+          created_at?: string
+          details?: string
+          employee_id?: string | null
+          employee_name?: string
+          id?: string
+          record_id?: string
+          table_name?: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: string
+          employee_id?: string | null
+          employee_name?: string
+          id?: string
+          record_id?: string
+          table_name?: string
+        }
+        Relationships: []
+      }
       employee_bonuses: {
         Row: {
           amount: number

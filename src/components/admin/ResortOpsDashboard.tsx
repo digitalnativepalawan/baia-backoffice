@@ -79,7 +79,7 @@ const EMPTY_EXPENSE = {
   expense_date: '',
 };
 
-const ResortOpsDashboard = () => {
+const ResortOpsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const qc = useQueryClient();
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();

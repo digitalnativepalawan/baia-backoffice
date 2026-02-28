@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Home, ArrowLeft } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import OrderCard from '@/components/admin/OrderCard';
 import ReportsDashboard from '@/components/admin/ReportsDashboard';
 import PayrollDashboard from '@/components/admin/PayrollDashboard';
@@ -14,6 +14,7 @@ import RoomsDashboard from '@/components/admin/RoomsDashboard';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
+import { hasAccess, canEdit, canViewDocuments } from '@/lib/permissions';
 
 const TAB_MAP: Record<string, { value: string; label: string }> = {
   orders: { value: 'orders', label: 'Orders' },
@@ -23,6 +24,8 @@ const TAB_MAP: Record<string, { value: string; label: string }> = {
   resort_ops: { value: 'resort-ops', label: 'Resort Ops' },
   rooms: { value: 'rooms', label: 'Rooms' },
 };
+
+const SECTIONS = ['orders', 'reports', 'inventory', 'payroll', 'resort_ops', 'rooms'] as const;
 
 const ManagerPage = () => {
   const navigate = useNavigate();
@@ -40,10 +43,12 @@ const ManagerPage = () => {
     },
   });
 
+  const isAdminUser = permissions.includes('admin');
+
   // Orders data for the orders tab
   const { data: orders = [] } = useQuery({
     queryKey: ['orders-manager'],
-    enabled: permissions.includes('orders') || permissions.includes('admin'),
+    enabled: hasAccess(permissions, 'orders'),
     queryFn: async () => {
       const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(200);
       return data || [];
@@ -52,7 +57,7 @@ const ManagerPage = () => {
 
   // Realtime
   useEffect(() => {
-    if (!permissions.includes('orders') && !permissions.includes('admin')) return;
+    if (!hasAccess(permissions, 'orders')) return;
     const channel = supabase
       .channel('manager-orders-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
@@ -116,11 +121,15 @@ const ManagerPage = () => {
     );
   }
 
-  const isAdmin = permissions.includes('admin');
-  const allowedTabs = isAdmin
+  // Build allowed tabs based on permissions
+  const allowedTabs = isAdminUser
     ? Object.values(TAB_MAP)
-    : permissions.map(p => TAB_MAP[p]).filter(Boolean);
+    : SECTIONS.filter(s => hasAccess(permissions, s)).map(s => TAB_MAP[s]).filter(Boolean);
   const defaultTab = allowedTabs[0]?.value || 'orders';
+
+  // Resolve readOnly per section
+  const readOnly = (section: string) => !canEdit(permissions, section);
+  const docsAllowed = canViewDocuments(permissions);
 
   return (
     <div className="min-h-screen bg-navy-texture overflow-x-hidden">
@@ -142,7 +151,7 @@ const ManagerPage = () => {
             ))}
           </TabsList>
 
-          {(isAdmin || permissions.includes('orders')) && (
+          {hasAccess(permissions, 'orders') && (
             <TabsContent value="orders" className="space-y-4">
               <div className="flex gap-1 flex-wrap">
                 {['New', 'Preparing', 'Served', 'Paid'].map(s => (
@@ -156,29 +165,29 @@ const ManagerPage = () => {
                 <p className="font-body text-sm text-muted-foreground text-center py-4">No {activeStatus.toLowerCase()} orders</p>
               )}
               {filteredOrders.map(order => (
-                <OrderCard key={order.id} order={order} onAdvance={advanceOrder} />
+                <OrderCard key={order.id} order={order} onAdvance={readOnly('orders') ? undefined : advanceOrder} />
               ))}
             </TabsContent>
           )}
 
-          {(isAdmin || permissions.includes('reports')) && (
-            <TabsContent value="reports"><ReportsDashboard /></TabsContent>
+          {hasAccess(permissions, 'reports') && (
+            <TabsContent value="reports"><ReportsDashboard readOnly={readOnly('reports')} /></TabsContent>
           )}
 
-          {(isAdmin || permissions.includes('inventory')) && (
-            <TabsContent value="inventory"><InventoryDashboard /></TabsContent>
+          {hasAccess(permissions, 'inventory') && (
+            <TabsContent value="inventory"><InventoryDashboard readOnly={readOnly('inventory')} /></TabsContent>
           )}
 
-          {(isAdmin || permissions.includes('payroll')) && (
-            <TabsContent value="payroll"><PayrollDashboard /></TabsContent>
+          {hasAccess(permissions, 'payroll') && (
+            <TabsContent value="payroll"><PayrollDashboard readOnly={readOnly('payroll')} /></TabsContent>
           )}
 
-          {(isAdmin || permissions.includes('resort_ops')) && (
-            <TabsContent value="resort-ops"><ResortOpsDashboard /></TabsContent>
+          {hasAccess(permissions, 'resort_ops') && (
+            <TabsContent value="resort-ops"><ResortOpsDashboard readOnly={readOnly('resort_ops')} /></TabsContent>
           )}
 
-          {(isAdmin || permissions.includes('rooms')) && (
-            <TabsContent value="rooms"><RoomsDashboard /></TabsContent>
+          {hasAccess(permissions, 'rooms') && (
+            <TabsContent value="rooms"><RoomsDashboard readOnly={readOnly('rooms')} canViewDocuments={docsAllowed} /></TabsContent>
           )}
         </Tabs>
       </div>

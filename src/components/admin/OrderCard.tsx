@@ -24,7 +24,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 interface OrderCardProps {
   order: any;
-  onAdvance: (orderId: string, nextStatus: string) => void | Promise<void>;
+  onAdvance?: (orderId: string, nextStatus: string) => void | Promise<void>;
   resortProfile?: ResortProfile | null;
   onAddItems?: (order: any) => void;
   onViewTab?: (tabId: string) => void;
@@ -202,7 +202,7 @@ const OrderCard = ({ order, onAdvance, resortProfile, onAddItems, onViewTab, onD
               {confirmDelete ? 'Confirm?' : 'Delete'}
             </Button>
           )}
-          {flow && (
+          {flow && onAdvance && (
             <Button
               size={isNew ? 'default' : 'sm'}
               disabled={advancing}
