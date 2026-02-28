@@ -251,14 +251,44 @@ const PayrollDashboard = () => {
   };
 
   // CRUD - Shifts
+  const syncShiftToExpense = async (shift: any) => {
+    const empName = getEmployeeName(shift.employee_id);
+    const clockInDate = format(new Date(shift.clock_in), 'MMM d, yyyy');
+    const hours = shift.hours_worked ? Number(shift.hours_worked).toFixed(1) : '0';
+    await (supabase.from('resort_ops_expenses') as any).insert({
+      expense_date: format(new Date(), 'yyyy-MM-dd'),
+      name: `Shift Pay - ${empName}`,
+      category: 'Labor/Staff',
+      amount: Number(shift.total_pay) || 0,
+      vat_status: 'Non-VAT',
+      is_paid: true,
+      description: `${clockInDate} · ${hours}h worked`,
+      notes: `[shift:${shift.id}]`,
+      vatable_sale: 0,
+      vat_amount: 0,
+      vat_exempt_amount: 0,
+      zero_rated_amount: 0,
+      withholding_tax: 0,
+    });
+  };
+
+  const unsyncShiftExpense = async (shiftId: string) => {
+    await (supabase.from('resort_ops_expenses') as any)
+      .delete()
+      .eq('notes', `[shift:${shiftId}]`);
+  };
+
   const markPaid = async (shiftId: string) => {
     await supabase.from('employee_shifts').update({ is_paid: true, paid_at: new Date().toISOString() }).eq('id', shiftId);
+    const shift = shifts.find(s => s.id === shiftId);
+    if (shift?.total_pay) await syncShiftToExpense(shift);
     qc.invalidateQueries({ queryKey: ['employee-shifts-all'] });
     toast.success('Marked as paid');
   };
 
   const markUnpaid = async (shiftId: string) => {
     await supabase.from('employee_shifts').update({ is_paid: false, paid_at: null }).eq('id', shiftId);
+    await unsyncShiftExpense(shiftId);
     qc.invalidateQueries({ queryKey: ['employee-shifts-all'] });
     toast.success('Marked as unpaid');
   };
@@ -267,12 +297,14 @@ const PayrollDashboard = () => {
     const unpaid = filteredShifts.filter(s => s.employee_id === employeeId && !s.is_paid && s.total_pay);
     for (const s of unpaid) {
       await supabase.from('employee_shifts').update({ is_paid: true, paid_at: new Date().toISOString() }).eq('id', s.id);
+      await syncShiftToExpense(s);
     }
     qc.invalidateQueries({ queryKey: ['employee-shifts-all'] });
     toast.success('All shifts marked as paid');
   };
 
   const deleteShift = async (shiftId: string) => {
+    await unsyncShiftExpense(shiftId);
     await supabase.from('employee_shifts').delete().eq('id', shiftId);
     qc.invalidateQueries({ queryKey: ['employee-shifts-all'] });
     toast.success('Shift deleted');
