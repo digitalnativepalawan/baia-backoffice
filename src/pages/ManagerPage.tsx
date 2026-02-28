@@ -19,7 +19,7 @@ const TAB_MAP: Record<string, { value: string; label: string }> = {
   orders: { value: 'orders', label: 'Orders' },
   reports: { value: 'reports', label: 'Reports' },
   inventory: { value: 'inventory', label: 'Inventory' },
-  payroll: { value: 'payroll', label: 'Payroll' },
+  payroll: { value: 'payroll', label: 'HR' },
   resort_ops: { value: 'resort-ops', label: 'Resort Ops' },
   rooms: { value: 'rooms', label: 'Rooms' },
 };

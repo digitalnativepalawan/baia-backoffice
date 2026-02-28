@@ -391,7 +391,7 @@ const AdminPage = () => {
             <TabsTrigger value="reports" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">Reports</TabsTrigger>
             <TabsTrigger value="inventory" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">Inventory</TabsTrigger>
             
-            <TabsTrigger value="payroll" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">Payroll</TabsTrigger>
+            <TabsTrigger value="payroll" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">HR</TabsTrigger>
             <TabsTrigger value="resort-ops" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">Resort Ops</TabsTrigger>
             <TabsTrigger value="rooms" className="font-display text-xs tracking-wider flex-1 min-h-[44px]">Rooms</TabsTrigger>
           </TabsList>
