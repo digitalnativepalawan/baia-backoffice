@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
-const PERMISSIONS = [
+const GRANULAR_PERMISSIONS = [
   { key: 'orders', label: 'Orders' },
   { key: 'menu', label: 'Menu' },
   { key: 'reports', label: 'Reports' },
@@ -35,6 +35,8 @@ const StaffAccessManager = () => {
   const hasPermission = (empId: string, perm: string) =>
     permissions.some(p => p.employee_id === empId && p.permission === perm);
 
+  const isAdmin = (empId: string) => hasPermission(empId, 'admin');
+
   const togglePermission = async (empId: string, perm: string) => {
     const existing = permissions.find(p => p.employee_id === empId && p.permission === perm);
     if (existing) {
@@ -62,24 +64,47 @@ const StaffAccessManager = () => {
         Toggle which dashboard tabs each employee can access via the Manager view.
       </p>
       <div className="space-y-4">
-        {employees.map((emp: any) => (
+        {employees.map((emp: any) => {
+          const empIsAdmin = isAdmin(emp.id);
+          return (
           <div key={emp.id} className="border border-border rounded-lg p-3">
             <p className="font-display text-sm text-foreground tracking-wider mb-2">
               {emp.display_name || emp.name}
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              {PERMISSIONS.map(({ key, label }) => (
+
+            {/* Admin toggle — separated and distinct */}
+            <label className="flex items-center gap-2 cursor-pointer mb-1">
+              <Switch
+                checked={empIsAdmin}
+                onCheckedChange={() => togglePermission(emp.id, 'admin')}
+                className="data-[state=checked]:bg-amber-600"
+              />
+              <span className="font-display text-xs tracking-wider text-foreground">
+                Admin (Full Access)
+              </span>
+            </label>
+            {empIsAdmin && (
+              <p className="font-body text-[11px] text-amber-500/80 mb-2 ml-[3.25rem]">
+                Full access to all sections
+              </p>
+            )}
+
+            {/* Granular permissions */}
+            <div className={`grid grid-cols-2 gap-2 mt-2 ${empIsAdmin ? 'opacity-40 pointer-events-none' : ''}`}>
+              {GRANULAR_PERMISSIONS.map(({ key, label }) => (
                 <label key={key} className="flex items-center gap-2 cursor-pointer">
                   <Switch
-                    checked={hasPermission(emp.id, key)}
+                    checked={empIsAdmin || hasPermission(emp.id, key)}
                     onCheckedChange={() => togglePermission(emp.id, key)}
+                    disabled={empIsAdmin}
                   />
                   <span className="font-body text-xs text-muted-foreground">{label}</span>
                 </label>
               ))}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
