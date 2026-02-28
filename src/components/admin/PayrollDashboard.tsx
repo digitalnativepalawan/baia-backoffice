@@ -6,11 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Check, X, DollarSign, Clock, Users, Download, Banknote, Star, Settings, Phone, MessageCircle, Lock, ListTodo } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, X, DollarSign, Clock, Users, Download, Banknote, Star, Settings, Phone, MessageCircle, Lock, ListTodo, MessageSquare } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays, startOfWeek, startOfMonth, previousSunday, nextSaturday, isSunday, addDays, getDay } from 'date-fns';
 import { usePayrollSettings } from '@/hooks/usePayrollSettings';
 import EmployeeTaskList from '@/components/employee/EmployeeTaskList';
 import StaffAccessManager from '@/components/admin/StaffAccessManager';
+import { buildTeamWhatsAppMessage, openWhatsApp } from '@/lib/messenger';
+import { useResortProfile } from '@/hooks/useResortProfile';
 
 type DateFilter = 'today' | 'yesterday' | 'week' | 'month' | 'all';
 type SubView = 'employees' | 'shifts' | 'summary' | 'payments' | 'tasks' | 'settings';
@@ -19,6 +21,7 @@ const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'F
 
 const PayrollDashboard = () => {
   const qc = useQueryClient();
+  const { data: resortProfile } = useResortProfile();
   const [subView, setSubView] = useState<SubView>('employees');
   const [dateFilter, setDateFilter] = useState<DateFilter>('today');
 
@@ -59,6 +62,7 @@ const PayrollDashboard = () => {
   const [editPhone, setEditPhone] = useState('');
   const [editMessenger, setEditMessenger] = useState('');
   const [contactEditId, setContactEditId] = useState<string | null>(null);
+  const [editWhatsapp, setEditWhatsapp] = useState('');
 
   // EOM selector state
   const [eomMonth, setEomMonth] = useState(() => format(new Date(), 'yyyy-MM'));
@@ -599,6 +603,25 @@ const PayrollDashboard = () => {
                             <MessageCircle className="w-5 h-5 sm:w-4 sm:h-4" />
                           </a>
                         )}
+                        {(emp as any).whatsapp_number && (
+                          <button
+                            onClick={async () => {
+                              const { data: tasks } = await supabase.from('employee_tasks').select('title, status, due_date').eq('employee_id', emp.id);
+                              const { data: shiftData } = await supabase.from('employee_shifts').select('clock_in, clock_out, hours_worked').eq('employee_id', emp.id).order('clock_in', { ascending: false }).limit(5);
+                              const msg = buildTeamWhatsAppMessage(
+                                (emp as any).display_name || emp.name,
+                                tasks || [],
+                                shiftData || [],
+                                resortProfile?.resort_name || 'Resort'
+                              );
+                              openWhatsApp((emp as any).whatsapp_number, msg);
+                            }}
+                            aria-label={`WhatsApp ${emp.name}`}
+                            className="inline-flex items-center justify-center h-11 w-11 sm:h-9 sm:w-9 rounded-md text-green-600 hover:text-green-500 hover:bg-accent/60 transition-colors"
+                          >
+                            <MessageSquare className="w-5 h-5 sm:w-4 sm:h-4" />
+                          </button>
+                        )}
                         {(emp as any).password_hash && <Lock className="w-3 h-3 text-primary" />}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
@@ -616,7 +639,7 @@ const PayrollDashboard = () => {
                     <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground hover:text-primary gap-1 font-body text-xs"
                       onClick={() => {
                         if (contactEditId === emp.id) { setContactEditId(null); return; }
-                        setContactEditId(emp.id); setEditPhone((emp as any).phone || ''); setEditMessenger((emp as any).messenger_link || '');
+                        setContactEditId(emp.id); setEditPhone((emp as any).phone || ''); setEditMessenger((emp as any).messenger_link || ''); setEditWhatsapp((emp as any).whatsapp_number || '');
                       }}>
                       <Phone className="w-3.5 h-3.5" /> Contact
                     </Button>
@@ -664,10 +687,12 @@ const PayrollDashboard = () => {
                     placeholder="Phone number" className="bg-secondary border-border text-foreground font-body text-sm h-8 w-full" />
                   <Input value={editMessenger} onChange={e => setEditMessenger(e.target.value)}
                     placeholder="Messenger username" className="bg-secondary border-border text-foreground font-body text-sm h-8 w-full" />
+                  <Input value={editWhatsapp} onChange={e => setEditWhatsapp(e.target.value)}
+                    placeholder="WhatsApp number (e.g. +639171940917)" className="bg-secondary border-border text-foreground font-body text-sm h-8 w-full" />
                   <div className="flex gap-2">
                     <Button size="sm" className="font-display text-xs tracking-wider h-8 flex-1"
                       onClick={async () => {
-                        await supabase.from('employees').update({ phone: editPhone.trim(), messenger_link: editMessenger.trim() } as any).eq('id', emp.id);
+                        await supabase.from('employees').update({ phone: editPhone.trim(), messenger_link: editMessenger.trim(), whatsapp_number: editWhatsapp.trim() } as any).eq('id', emp.id);
                         setContactEditId(null);
                         qc.invalidateQueries({ queryKey: ['employees-all'] });
                         toast.success('Contact info saved');
