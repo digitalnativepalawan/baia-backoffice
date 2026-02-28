@@ -5,12 +5,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Home, Clock, LogOut, ListTodo, Banknote, Settings, Star, LayoutDashboard } from 'lucide-react';
+import { Home, Clock, LogOut, ListTodo, Banknote, Settings, Star, LayoutDashboard, CalendarDays } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import EmployeeTaskList from '@/components/employee/EmployeeTaskList';
+import EmployeeScheduleView from '@/components/employee/EmployeeScheduleView';
 
-type Tab = 'clock' | 'tasks' | 'pay' | 'settings' | 'dashboard';
+type Tab = 'clock' | 'schedule' | 'tasks' | 'pay' | 'settings' | 'dashboard';
 
 const EmployeePortal = () => {
   const navigate = useNavigate();
@@ -259,6 +260,7 @@ const EmployeePortal = () => {
         <div className="flex gap-1 mb-4 flex-wrap">
           {([
             { key: 'clock' as Tab, label: 'Clock', icon: Clock },
+            { key: 'schedule' as Tab, label: 'Schedule', icon: CalendarDays },
             { key: 'tasks' as Tab, label: 'Tasks', icon: ListTodo },
             { key: 'pay' as Tab, label: 'Pay', icon: Banknote },
             { key: 'settings' as Tab, label: 'Settings', icon: Settings },
@@ -310,6 +312,11 @@ const EmployeePortal = () => {
               </div>
             )}
           </div>
+        )}
+
+        {/* SCHEDULE TAB */}
+        {tab === 'schedule' && (
+          <EmployeeScheduleView employeeId={empId} />
         )}
 
         {/* TASKS TAB */}
