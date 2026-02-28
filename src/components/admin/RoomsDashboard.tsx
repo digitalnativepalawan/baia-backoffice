@@ -6,11 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Upload, Trash2, Plus, Users, FileText, UtensilsCrossed, MapPin, StickyNote, Sparkles } from 'lucide-react';
+import { ArrowLeft, Upload, Trash2, Plus, Users, FileText, UtensilsCrossed, MapPin, StickyNote, Sparkles, LogIn, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import VibeCheckInForm from './vibe/VibeCheckInForm';
 import VibeDetailView from './vibe/VibeDetailView';
+
+const from = (table: string) => supabase.from(table as any);
 
 type DetailTab = 'info' | 'orders' | 'documents' | 'notes' | 'tours' | 'vibe';
 
@@ -22,12 +24,30 @@ const RoomsDashboard = () => {
   const [editingVibeRecord, setEditingVibeRecord] = useState<any>(null);
   const [viewingVibeRecord, setViewingVibeRecord] = useState<any>(null);
 
+  // Check-in form state
+  const [checkInForm, setCheckInForm] = useState({
+    guestName: '', phone: '', email: '',
+    checkIn: new Date().toISOString().split('T')[0],
+    checkOut: '', adults: '1', platform: 'Direct', roomRate: '0', notes: '',
+  });
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [showCheckInForm, setShowCheckInForm] = useState(false);
+
   // Units
   const { data: units = [] } = useQuery({
     queryKey: ['rooms-units'],
     queryFn: async () => {
       const { data } = await supabase.from('units').select('*').eq('active', true).order('unit_name');
       return (data || []).map((u: any) => ({ ...u, name: u.unit_name, type: '', capacity: 0 }));
+    },
+  });
+
+  // Resort ops units (for booking linkage)
+  const { data: resortUnits = [] } = useQuery({
+    queryKey: ['resort-ops-units'],
+    queryFn: async () => {
+      const { data } = await from('resort_ops_units').select('*');
+      return (data || []) as any[];
     },
   });
 
@@ -44,7 +64,7 @@ const RoomsDashboard = () => {
   const { data: vibeRecords = [] } = useQuery({
     queryKey: ['vibe-records'],
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_vibe_records' as any) as any)
+      const { data } = await from('guest_vibe_records')
         .select('*').eq('checked_out', false).order('created_at', { ascending: false });
       return (data || []) as any[];
     },
@@ -64,19 +84,28 @@ const RoomsDashboard = () => {
     },
   });
 
-  // Guest documents
-  const currentBooking = bookings.find((b: any) => {
-    if (!selectedUnit) return false;
+  // Resolve resort_ops_unit for a room name
+  const resolveResortUnit = (roomName: string) => {
+    return resortUnits.find((ru: any) => ru.name.toLowerCase().trim() === roomName.toLowerCase().trim());
+  };
+
+  // Guest documents - match booking by resort_ops_unit mapped from room name
+  const getActiveBooking = (unit: any) => {
+    if (!unit) return null;
     const today = new Date().toISOString().split('T')[0];
-    return b.unit_id === selectedUnit.id && b.check_in <= today && b.check_out >= today;
-  });
+    const resortUnit = resolveResortUnit(unit.name);
+    if (!resortUnit) return null;
+    return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in <= today && b.check_out >= today) || null;
+  };
+
+  const currentBooking = getActiveBooking(selectedUnit);
   const guestId = (currentBooking as any)?.guest_id;
 
   const { data: documents = [] } = useQuery({
     queryKey: ['guest-documents', guestId],
     enabled: !!guestId,
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_documents' as any) as any).select('*').eq('guest_id', guestId).order('created_at', { ascending: false });
+      const { data } = await from('guest_documents').select('*').eq('guest_id', guestId).order('created_at', { ascending: false });
       return (data || []) as any[];
     },
   });
@@ -86,7 +115,7 @@ const RoomsDashboard = () => {
     queryKey: ['guest-notes', selectedUnit?.name],
     enabled: !!selectedUnit,
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_notes' as any) as any).select('*').eq('unit_name', selectedUnit!.name).order('created_at', { ascending: false });
+      const { data } = await from('guest_notes').select('*').eq('unit_name', selectedUnit!.name).order('created_at', { ascending: false });
       return (data || []) as any[];
     },
   });
@@ -96,7 +125,7 @@ const RoomsDashboard = () => {
     queryKey: ['guest-tours', currentBooking?.id],
     enabled: !!currentBooking,
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_tours' as any) as any).select('*').eq('booking_id', currentBooking!.id).order('tour_date');
+      const { data } = await from('guest_tours').select('*').eq('booking_id', currentBooking!.id).order('tour_date');
       return (data || []) as any[];
     },
   });
@@ -110,7 +139,7 @@ const RoomsDashboard = () => {
 
   const addNote = async () => {
     if (!noteContent.trim() || !selectedUnit) return;
-    await (supabase.from('guest_notes' as any) as any).insert({
+    await from('guest_notes').insert({
       booking_id: currentBooking?.id || null,
       unit_name: selectedUnit.name,
       note_type: noteType,
@@ -123,7 +152,7 @@ const RoomsDashboard = () => {
   };
 
   const deleteNote = async (id: string) => {
-    await (supabase.from('guest_notes' as any) as any).delete().eq('id', id);
+    await from('guest_notes').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['guest-notes', selectedUnit?.name] });
     toast.success('Note deleted');
   };
@@ -136,7 +165,7 @@ const RoomsDashboard = () => {
 
   const addTour = async () => {
     if (!tourName.trim() || !tourDate || !currentBooking) return;
-    await (supabase.from('guest_tours' as any) as any).insert({
+    await from('guest_tours').insert({
       booking_id: currentBooking.id,
       tour_name: tourName.trim(),
       tour_date: tourDate,
@@ -149,7 +178,7 @@ const RoomsDashboard = () => {
   };
 
   const updateTourStatus = async (id: string, status: string) => {
-    await (supabase.from('guest_tours' as any) as any).update({ status }).eq('id', id);
+    await from('guest_tours').update({ status }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['guest-tours', currentBooking?.id] });
     toast.success('Tour updated');
   };
@@ -162,7 +191,7 @@ const RoomsDashboard = () => {
     const { error } = await supabase.storage.from('guest-documents').upload(path, file);
     if (error) { toast.error('Upload failed'); return; }
     const { data: urlData } = supabase.storage.from('guest-documents').getPublicUrl(path);
-    await (supabase.from('guest_documents' as any) as any).insert({
+    await from('guest_documents').insert({
       guest_id: guestId,
       document_type: 'passport',
       image_url: urlData.publicUrl,
@@ -174,16 +203,17 @@ const RoomsDashboard = () => {
   const deleteDocument = async (doc: any) => {
     const path = doc.image_url.split('/guest-documents/')[1];
     if (path) await supabase.storage.from('guest-documents').remove([path]);
-    await (supabase.from('guest_documents' as any) as any).delete().eq('id', doc.id);
+    await from('guest_documents').delete().eq('id', doc.id);
     qc.invalidateQueries({ queryKey: ['guest-documents', guestId] });
     toast.success('Document deleted');
   };
 
-  // Get current guest for a unit
-  const getUnitGuest = (unitId: string) => {
+  // Get current guest for a unit (grid view)
+  const getUnitGuest = (unitName: string) => {
     const today = new Date().toISOString().split('T')[0];
-    const booking = bookings.find((b: any) => b.unit_id === unitId && b.check_in <= today && b.check_out >= today);
-    return booking as any;
+    const resortUnit = resolveResortUnit(unitName);
+    if (!resortUnit) return null;
+    return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in <= today && b.check_out >= today) || null;
   };
 
   // Check if unit has high-risk vibe record
@@ -192,9 +222,92 @@ const RoomsDashboard = () => {
     return records.some((v: any) => (v.review_risk_level || []).includes('High'));
   };
 
+  // --- CHECK-IN ---
+  const handleCheckIn = async () => {
+    if (!selectedUnit || !checkInForm.guestName.trim() || !checkInForm.checkOut) {
+      toast.error('Guest name and check-out date are required');
+      return;
+    }
+    if (checkInForm.checkOut <= checkInForm.checkIn) {
+      toast.error('Check-out must be after check-in');
+      return;
+    }
+    setCheckingIn(true);
+    try {
+      // 1. Create or find guest
+      const { data: existingGuest } = await from('resort_ops_guests')
+        .select('id').ilike('full_name', checkInForm.guestName.trim()).maybeSingle() as any;
+
+      let gId: string;
+      if (existingGuest) {
+        gId = existingGuest.id;
+        await from('resort_ops_guests').update({
+          phone: checkInForm.phone || null,
+          email: checkInForm.email || null,
+        }).eq('id', gId);
+      } else {
+        const { data: newGuest, error: gErr } = await from('resort_ops_guests').insert({
+          full_name: checkInForm.guestName.trim(),
+          phone: checkInForm.phone || null,
+          email: checkInForm.email || null,
+        }).select('id').single() as any;
+        if (gErr || !newGuest) throw new Error('Failed to create guest');
+        gId = newGuest.id;
+      }
+
+      // 2. Resolve or create resort_ops_unit
+      let resortUnit = resolveResortUnit(selectedUnit.name);
+      if (!resortUnit) {
+        const { data: newUnit, error: uErr } = await from('resort_ops_units').insert({
+          name: selectedUnit.name, type: 'room', capacity: 2,
+        }).select('id').single() as any;
+        if (uErr || !newUnit) throw new Error('Failed to create unit mapping');
+        resortUnit = { id: newUnit.id };
+        qc.invalidateQueries({ queryKey: ['resort-ops-units'] });
+      }
+
+      // 3. Insert booking
+      const { error: bErr } = await from('resort_ops_bookings').insert({
+        guest_id: gId,
+        unit_id: resortUnit.id,
+        platform: checkInForm.platform,
+        check_in: checkInForm.checkIn,
+        check_out: checkInForm.checkOut,
+        adults: parseInt(checkInForm.adults) || 1,
+        room_rate: parseFloat(checkInForm.roomRate) || 0,
+        notes: checkInForm.notes || '',
+      });
+      if (bErr) throw new Error(bErr.message);
+
+      // 4. Refresh
+      qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
+      setShowCheckInForm(false);
+      setCheckInForm({
+        guestName: '', phone: '', email: '',
+        checkIn: new Date().toISOString().split('T')[0],
+        checkOut: '', adults: '1', platform: 'Direct', roomRate: '0', notes: '',
+      });
+      toast.success(`${checkInForm.guestName.trim()} checked in to ${selectedUnit.name}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Check-in failed');
+    } finally {
+      setCheckingIn(false);
+    }
+  };
+
+  // --- CHECK-OUT ---
+  const handleCheckOut = async () => {
+    if (!currentBooking) return;
+    const today = new Date().toISOString().split('T')[0];
+    const { error } = await from('resort_ops_bookings').update({ check_out: today }).eq('id', currentBooking.id);
+    if (error) { toast.error('Checkout failed'); return; }
+    qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
+    toast.success('Guest checked out');
+  };
+
   // DETAIL VIEW
   if (selectedUnit) {
-    const booking = getUnitGuest(selectedUnit.id);
+    const booking = getActiveBooking(selectedUnit);
     const guest = (booking as any)?.resort_ops_guests;
 
     // Vibe sub-views
@@ -221,7 +334,7 @@ const RoomsDashboard = () => {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <Button size="sm" variant="ghost" onClick={() => setSelectedUnit(null)}>
+          <Button size="sm" variant="ghost" onClick={() => { setSelectedUnit(null); setShowCheckInForm(false); }}>
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <h3 className="font-display text-lg tracking-wider text-foreground">{selectedUnit.name}</h3>
@@ -252,44 +365,130 @@ const RoomsDashboard = () => {
         {detailTab === 'info' && (
           <div className="space-y-3">
             {booking ? (
-              <div className="border border-border rounded-lg p-4 space-y-2">
-                <p className="font-display text-sm text-foreground">{guest?.full_name || 'Unknown Guest'}</p>
-                {guest?.email && <p className="font-body text-xs text-muted-foreground">Email: {guest.email}</p>}
-                {guest?.phone && <p className="font-body text-xs text-muted-foreground">Phone: {guest.phone}</p>}
-                <div className="flex gap-4 mt-2">
-                  <div>
-                    <p className="font-body text-xs text-muted-foreground">Check-in</p>
-                    <p className="font-body text-sm text-foreground">{format(new Date(booking.check_in + 'T00:00:00'), 'MMM d, yyyy')}</p>
+              <>
+                <div className="border border-border rounded-lg p-4 space-y-2">
+                  <p className="font-display text-sm text-foreground">{guest?.full_name || 'Unknown Guest'}</p>
+                  {guest?.email && <p className="font-body text-xs text-muted-foreground">Email: {guest.email}</p>}
+                  {guest?.phone && <p className="font-body text-xs text-muted-foreground">Phone: {guest.phone}</p>}
+                  <div className="flex gap-4 mt-2">
+                    <div>
+                      <p className="font-body text-xs text-muted-foreground">Check-in</p>
+                      <p className="font-body text-sm text-foreground">{format(new Date(booking.check_in + 'T00:00:00'), 'MMM d, yyyy')}</p>
+                    </div>
+                    <div>
+                      <p className="font-body text-xs text-muted-foreground">Check-out</p>
+                      <p className="font-body text-sm text-foreground">{format(new Date(booking.check_out + 'T00:00:00'), 'MMM d, yyyy')}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-body text-xs text-muted-foreground">Check-out</p>
-                    <p className="font-body text-sm text-foreground">{format(new Date(booking.check_out + 'T00:00:00'), 'MMM d, yyyy')}</p>
+                  <div className="flex gap-4">
+                    <div>
+                      <p className="font-body text-xs text-muted-foreground">Platform</p>
+                      <p className="font-body text-sm text-foreground">{booking.platform || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="font-body text-xs text-muted-foreground">Adults</p>
+                      <p className="font-body text-sm text-foreground">{booking.adults}</p>
+                    </div>
+                    <div>
+                      <p className="font-body text-xs text-muted-foreground">Rate</p>
+                      <p className="font-body text-sm text-foreground">₱{Number(booking.room_rate).toLocaleString()}</p>
+                    </div>
                   </div>
+                  {booking.notes && (
+                    <div>
+                      <p className="font-body text-xs text-muted-foreground">Booking Notes</p>
+                      <p className="font-body text-sm text-foreground">{booking.notes}</p>
+                    </div>
+                  )}
                 </div>
-                <div className="flex gap-4">
-                  <div>
-                    <p className="font-body text-xs text-muted-foreground">Platform</p>
-                    <p className="font-body text-sm text-foreground">{booking.platform || '—'}</p>
+                <Button size="sm" variant="destructive" onClick={handleCheckOut}
+                  className="w-full font-display text-xs tracking-wider min-h-[44px]">
+                  <LogOut className="w-4 h-4 mr-2" /> Check Out Guest
+                </Button>
+              </>
+            ) : (
+              <div className="space-y-3">
+                {!showCheckInForm ? (
+                  <div className="border border-dashed border-border rounded-lg p-6 text-center space-y-3">
+                    <p className="font-body text-sm text-muted-foreground">No guest currently checked in</p>
+                    <p className="font-body text-xs text-muted-foreground">Check in a guest to enable Docs, Tours, and more.</p>
+                    <Button size="sm" onClick={() => setShowCheckInForm(true)}
+                      className="font-display text-xs tracking-wider min-h-[44px]">
+                      <LogIn className="w-4 h-4 mr-2" /> Check In Guest
+                    </Button>
                   </div>
-                  <div>
-                    <p className="font-body text-xs text-muted-foreground">Adults</p>
-                    <p className="font-body text-sm text-foreground">{booking.adults}</p>
-                  </div>
-                  <div>
-                    <p className="font-body text-xs text-muted-foreground">Rate</p>
-                    <p className="font-body text-sm text-foreground">₱{Number(booking.room_rate).toLocaleString()}</p>
-                  </div>
-                </div>
-                {booking.notes && (
-                  <div>
-                    <p className="font-body text-xs text-muted-foreground">Booking Notes</p>
-                    <p className="font-body text-sm text-foreground">{booking.notes}</p>
+                ) : (
+                  <div className="border border-border rounded-lg p-4 space-y-3">
+                    <p className="font-display text-xs tracking-wider text-foreground uppercase">Check In Guest</p>
+                    <Input value={checkInForm.guestName}
+                      onChange={e => setCheckInForm(p => ({ ...p, guestName: e.target.value }))}
+                      placeholder="Guest full name *" className="bg-secondary border-border text-foreground font-body text-sm" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input value={checkInForm.phone}
+                        onChange={e => setCheckInForm(p => ({ ...p, phone: e.target.value }))}
+                        placeholder="Phone" className="bg-secondary border-border text-foreground font-body text-xs" />
+                      <Input value={checkInForm.email}
+                        onChange={e => setCheckInForm(p => ({ ...p, email: e.target.value }))}
+                        placeholder="Email" className="bg-secondary border-border text-foreground font-body text-xs" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="font-body text-xs text-muted-foreground">Check-in</label>
+                        <Input type="date" value={checkInForm.checkIn}
+                          onChange={e => setCheckInForm(p => ({ ...p, checkIn: e.target.value }))}
+                          className="bg-secondary border-border text-foreground font-body text-xs" />
+                      </div>
+                      <div>
+                        <label className="font-body text-xs text-muted-foreground">Check-out *</label>
+                        <Input type="date" value={checkInForm.checkOut}
+                          onChange={e => setCheckInForm(p => ({ ...p, checkOut: e.target.value }))}
+                          className="bg-secondary border-border text-foreground font-body text-xs" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="font-body text-xs text-muted-foreground">Adults</label>
+                        <Input type="number" value={checkInForm.adults}
+                          onChange={e => setCheckInForm(p => ({ ...p, adults: e.target.value }))}
+                          className="bg-secondary border-border text-foreground font-body text-xs" />
+                      </div>
+                      <div>
+                        <label className="font-body text-xs text-muted-foreground">Platform</label>
+                        <Select value={checkInForm.platform}
+                          onValueChange={v => setCheckInForm(p => ({ ...p, platform: v }))}>
+                          <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Direct">Direct</SelectItem>
+                            <SelectItem value="Airbnb">Airbnb</SelectItem>
+                            <SelectItem value="Booking.com">Booking.com</SelectItem>
+                            <SelectItem value="Agoda">Agoda</SelectItem>
+                            <SelectItem value="Website">Website</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="font-body text-xs text-muted-foreground">Room rate</label>
+                        <Input type="number" value={checkInForm.roomRate}
+                          onChange={e => setCheckInForm(p => ({ ...p, roomRate: e.target.value }))}
+                          className="bg-secondary border-border text-foreground font-body text-xs" />
+                      </div>
+                    </div>
+                    <Textarea value={checkInForm.notes}
+                      onChange={e => setCheckInForm(p => ({ ...p, notes: e.target.value }))}
+                      placeholder="Notes (optional)"
+                      className="bg-secondary border-border text-foreground font-body text-sm min-h-[50px]" />
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setShowCheckInForm(false)}
+                        className="flex-1 font-display text-xs tracking-wider min-h-[44px]">Cancel</Button>
+                      <Button size="sm" onClick={handleCheckIn} disabled={checkingIn}
+                        className="flex-1 font-display text-xs tracking-wider min-h-[44px]">
+                        {checkingIn ? 'Checking in...' : 'Check In'}
+                      </Button>
+                    </div>
                   </div>
                 )}
-              </div>
-            ) : (
-              <div className="border border-border rounded-lg p-4 text-center">
-                <p className="font-body text-sm text-muted-foreground">No guest currently checked in</p>
               </div>
             )}
           </div>
@@ -323,7 +522,14 @@ const RoomsDashboard = () => {
         {detailTab === 'documents' && (
           <div className="space-y-3">
             {!guestId ? (
-              <p className="font-body text-sm text-muted-foreground text-center py-4">No guest checked in — can't upload documents</p>
+              <div className="border border-dashed border-border rounded-lg p-6 text-center space-y-2">
+                <p className="font-body text-sm text-muted-foreground">No guest checked in</p>
+                <p className="font-body text-xs text-muted-foreground">Check in a guest first to upload documents.</p>
+                <Button size="sm" variant="outline" onClick={() => { setDetailTab('info'); setShowCheckInForm(true); }}
+                  className="font-display text-xs tracking-wider">
+                  <LogIn className="w-3.5 h-3.5 mr-1" /> Go to Check-In
+                </Button>
+              </div>
             ) : (
               <>
                 <label className="flex items-center gap-2 cursor-pointer border border-dashed border-border rounded-lg p-4 justify-center hover:bg-secondary/50">
@@ -414,7 +620,14 @@ const RoomsDashboard = () => {
                 </Button>
               </div>
             ) : (
-              <p className="font-body text-sm text-muted-foreground text-center py-4">No guest checked in — can't add tours</p>
+              <div className="border border-dashed border-border rounded-lg p-6 text-center space-y-2">
+                <p className="font-body text-sm text-muted-foreground">No guest checked in</p>
+                <p className="font-body text-xs text-muted-foreground">Check in a guest first to add tours.</p>
+                <Button size="sm" variant="outline" onClick={() => { setDetailTab('info'); setShowCheckInForm(true); }}
+                  className="font-display text-xs tracking-wider">
+                  <LogIn className="w-3.5 h-3.5 mr-1" /> Go to Check-In
+                </Button>
+              </div>
             )}
             {tours.map((tour: any) => (
               <div key={tour.id} className="border border-border rounded-lg p-3">
@@ -491,14 +704,13 @@ const RoomsDashboard = () => {
       <h3 className="font-display text-sm tracking-wider text-foreground">Rooms & Units</h3>
       <div className="grid grid-cols-2 gap-3">
         {units.map((unit: any) => {
-          const booking = getUnitGuest(unit.id);
+          const booking = getUnitGuest(unit.name);
           const guest = (booking as any)?.resort_ops_guests;
           const isHighRisk = getUnitVibeRisk(unit.name);
           return (
-            <button key={unit.id} onClick={() => { setSelectedUnit(unit); setDetailTab('info'); setVibeMode('list'); }}
+            <button key={unit.id} onClick={() => { setSelectedUnit(unit); setDetailTab('info'); setVibeMode('list'); setShowCheckInForm(false); }}
               className={`border rounded-lg p-3 text-left hover:bg-secondary/50 transition-colors ${isHighRisk ? 'border-2 border-destructive' : 'border-border'}`}>
               <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
-              <p className="font-body text-xs text-muted-foreground">{unit.type} · {unit.capacity} pax</p>
               {booking ? (
                 <div className="mt-2">
                   <Badge variant="default" className="font-body text-xs">Occupied</Badge>

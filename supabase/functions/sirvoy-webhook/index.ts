@@ -15,25 +15,8 @@ const PLATFORM_MAP: Record<string, string> = {
   direct: "Direct",
 };
 
-// Map Sirvoy room names to your unit IDs
-const ROOM_NAME_TO_UNIT: Record<string, string> = {
-  // Exact matches
-  g1: "799accc5-19b5-4cc6-b3a1-827a004cd6b8",
-  g2: "b95c55b4-4185-4b45-bdfe-6af0f22a7b42",
-  g3: "a49600da-4eac-4042-a84a-4ab547622752",
-  // Full name matches
-  "seaside 1 cabin": "799accc5-19b5-4cc6-b3a1-827a004cd6b8",
-  "seaside 2 cabin": "b95c55b4-4185-4b45-bdfe-6af0f22a7b42",
-  "mountainview family room": "a49600da-4eac-4042-a84a-4ab547622752",
-};
-
 function mapPlatform(source: string): string {
   return PLATFORM_MAP[source.toLowerCase().trim()] || source;
-}
-
-function resolveUnitId(roomName: string): string | null {
-  const key = roomName.toLowerCase().trim();
-  return ROOM_NAME_TO_UNIT[key] || null;
 }
 
 function getSupabaseAdmin() {
@@ -41,6 +24,27 @@ function getSupabaseAdmin() {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
+}
+
+/** Dynamically resolve or create a resort_ops_unit by room name */
+async function resolveUnitId(sb: any, roomName: string): Promise<string | null> {
+  if (!roomName) return null;
+  const key = roomName.toLowerCase().trim();
+
+  // Try exact match first
+  const { data: existing } = await sb.from("resort_ops_units")
+    .select("id").ilike("name", key).maybeSingle();
+  if (existing) return existing.id;
+
+  // Auto-create the unit
+  const { data: created, error } = await sb.from("resort_ops_units")
+    .insert({ name: roomName.trim(), type: "room", capacity: 2 })
+    .select("id").single();
+  if (error || !created) {
+    console.error("Failed to create unit for room:", roomName, error?.message);
+    return null;
+  }
+  return created.id;
 }
 
 Deno.serve(async (req) => {
@@ -142,12 +146,13 @@ Deno.serve(async (req) => {
     const platform = mapPlatform(bookingSource || "");
 
     // Create one booking per room
-    const bookingRows = rooms.map((room: any) => {
+    const bookingRows = [];
+    for (const room of rooms) {
       const roomRate = room.roomTotal || 0;
       const proportion = totalRoomCost > 0 ? roomRate / totalRoomCost : 1 / rooms.length;
-      const unitId = resolveUnitId(room.RoomName || "");
+      const unitId = await resolveUnitId(sb, room.RoomName || "");
 
-      return {
+      bookingRows.push({
         sirvoy_booking_id: bookingId,
         guest_id: guestId,
         unit_id: unitId,
@@ -159,8 +164,8 @@ Deno.serve(async (req) => {
         addons_total: Math.round(addonsTotal * proportion * 100) / 100,
         paid_amount: Math.round(totalPaid * proportion * 100) / 100,
         notes: guestMessage,
-      };
-    });
+      });
+    }
 
     const { error: insertErr } = await sb.from("resort_ops_bookings").insert(bookingRows);
     if (insertErr) {

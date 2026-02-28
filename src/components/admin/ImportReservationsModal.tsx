@@ -33,9 +33,9 @@ interface ParsedRow {
 }
 
 const TEMPLATE_HEADERS = 'Guest Name,Units,Guests,Platform,Check In,Check Out,Total Amount Projected,Paid So Far Realized,Notes';
-const TEMPLATE_EXAMPLE = 'John Doe,"G1,G2",2,Airbnb,01/15/2025,01/18/2025,5000,2500,First time guest';
+const TEMPLATE_EXAMPLE = 'John Doe,"Unit1,Unit2",2,Airbnb,01/15/2025,01/18/2025,5000,2500,First time guest';
 
-const VALID_UNITS = ['G1', 'G2', 'G3'];
+// Unit validation is now dynamic — derived from the `units` prop
 
 const PLATFORM_MAP: Record<string, string> = {
   'airbnb': 'Airbnb',
@@ -82,7 +82,7 @@ function mapPlatform(raw: string): string {
   return PLATFORM_MAP[key] || raw;
 }
 
-function validateRow(row: ParsedRow): string[] {
+function validateRow(row: ParsedRow, validUnits: string[]): string[] {
   const errs: string[] = [];
   if (!row.guestName) errs.push('Missing guest name');
   if (!row.checkIn) errs.push('Missing check-in date (mm/dd/yyyy)');
@@ -91,8 +91,8 @@ function validateRow(row: ParsedRow): string[] {
   if (!row.units) errs.push('Missing units');
   else {
     const unitNames = row.units.split(',').map(u => u.trim()).filter(Boolean);
-    const invalid = unitNames.filter(u => !VALID_UNITS.includes(u.toUpperCase()));
-    if (invalid.length > 0) errs.push(`Invalid unit(s): ${invalid.join(', ')} (must be G1, G2, or G3)`);
+    const invalid = unitNames.filter(u => !validUnits.some(v => v.toLowerCase() === u.toLowerCase()));
+    if (invalid.length > 0) errs.push(`Invalid unit(s): ${invalid.join(', ')} (valid: ${validUnits.join(', ')})`);
   }
   if (row.totalProjected && isNaN(parseFloat(row.totalProjected))) errs.push('Total Amount must be a number');
   if (row.paidRealized && isNaN(parseFloat(row.paidRealized))) errs.push('Paid must be a number');
@@ -152,7 +152,8 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
         if (rawCheckIn && !checkIn) row.errors.push(`Invalid check-in date "${rawCheckIn}" (use mm/dd/yyyy)`);
         if (rawCheckOut && !checkOut) row.errors.push(`Invalid check-out date "${rawCheckOut}" (use mm/dd/yyyy)`);
 
-        row.errors = [...row.errors, ...validateRow(row)];
+        const validUnitNames = units.map((u: any) => u.name || u.unit_name || '');
+        row.errors = [...row.errors, ...validateRow(row, validUnitNames)];
         // Deduplicate date errors
         row.errors = [...new Set(row.errors)];
         if (row.errors.length > 0) row.selected = false;
