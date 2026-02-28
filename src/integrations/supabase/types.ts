@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_options: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          label: string
+          sort_order: number
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          label: string
+          sort_order?: number
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          label?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
       employee_bonuses: {
         Row: {
           amount: number
@@ -450,6 +474,93 @@ export type Database = {
           },
         ]
       }
+      guest_vibe_records: {
+        Row: {
+          age_range: string[]
+          arrival_energy: string[]
+          checked_out: boolean
+          checkin_date: string
+          checkout_date: string | null
+          checkout_notes: string
+          checkout_outcome: string
+          communication_style: string[]
+          created_at: string
+          early_signals: string[]
+          food_allergies: string
+          guest_name: string
+          gut_feeling: string[]
+          id: string
+          medical_conditions: string
+          mood_state: string[]
+          nationality: string
+          personal_preferences: string
+          personality_type: string[]
+          review_risk_level: string[]
+          review_status: string
+          special_context: string[]
+          staff_notes: string
+          travel_composition: string[]
+          unit_name: string
+          updated_at: string
+        }
+        Insert: {
+          age_range?: string[]
+          arrival_energy?: string[]
+          checked_out?: boolean
+          checkin_date?: string
+          checkout_date?: string | null
+          checkout_notes?: string
+          checkout_outcome?: string
+          communication_style?: string[]
+          created_at?: string
+          early_signals?: string[]
+          food_allergies?: string
+          guest_name?: string
+          gut_feeling?: string[]
+          id?: string
+          medical_conditions?: string
+          mood_state?: string[]
+          nationality?: string
+          personal_preferences?: string
+          personality_type?: string[]
+          review_risk_level?: string[]
+          review_status?: string
+          special_context?: string[]
+          staff_notes?: string
+          travel_composition?: string[]
+          unit_name?: string
+          updated_at?: string
+        }
+        Update: {
+          age_range?: string[]
+          arrival_energy?: string[]
+          checked_out?: boolean
+          checkin_date?: string
+          checkout_date?: string | null
+          checkout_notes?: string
+          checkout_outcome?: string
+          communication_style?: string[]
+          created_at?: string
+          early_signals?: string[]
+          food_allergies?: string
+          guest_name?: string
+          gut_feeling?: string[]
+          id?: string
+          medical_conditions?: string
+          mood_state?: string[]
+          nationality?: string
+          personal_preferences?: string
+          personality_type?: string[]
+          review_risk_level?: string[]
+          review_status?: string
+          special_context?: string[]
+          staff_notes?: string
+          travel_composition?: string[]
+          unit_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ingredients: {
         Row: {
           cost_per_unit: number
@@ -479,6 +590,38 @@ export type Database = {
           unit?: string
         }
         Relationships: []
+      }
+      interventions: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          note: string
+          vibe_record_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          note?: string
+          vibe_record_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          note?: string
+          vibe_record_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interventions_vibe_record_id_fkey"
+            columns: ["vibe_record_id"]
+            isOneToOne: false
+            referencedRelation: "guest_vibe_records"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       inventory_logs: {
         Row: {
@@ -1275,6 +1418,41 @@ export type Database = {
           unit_name?: string
         }
         Relationships: []
+      }
+      vibe_updates: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string
+          updated_by: string
+          updated_fields: Json
+          vibe_record_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string
+          updated_by?: string
+          updated_fields?: Json
+          vibe_record_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string
+          updated_by?: string
+          updated_fields?: Json
+          vibe_record_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vibe_updates_vibe_record_id_fkey"
+            columns: ["vibe_record_id"]
+            isOneToOne: false
+            referencedRelation: "guest_vibe_records"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

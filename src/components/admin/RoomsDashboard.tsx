@@ -6,16 +6,21 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Upload, Trash2, Plus, Users, FileText, UtensilsCrossed, MapPin, StickyNote } from 'lucide-react';
+import { ArrowLeft, Upload, Trash2, Plus, Users, FileText, UtensilsCrossed, MapPin, StickyNote, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import VibeCheckInForm from './vibe/VibeCheckInForm';
+import VibeDetailView from './vibe/VibeDetailView';
 
-type DetailTab = 'info' | 'orders' | 'documents' | 'notes' | 'tours';
+type DetailTab = 'info' | 'orders' | 'documents' | 'notes' | 'tours' | 'vibe';
 
 const RoomsDashboard = () => {
   const qc = useQueryClient();
   const [selectedUnit, setSelectedUnit] = useState<any>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('info');
+  const [vibeMode, setVibeMode] = useState<'list' | 'form' | 'detail'>('list');
+  const [editingVibeRecord, setEditingVibeRecord] = useState<any>(null);
+  const [viewingVibeRecord, setViewingVibeRecord] = useState<any>(null);
 
   // Units
   const { data: units = [] } = useQuery({
@@ -32,6 +37,16 @@ const RoomsDashboard = () => {
     queryFn: async () => {
       const { data } = await supabase.from('resort_ops_bookings').select('*, resort_ops_guests(*)').order('check_in', { ascending: false });
       return data || [];
+    },
+  });
+
+  // All vibe records (for grid view badges)
+  const { data: vibeRecords = [] } = useQuery({
+    queryKey: ['vibe-records'],
+    queryFn: async () => {
+      const { data } = await (supabase.from('guest_vibe_records' as any) as any)
+        .select('*').eq('checked_out', false).order('created_at', { ascending: false });
+      return (data || []) as any[];
     },
   });
 
@@ -85,6 +100,9 @@ const RoomsDashboard = () => {
       return (data || []) as any[];
     },
   });
+
+  // Vibe records for selected unit
+  const unitVibeRecords = vibeRecords.filter((v: any) => v.unit_name === selectedUnit?.name);
 
   // Note form
   const [noteContent, setNoteContent] = useState('');
@@ -168,10 +186,37 @@ const RoomsDashboard = () => {
     return booking as any;
   };
 
+  // Check if unit has high-risk vibe record
+  const getUnitVibeRisk = (unitName: string) => {
+    const records = vibeRecords.filter((v: any) => v.unit_name === unitName && !v.checked_out);
+    return records.some((v: any) => (v.review_risk_level || []).includes('High'));
+  };
+
   // DETAIL VIEW
   if (selectedUnit) {
     const booking = getUnitGuest(selectedUnit.id);
     const guest = (booking as any)?.resort_ops_guests;
+
+    // Vibe sub-views
+    if (detailTab === 'vibe' && vibeMode === 'form') {
+      return (
+        <VibeCheckInForm
+          unitName={selectedUnit.name}
+          existingRecord={editingVibeRecord}
+          onClose={() => { setVibeMode('list'); setEditingVibeRecord(null); }}
+        />
+      );
+    }
+
+    if (detailTab === 'vibe' && vibeMode === 'detail' && viewingVibeRecord) {
+      return (
+        <VibeDetailView
+          record={viewingVibeRecord}
+          onBack={() => { setVibeMode('list'); setViewingVibeRecord(null); }}
+          onEdit={() => { setEditingVibeRecord(viewingVibeRecord); setVibeMode('form'); }}
+        />
+      );
+    }
 
     return (
       <div className="space-y-4">
@@ -193,9 +238,11 @@ const RoomsDashboard = () => {
             { key: 'documents' as DetailTab, label: 'Docs', icon: FileText },
             { key: 'notes' as DetailTab, label: 'Notes', icon: StickyNote },
             { key: 'tours' as DetailTab, label: 'Tours', icon: MapPin },
+            { key: 'vibe' as DetailTab, label: 'Vibe', icon: Sparkles },
           ]).map(({ key, label, icon: Icon }) => (
             <Button key={key} size="sm" variant={detailTab === key ? 'default' : 'outline'}
-              onClick={() => setDetailTab(key)} className="font-display text-xs tracking-wider gap-1">
+              onClick={() => { setDetailTab(key); if (key === 'vibe') setVibeMode('list'); }}
+              className="font-display text-xs tracking-wider gap-1">
               <Icon className="w-3.5 h-3.5" /> {label}
             </Button>
           ))}
@@ -395,6 +442,45 @@ const RoomsDashboard = () => {
             {tours.length === 0 && <p className="font-body text-sm text-muted-foreground text-center py-2">No tours booked</p>}
           </div>
         )}
+
+        {/* VIBE */}
+        {detailTab === 'vibe' && vibeMode === 'list' && (
+          <div className="space-y-3">
+            <Button onClick={() => { setEditingVibeRecord(null); setVibeMode('form'); }}
+              className="w-full font-display text-xs tracking-wider min-h-[44px]">
+              <Plus className="w-4 h-4 mr-2" /> New Vibe Check-In
+            </Button>
+            {unitVibeRecords.length === 0 ? (
+              <p className="font-body text-sm text-muted-foreground text-center py-4">No vibe records for this room</p>
+            ) : unitVibeRecords.map((rec: any) => {
+              const isHigh = (rec.review_risk_level || []).includes('High');
+              return (
+                <button key={rec.id} onClick={() => { setViewingVibeRecord(rec); setVibeMode('detail'); }}
+                  className={`w-full text-left border rounded-lg p-3 hover:bg-secondary/50 transition-colors ${isHigh ? 'border-2 border-destructive' : 'border-border'}`}>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-display text-sm text-foreground">{rec.guest_name}</p>
+                      <p className="font-body text-xs text-muted-foreground">
+                        {rec.nationality || 'N/A'} · {(rec.travel_composition || []).join(', ')}
+                      </p>
+                    </div>
+                    <div className="flex gap-1">
+                      {(rec.review_risk_level || []).map((r: string) => (
+                        <Badge key={r} variant={r === 'High' ? 'destructive' : r === 'Medium' ? 'default' : 'secondary'}
+                          className="font-body text-xs">{r}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {(rec.personality_type || []).map((p: string) => (
+                      <Badge key={p} variant="outline" className="font-body text-xs">{p}</Badge>
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
@@ -407,9 +493,10 @@ const RoomsDashboard = () => {
         {units.map((unit: any) => {
           const booking = getUnitGuest(unit.id);
           const guest = (booking as any)?.resort_ops_guests;
+          const isHighRisk = getUnitVibeRisk(unit.name);
           return (
-            <button key={unit.id} onClick={() => { setSelectedUnit(unit); setDetailTab('info'); }}
-              className="border border-border rounded-lg p-3 text-left hover:bg-secondary/50 transition-colors">
+            <button key={unit.id} onClick={() => { setSelectedUnit(unit); setDetailTab('info'); setVibeMode('list'); }}
+              className={`border rounded-lg p-3 text-left hover:bg-secondary/50 transition-colors ${isHighRisk ? 'border-2 border-destructive' : 'border-border'}`}>
               <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
               <p className="font-body text-xs text-muted-foreground">{unit.type} · {unit.capacity} pax</p>
               {booking ? (
@@ -422,6 +509,9 @@ const RoomsDashboard = () => {
                 </div>
               ) : (
                 <Badge variant="secondary" className="font-body text-xs mt-2">Vacant</Badge>
+              )}
+              {isHighRisk && (
+                <Badge variant="destructive" className="font-body text-xs mt-1">⚠ High Risk</Badge>
               )}
             </button>
           );
