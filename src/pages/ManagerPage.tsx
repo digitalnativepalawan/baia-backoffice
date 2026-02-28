@@ -17,7 +17,6 @@ import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 
 const TAB_MAP: Record<string, { value: string; label: string }> = {
   orders: { value: 'orders', label: 'Orders' },
-  menu: { value: 'menu', label: 'Menu' },
   reports: { value: 'reports', label: 'Reports' },
   inventory: { value: 'inventory', label: 'Inventory' },
   payroll: { value: 'payroll', label: 'Payroll' },
