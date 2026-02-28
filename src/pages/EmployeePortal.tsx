@@ -17,8 +17,23 @@ const EmployeePortal = () => {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('clock');
 
-  // Auth state from localStorage
-  const [empId, setEmpId] = useState<string | null>(() => localStorage.getItem('emp_id'));
+  // Auth state — check localStorage first, then fall back to staff_home_session
+  const [empId, setEmpId] = useState<string | null>(() => {
+    const stored = localStorage.getItem('emp_id');
+    if (stored) return stored;
+    try {
+      const staffSession = sessionStorage.getItem('staff_home_session');
+      if (staffSession) {
+        const s = JSON.parse(staffSession);
+        if (s.expiresAt > Date.now()) {
+          localStorage.setItem('emp_id', s.employeeId);
+          localStorage.setItem('emp_name', s.name);
+          return s.employeeId;
+        }
+      }
+    } catch {}
+    return null;
+  });
   const [empName, setEmpName] = useState<string>(() => localStorage.getItem('emp_name') || '');
 
   // Login form

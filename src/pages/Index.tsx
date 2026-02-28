@@ -52,6 +52,9 @@ const Index = () => {
         expiresAt: Date.now() + 8 * 60 * 60 * 1000,
       };
       sessionStorage.setItem(STAFF_SESSION_KEY, JSON.stringify(s));
+      // Sync to localStorage so Employee Portal & Manager page recognize the session
+      localStorage.setItem('emp_id', data.employee.id);
+      localStorage.setItem('emp_name', data.employee.name);
       setSession(s);
       setPin('');
       setShowLogin(false);
@@ -64,6 +67,8 @@ const Index = () => {
 
   const handleLogout = () => {
     sessionStorage.removeItem(STAFF_SESSION_KEY);
+    localStorage.removeItem('emp_id');
+    localStorage.removeItem('emp_name');
     setSession(null);
     setName('');
     setPin('');
