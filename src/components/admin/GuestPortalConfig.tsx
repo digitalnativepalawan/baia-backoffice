@@ -176,11 +176,18 @@ const LOCATIONS = ['San Vicente', 'Port Barton', 'Puerto Princesa', 'El Nido', '
 
 const TransportSection = ({ items, qc }: { items: any[]; qc: any }) => {
   const [form, setForm] = useState({ origin: 'San Vicente', destination: '', price: '', description: '' });
+  const [editId, setEditId] = useState<string | null>(null);
 
   const save = async () => {
     if (!form.destination.trim()) return;
-    await supabase.from('transport_rates').insert({ type: `${form.origin} → ${form.destination}`, origin: form.origin, destination: form.destination, price: parseFloat(form.price) || 0, description: form.description, sort_order: items.length });
+    const payload = { type: `${form.origin} → ${form.destination}`, origin: form.origin, destination: form.destination, price: parseFloat(form.price) || 0, description: form.description, sort_order: items.length };
+    if (editId) {
+      await supabase.from('transport_rates').update(payload).eq('id', editId);
+    } else {
+      await supabase.from('transport_rates').insert(payload);
+    }
     setForm({ origin: 'San Vicente', destination: '', price: '', description: '' });
+    setEditId(null);
     qc.invalidateQueries({ queryKey: ['transport-rates'] });
     toast.success('Saved');
   };
@@ -206,12 +213,13 @@ const TransportSection = ({ items, qc }: { items: any[]; qc: any }) => {
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={t.active} onCheckedChange={v => toggle(t.id, v)} />
+            <button onClick={() => { setEditId(t.id); setForm({ origin: t.origin, destination: t.destination, price: String(t.price), description: t.description || '' }); }} className="text-muted-foreground hover:text-foreground text-xs">Edit</button>
             <button onClick={() => remove(t.id)} className="text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
           </div>
         </div>
       ))}
       <div className="bg-card p-3 rounded space-y-2 border border-border">
-        <p className="font-body text-xs text-muted-foreground">Add Route</p>
+        <p className="font-body text-xs text-muted-foreground">{editId ? 'Edit Route' : 'Add Route'}</p>
         <div className="grid grid-cols-2 gap-2">
           <select value={form.origin} onChange={e => setForm(f => ({ ...f, origin: e.target.value }))} className="bg-secondary text-foreground h-10 rounded px-2 font-body text-sm border border-border">
             {LOCATIONS.map(l => <option key={l} value={l}>{l}</option>)}
@@ -225,7 +233,8 @@ const TransportSection = ({ items, qc }: { items: any[]; qc: any }) => {
           <Input value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="Price" type="number" className="bg-secondary text-foreground h-10" />
           <Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Description" className="bg-secondary text-foreground h-10" />
         </div>
-        <Button onClick={save} size="sm" className="w-full" disabled={!form.destination}><Plus className="w-3.5 h-3.5 mr-1" />Add Route</Button>
+        <Button onClick={save} size="sm" className="w-full" disabled={!form.destination}><Save className="w-3.5 h-3.5 mr-1" />{editId ? 'Update' : 'Add Route'}</Button>
+        {editId && <button onClick={() => { setEditId(null); setForm({ origin: 'San Vicente', destination: '', price: '', description: '' }); }} className="text-xs text-muted-foreground w-full text-center">Cancel</button>}
       </div>
     </div>
   );
@@ -234,11 +243,18 @@ const TransportSection = ({ items, qc }: { items: any[]; qc: any }) => {
 // --- Rentals ---
 const RentalsSection = ({ items, qc }: { items: any[]; qc: any }) => {
   const [form, setForm] = useState({ item_type: 'Scooter', rate_name: '', price: '', description: '' });
+  const [editId, setEditId] = useState<string | null>(null);
 
   const save = async () => {
     if (!form.rate_name.trim()) return;
-    await supabase.from('rental_rates').insert({ item_type: form.item_type, rate_name: form.rate_name, price: parseFloat(form.price) || 0, description: form.description, sort_order: items.length });
+    const payload = { item_type: form.item_type, rate_name: form.rate_name, price: parseFloat(form.price) || 0, description: form.description, sort_order: items.length };
+    if (editId) {
+      await supabase.from('rental_rates').update(payload).eq('id', editId);
+    } else {
+      await supabase.from('rental_rates').insert(payload);
+    }
     setForm({ item_type: 'Scooter', rate_name: '', price: '', description: '' });
+    setEditId(null);
     qc.invalidateQueries({ queryKey: ['rental-rates'] });
     toast.success('Saved');
   };
@@ -264,18 +280,21 @@ const RentalsSection = ({ items, qc }: { items: any[]; qc: any }) => {
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={t.active} onCheckedChange={v => toggle(t.id, v)} />
+            <button onClick={() => { setEditId(t.id); setForm({ item_type: t.item_type, rate_name: t.rate_name, price: String(t.price), description: t.description || '' }); }} className="text-muted-foreground hover:text-foreground text-xs">Edit</button>
             <button onClick={() => remove(t.id)} className="text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
           </div>
         </div>
       ))}
       <div className="bg-card p-3 rounded space-y-2 border border-border">
+        <p className="font-body text-xs text-muted-foreground">{editId ? 'Edit Rental' : 'Add Rental'}</p>
         <Input value={form.item_type} onChange={e => setForm(f => ({ ...f, item_type: e.target.value }))} placeholder="Item type" className="bg-secondary text-foreground h-10" />
         <div className="grid grid-cols-2 gap-2">
           <Input value={form.rate_name} onChange={e => setForm(f => ({ ...f, rate_name: e.target.value }))} placeholder="Rate name (e.g. Half Day)" className="bg-secondary text-foreground h-10" />
           <Input value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="Price" type="number" className="bg-secondary text-foreground h-10" />
         </div>
         <Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Description" className="bg-secondary text-foreground h-10" />
-        <Button onClick={save} size="sm" className="w-full"><Plus className="w-3.5 h-3.5 mr-1" />Add</Button>
+        <Button onClick={save} size="sm" className="w-full"><Save className="w-3.5 h-3.5 mr-1" />{editId ? 'Update' : 'Add'}</Button>
+        {editId && <button onClick={() => { setEditId(null); setForm({ item_type: 'Scooter', rate_name: '', price: '', description: '' }); }} className="text-xs text-muted-foreground w-full text-center">Cancel</button>}
       </div>
     </div>
   );
@@ -284,13 +303,21 @@ const RentalsSection = ({ items, qc }: { items: any[]; qc: any }) => {
 // --- Request Categories ---
 const RequestCatsSection = ({ items, qc }: { items: any[]; qc: any }) => {
   const [name, setName] = useState('');
+  const [icon, setIcon] = useState('📋');
+  const [editId, setEditId] = useState<string | null>(null);
 
-  const add = async () => {
+  const save = async () => {
     if (!name.trim()) return;
-    await supabase.from('request_categories').insert({ name: name.trim(), sort_order: items.length });
+    if (editId) {
+      await supabase.from('request_categories').update({ name: name.trim(), icon }).eq('id', editId);
+      setEditId(null);
+    } else {
+      await supabase.from('request_categories').insert({ name: name.trim(), icon, sort_order: items.length });
+    }
     setName('');
+    setIcon('📋');
     qc.invalidateQueries({ queryKey: ['request-categories'] });
-    toast.success('Added');
+    toast.success('Saved');
   };
 
   const remove = async (id: string) => {
@@ -311,13 +338,19 @@ const RequestCatsSection = ({ items, qc }: { items: any[]; qc: any }) => {
           <span className="font-body text-sm text-foreground">{c.icon} {c.name}</span>
           <div className="flex items-center gap-2">
             <Switch checked={c.active} onCheckedChange={v => toggle(c.id, v)} />
+            <button onClick={() => { setEditId(c.id); setName(c.name); setIcon(c.icon || '📋'); }} className="text-muted-foreground hover:text-foreground text-xs">Edit</button>
             <button onClick={() => remove(c.id)} className="text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
           </div>
         </div>
       ))}
-      <div className="flex gap-2">
-        <Input value={name} onChange={e => setName(e.target.value)} placeholder="New category" className="bg-secondary text-foreground h-10 flex-1" onKeyDown={e => e.key === 'Enter' && add()} />
-        <Button onClick={add} size="sm"><Plus className="w-3.5 h-3.5" /></Button>
+      <div className="bg-card p-3 rounded space-y-2 border border-border">
+        <p className="font-body text-xs text-muted-foreground">{editId ? 'Edit Category' : 'Add Category'}</p>
+        <div className="flex gap-2">
+          <Input value={icon} onChange={e => setIcon(e.target.value)} placeholder="Icon" className="bg-secondary text-foreground h-10 w-16 text-center" />
+          <Input value={name} onChange={e => setName(e.target.value)} placeholder="Category name" className="bg-secondary text-foreground h-10 flex-1" onKeyDown={e => e.key === 'Enter' && save()} />
+        </div>
+        <Button onClick={save} size="sm" className="w-full"><Save className="w-3.5 h-3.5 mr-1" />{editId ? 'Update' : 'Add'}</Button>
+        {editId && <button onClick={() => { setEditId(null); setName(''); setIcon('📋'); }} className="text-xs text-muted-foreground w-full text-center">Cancel</button>}
       </div>
     </div>
   );
@@ -326,13 +359,19 @@ const RequestCatsSection = ({ items, qc }: { items: any[]; qc: any }) => {
 // --- Review Settings ---
 const ReviewSettingsSection = ({ items, qc }: { items: any[]; qc: any }) => {
   const [name, setName] = useState('');
+  const [editId, setEditId] = useState<string | null>(null);
 
-  const add = async () => {
+  const save = async () => {
     if (!name.trim()) return;
-    await supabase.from('review_settings').insert({ category_name: name.trim(), sort_order: items.length });
+    if (editId) {
+      await supabase.from('review_settings').update({ category_name: name.trim() }).eq('id', editId);
+      setEditId(null);
+    } else {
+      await supabase.from('review_settings').insert({ category_name: name.trim(), sort_order: items.length });
+    }
     setName('');
     qc.invalidateQueries({ queryKey: ['review-settings'] });
-    toast.success('Added');
+    toast.success('Saved');
   };
 
   const remove = async (id: string) => {
@@ -353,13 +392,16 @@ const ReviewSettingsSection = ({ items, qc }: { items: any[]; qc: any }) => {
           <span className="font-body text-sm text-foreground">{c.category_name}</span>
           <div className="flex items-center gap-2">
             <Switch checked={c.active} onCheckedChange={v => toggle(c.id, v)} />
+            <button onClick={() => { setEditId(c.id); setName(c.category_name); }} className="text-muted-foreground hover:text-foreground text-xs">Edit</button>
             <button onClick={() => remove(c.id)} className="text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
           </div>
         </div>
       ))}
-      <div className="flex gap-2">
-        <Input value={name} onChange={e => setName(e.target.value)} placeholder="New review category" className="bg-secondary text-foreground h-10 flex-1" onKeyDown={e => e.key === 'Enter' && add()} />
-        <Button onClick={add} size="sm"><Plus className="w-3.5 h-3.5" /></Button>
+      <div className="bg-card p-3 rounded space-y-2 border border-border">
+        <p className="font-body text-xs text-muted-foreground">{editId ? 'Edit Category' : 'Add Category'}</p>
+        <Input value={name} onChange={e => setName(e.target.value)} placeholder="Review category name" className="bg-secondary text-foreground h-10" onKeyDown={e => e.key === 'Enter' && save()} />
+        <Button onClick={save} size="sm" className="w-full"><Save className="w-3.5 h-3.5 mr-1" />{editId ? 'Update' : 'Add'}</Button>
+        {editId && <button onClick={() => { setEditId(null); setName(''); }} className="text-xs text-muted-foreground w-full text-center">Cancel</button>}
       </div>
     </div>
   );
