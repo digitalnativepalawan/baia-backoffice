@@ -1,65 +1,87 @@
 
 
-## Implementation Plan: Room Passwords, Order Archive, and Expenses Bug Fix
+## Multi-Department Inventory Management
 
-### 1. Room-Specific Passwords for Guest Ordering
+### Overview
+Add a `department` column to ingredients and inventory logs so stock is tracked per department (Kitchen, Bar, Gardens, Rooms/Housekeeping). The inventory dashboard will get department tabs, a transfer feature, and department-scoped reporting.
 
-**Database Migration:**
-- Add `room_password TEXT` and `password_expires_at TIMESTAMPTZ` columns to `resort_ops_bookings`
-- Add index on `room_password` for quick lookup
+### 1. Database Migration
 
-**Check-In Flow (`src/components/admin/RoomsDashboard.tsx`):**
-- After inserting the booking (step 3, line ~348), auto-generate a 6-digit numeric password
-- Update the booking with `room_password` and `password_expires_at` (check_out + 1 day)
-- Show the password in the success toast so staff can give it to the guest (e.g., "Room password: 123456")
+Add `department` column to both `ingredients` and `inventory_logs` tables:
+- `ingredients.department TEXT NOT NULL DEFAULT 'kitchen'` -- existing items default to kitchen
+- `inventory_logs.department TEXT NOT NULL DEFAULT 'kitchen'`
+- No CHECK constraints (use application-level validation per project conventions)
 
-**Landing Page (`src/pages/Index.tsx`):**
-- Add a "Room Password" input field (6-digit numeric) between guest name and "Start Ordering" button
-- Update `handleGuestVerify` to include password validation against `resort_ops_bookings.room_password`
-- Check that `password_expires_at` has not passed
+### 2. Update Inventory Dashboard (`src/components/admin/InventoryDashboard.tsx`)
 
-**Guest Session (`src/hooks/useGuestSession.ts`):**
-- No changes needed -- session structure remains the same
+Major refactor of the main component:
 
-### 2. "Served" Status Already Exists
+- **Department selector** at the top: pill/tab buttons for Kitchen, Bar, Gardens, Rooms/Housekeeping, and "All" 
+- All queries filter by selected department (or show all)
+- Summary cards (value, out-of-stock, low-stock) are department-scoped
+- Low stock alerts are department-scoped
+- **Add/Edit dialog** gets a department selector (radio group or dropdown)
+- CSV export includes department column
+- Usage log tab also filters by department
 
-Looking at the code, "Served" is already implemented:
-- `OrderCard.tsx` line 13: `Served: { next: 'Paid', ... }`
-- `DepartmentOrdersView.tsx` line 94: queries include `'Served'` status
-- `StaffOrdersView.tsx` line 1: STATUSES includes `'Served'`
-- The kitchen/bar views auto-set status to "Served" when all departments mark ready (line 163 of DepartmentOrdersView)
+### 3. Stock Transfer Feature
 
-No changes needed here -- the status flow already works as described.
+New transfer dialog within InventoryDashboard:
+- "Transfer" button appears in the toolbar
+- Modal with: From Department, To Department, Ingredient (filtered by source dept), Quantity, Reason
+- On submit: creates two inventory_log entries (negative from source, positive to destination) and updates stock on the ingredient
+- Since ingredients are department-scoped, a transfer actually means moving quantity: decrement source ingredient stock, increment (or create) the matching ingredient in the target department
 
-### 3. Order Archive in Admin
+**Simpler approach**: Since each ingredient row has a department, a "transfer" will:
+1. Reduce `current_stock` on the source ingredient
+2. Find or create the same-named ingredient in the target department
+3. Increase its `current_stock`
+4. Log both changes in `inventory_logs`
 
-**New file: `src/components/admin/OrderArchive.tsx`**
-- Full-history order view with filters: date range, order type, payment type, search
-- Queries `orders` table without status filter, ordered by `created_at desc`
-- Shows all order details: items, total, staff, payment, timestamps
-- CSV export button
-- Pagination (load more)
+### 4. Update Inventory Deduction Logic (`src/lib/inventoryDeduction.ts`)
 
-**Admin Page (`src/pages/AdminPage.tsx`):**
-- Add "Archive" tab to the admin tabs list
-- Render `OrderArchive` component in that tab
+- When deducting for orders, use `menu_items.department` to determine which department's ingredients to deduct from
+- Recipe ingredients query should join through to get the ingredient's department
+- This is mostly automatic since recipes already link menu items to specific ingredients -- as long as ingredients are assigned correct departments
 
-### 4. Expenses Keyboard Bug Fix
+### 5. Update Stock Check (`src/lib/stockCheck.ts`)
 
-**Root Cause:** `ExpenseFormFields` is defined as a component **inside** `ResortOpsDashboard`, which means it gets a new identity on every render. React unmounts and remounts it, causing input focus loss.
+- No major changes needed since recipes already reference specific ingredient rows
+- The department field is informational; the recipe linkage handles correctness
 
-**Fix (`src/components/admin/ResortOpsDashboard.tsx`):**
-- Extract `ExpenseFormFields` to a standalone component outside the parent component (or at module level)
-- Pass `scannedFields` and `scanningReceipt` as props instead of relying on closure
-- This prevents React from destroying and recreating the inputs on each keystroke
+### 6. Update Recipe Editor (`src/components/admin/RecipeEditor.tsx`)
 
-### Technical Summary
+- When showing available ingredients for a recipe, optionally filter or group by department matching the menu item's department
+- Show department badge next to each ingredient name
 
-| Change | Files |
-|--------|-------|
-| DB migration: add password columns | Migration SQL |
-| Password generation at check-in | `src/components/admin/RoomsDashboard.tsx` |
-| Password field on landing page | `src/pages/Index.tsx` |
-| Order archive tab | New `src/components/admin/OrderArchive.tsx`, edit `src/pages/AdminPage.tsx` |
-| Expenses keyboard fix | `src/components/admin/ResortOpsDashboard.tsx` |
+### 7. Files to Change
+
+| File | Change |
+|------|--------|
+| Migration SQL | Add `department` column to `ingredients` and `inventory_logs` |
+| `src/components/admin/InventoryDashboard.tsx` | Department tabs, filtered queries, department in add/edit form, transfer dialog, department in CSV |
+| `src/lib/inventoryDeduction.ts` | Log department in inventory_logs inserts |
+| `src/components/admin/RecipeEditor.tsx` | Show department badge on ingredients, group by department |
+| `src/integrations/supabase/types.ts` | Auto-updated after migration |
+
+### 8. Department Values
+
+```text
+kitchen | bar | gardens | housekeeping
+```
+
+"Rooms" and "Housekeeping" will be combined as `housekeeping` since room supplies and cleaning supplies overlap.
+
+### 9. UI Layout
+
+The department selector will be a row of pill buttons above the existing Stock/Usage Log tabs:
+
+```text
+[All] [Kitchen] [Bar] [Gardens] [Housekeeping]
+─────────────────────────────────────────────
+[Stock] [Usage Log]
+... existing content filtered by department ...
+```
+
+A "Transfer Stock" button will appear next to "Add Ingredient" when a specific department is selected.
 
