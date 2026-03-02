@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { LogOut, UtensilsCrossed, MapPin, Car, Bike, MessageSquare, Star, Receipt, ArrowLeft, ChevronRight } from 'lucide-react';
+import { LogOut, UtensilsCrossed, MapPin, Car, Bike, MessageSquare, Star, Receipt, ArrowLeft, ChevronRight, ClipboardList } from 'lucide-react';
 import { setGuestSession } from '@/hooks/useGuestSession';
 
 const GUEST_PORTAL_KEY = 'guest_portal_session';
@@ -37,7 +37,7 @@ const GuestPortal = () => {
   const { data: profile } = useResortProfile();
   const qc = useQueryClient();
   const [session, setSession] = useState<GuestPortalSession | null>(getPortalSession);
-  const [view, setView] = useState<'dashboard' | 'menu' | 'tours' | 'transport' | 'rentals' | 'request' | 'review' | 'bill'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'menu' | 'tours' | 'transport' | 'rentals' | 'request' | 'review' | 'bill' | 'orders'>('dashboard');
 
   // Login state
   const [roomName, setRoomName] = useState('');
@@ -157,6 +157,7 @@ const GuestPortal = () => {
               <Tile icon={<Bike className="w-5 h-5" />} label="Rent Scooter" onClick={() => setView('rentals')} />
               <Tile icon={<MessageSquare className="w-5 h-5" />} label="Leave Note" onClick={() => setView('request')} />
               <Tile icon={<Star className="w-5 h-5" />} label="Write Review" onClick={() => setView('review')} />
+              <Tile icon={<ClipboardList className="w-5 h-5" />} label="My Orders" onClick={() => setView('orders')} />
               <Tile icon={<Receipt className="w-5 h-5" />} label="My Bill" onClick={() => setView('bill')} className="col-span-2" />
             </div>
             <button onClick={logout} className="flex items-center justify-center gap-2 w-full font-body text-xs text-muted-foreground hover:text-foreground py-2">
@@ -170,6 +171,7 @@ const GuestPortal = () => {
         {view === 'rentals' && <RentalsView session={session} qc={qc} />}
         {view === 'request' && <RequestView session={session} qc={qc} />}
         {view === 'review' && <ReviewView session={session} qc={qc} onDone={() => setView('dashboard')} />}
+        {view === 'orders' && <OrdersView session={session} />}
         {view === 'bill' && <BillView session={session} />}
       </div>
     </div>
@@ -490,6 +492,89 @@ const ReviewView = ({ session, qc, onDone }: { session: GuestPortalSession; qc: 
       ))}
       <Textarea value={comments} onChange={e => setComments(e.target.value)} placeholder="Any additional comments..." className="bg-secondary border-border text-foreground min-h-[100px]" />
       <Button onClick={submit} disabled={submitting} className="w-full">{submitting ? 'Submitting...' : 'Submit Review'}</Button>
+    </div>
+  );
+};
+
+// --- Orders ---
+const ORDER_STATUS_MAP: Record<string, { label: string; color: string }> = {
+  'New': { label: 'Received', color: 'bg-blue-500/20 text-blue-400' },
+  'Preparing': { label: 'Preparing', color: 'bg-amber-500/20 text-amber-400' },
+  'Served': { label: 'Served', color: 'bg-green-500/20 text-green-400' },
+  'Paid': { label: 'Complete', color: 'bg-muted text-muted-foreground' },
+  'Cancelled': { label: 'Cancelled', color: 'bg-destructive/20 text-destructive' },
+};
+
+const OrdersView = ({ session }: { session: GuestPortalSession }) => {
+  const qc = useQueryClient();
+
+  const { data: orders = [] } = useQuery({
+    queryKey: ['guest-orders', session.room_id],
+    queryFn: async () => {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const { data } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('room_id', session.room_id)
+        .gte('created_at', start.toISOString())
+        .order('created_at', { ascending: false });
+      return data || [];
+    },
+  });
+
+  // Realtime subscription for order updates
+  useEffect(() => {
+    const channel = supabase
+      .channel('guest-order-updates')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'orders',
+        filter: `room_id=eq.${session.room_id}`,
+      }, () => {
+        qc.invalidateQueries({ queryKey: ['guest-orders', session.room_id] });
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [session.room_id, qc]);
+
+  return (
+    <div className="space-y-4">
+      <h2 className="font-display text-lg text-foreground">My Orders</h2>
+      {orders.length === 0 ? (
+        <p className="font-body text-sm text-muted-foreground text-center py-8">No orders today.</p>
+      ) : (
+        orders.map((order: any) => {
+          const statusInfo = ORDER_STATUS_MAP[order.status] || { label: order.status, color: 'bg-muted text-muted-foreground' };
+          const items = Array.isArray(order.items) ? order.items : [];
+          return (
+            <div key={order.id} className="bg-card border border-border rounded-lg p-4 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="font-body text-xs text-muted-foreground">
+                  {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+                <span className={`font-body text-xs px-2 py-0.5 rounded-full ${statusInfo.color}`}>
+                  {statusInfo.label}
+                </span>
+              </div>
+              <div className="space-y-1">
+                {items.map((item: any, idx: number) => (
+                  <div key={idx} className="flex justify-between">
+                    <span className="font-body text-sm text-foreground">{item.qty || item.quantity || 1}× {item.name}</span>
+                    <span className="font-body text-sm text-muted-foreground">₱{((item.price || 0) * (item.qty || item.quantity || 1)).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-border pt-2 flex justify-between">
+                <span className="font-body text-sm text-foreground font-medium">Total</span>
+                <span className="font-body text-sm text-foreground font-medium">₱{(order.total || 0).toLocaleString()}</span>
+              </div>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 };
