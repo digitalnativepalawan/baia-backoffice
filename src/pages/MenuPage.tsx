@@ -32,6 +32,7 @@ const MenuPage = () => {
   const location = searchParams.get('location') || '';
   const isStaff = mode === 'staff';
   const isGuestOrder = mode === 'guest-order';
+  const isBrowseOnly = mode === 'guest';
   const guestSession = isGuestOrder ? getGuestSession() : null;
 
   // Redirect if guest session expired
@@ -275,8 +276,8 @@ const MenuPage = () => {
             )}
           </main>
 
-          {/* Floating cart button */}
-          {cart.count() > 0 && (
+          {/* Floating cart button - hidden in browse-only guest mode */}
+          {!isBrowseOnly && cart.count() > 0 && (
             <button
               onClick={() => setCartOpen(true)}
               className={`fixed ${isStaff ? 'bottom-20' : 'bottom-6'} left-4 right-4 z-40 max-w-md mx-auto h-14 rounded-xl bg-gold text-primary-foreground flex items-center justify-between px-5 shadow-lg active:scale-[0.98] transition-transform`}
@@ -321,24 +322,28 @@ const MenuPage = () => {
             <div className="flex flex-col items-center gap-5 pt-2">
               <p className="font-body text-sm text-cream-dim text-center leading-relaxed">{selectedItem.description}</p>
               <p className="font-display text-2xl text-gold">₱{selectedItem.price.toLocaleString()}</p>
-              <div className="flex items-center gap-6">
-                <button
-                  onClick={() => setAddQuantity(Math.max(1, addQuantity - 1))}
-                  className="w-12 h-12 border border-border rounded-full flex items-center justify-center text-foreground hover:border-gold active:bg-foreground/5 transition-colors"
-                >
-                  <Minus className="w-4 h-4" />
-                </button>
-                <span className="font-display text-2xl text-foreground w-8 text-center">{addQuantity}</span>
-                <button
-                  onClick={() => setAddQuantity(addQuantity + 1)}
-                  className="w-12 h-12 border border-border rounded-full flex items-center justify-center text-foreground hover:border-gold active:bg-foreground/5 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
-              <Button onClick={handleAddToCart} className="w-full font-display tracking-wider py-6 text-base">
-                Add to Order — ₱{(selectedItem.price * addQuantity).toLocaleString()}
-              </Button>
+              {!isBrowseOnly && (
+                <>
+                  <div className="flex items-center gap-6">
+                    <button
+                      onClick={() => setAddQuantity(Math.max(1, addQuantity - 1))}
+                      className="w-12 h-12 border border-border rounded-full flex items-center justify-center text-foreground hover:border-gold active:bg-foreground/5 transition-colors"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    <span className="font-display text-2xl text-foreground w-8 text-center">{addQuantity}</span>
+                    <button
+                      onClick={() => setAddQuantity(addQuantity + 1)}
+                      className="w-12 h-12 border border-border rounded-full flex items-center justify-center text-foreground hover:border-gold active:bg-foreground/5 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <Button onClick={handleAddToCart} className="w-full font-display tracking-wider py-6 text-base">
+                    Add to Order — ₱{(selectedItem.price * addQuantity).toLocaleString()}
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </DialogContent>
