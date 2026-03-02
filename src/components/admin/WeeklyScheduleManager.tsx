@@ -120,7 +120,7 @@ const WeeklyScheduleManager = () => {
     },
   });
 
-  // Tasks for the visible week
+  // Tasks for the visible week (with due dates)
   const { data: weekTasks = [] } = useQuery<Task[]>({
     queryKey: ['week-tasks', startStr],
     queryFn: async () => {
@@ -131,8 +131,22 @@ const WeeklyScheduleManager = () => {
     },
   });
 
+  // All pending/in-progress tasks without due dates
+  const { data: undatedTasks = [] } = useQuery<Task[]>({
+    queryKey: ['undated-tasks'],
+    queryFn: async () => {
+      const { data } = await supabase.from('employee_tasks').select('*')
+        .is('due_date', null)
+        .neq('status', 'completed');
+      return (data || []) as Task[];
+    },
+  });
+
   const getTasksForEmpDate = (empId: string, dateStr: string) =>
     weekTasks.filter(t => t.employee_id === empId && t.due_date?.startsWith(dateStr));
+
+  const getUndatedTasksForEmp = (empId: string) =>
+    undatedTasks.filter(t => t.employee_id === empId);
 
   const getTaskColor = (task: Task) => {
     if (task.status === 'completed') return 'bg-emerald-500';
@@ -158,6 +172,10 @@ const WeeklyScheduleManager = () => {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
         qc.invalidateQueries({ queryKey: ['employees-schedule'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_tasks' }, () => {
+        qc.invalidateQueries({ queryKey: ['week-tasks'] });
+        qc.invalidateQueries({ queryKey: ['undated-tasks'] });
       }).subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [qc]);
@@ -347,58 +365,77 @@ const WeeklyScheduleManager = () => {
   const TimelineRow = ({ emp, dateStr, compact = false }: { emp: Employee; dateStr: string; compact?: boolean }) => {
     const shifts = getDateShifts(dateStr).filter(s => s.employee_id === emp.id);
     const tasks = getTasksForEmpDate(emp.id, dateStr);
-    const taskCount = tasks.length;
+    const empUndatedTasks = getUndatedTasksForEmp(emp.id);
+    const taskCount = tasks.length + empUndatedTasks.length;
     return (
-      <div className="flex items-stretch border-b border-border last:border-b-0">
-        <div className={`shrink-0 ${compact ? 'w-16' : 'w-28'} p-1.5 font-body text-xs font-semibold text-foreground border-r border-border flex items-center gap-1`}>
-          <span className="truncate">{emp.name}</span>
-          {taskCount > 0 && (
-            <Badge variant="secondary" className="text-[8px] h-4 min-w-[16px] px-1 bg-blue-500/20 text-blue-400 border-none">
-              {taskCount}
-            </Badge>
-          )}
+      <div className="border-b border-border last:border-b-0">
+        <div className="flex items-stretch">
+          <div className={`shrink-0 ${compact ? 'w-16' : 'w-28'} p-1.5 font-body text-xs font-semibold text-foreground border-r border-border flex items-center gap-1`}>
+            <span className="truncate">{emp.name}</span>
+            {taskCount > 0 && (
+              <Badge variant="secondary" className="text-[8px] h-4 min-w-[16px] px-1 bg-blue-500/20 text-blue-400 border-none">
+                {taskCount}
+              </Badge>
+            )}
+          </div>
+          <div className="flex-1 relative" style={{ minHeight: compact ? '40px' : '48px' }}>
+            {/* Hour grid lines */}
+            {HOURS.map((h, i) => (
+              <div key={h} className="absolute top-0 bottom-0 border-r border-border/30"
+                style={{ left: `${(i / TIMELINE_HOURS) * 100}%` }} />
+            ))}
+            {/* Shift blocks */}
+            {shifts.map(s => <ShiftBlock key={s.id} s={s} compact={compact} />)}
+            {/* Task icons */}
+            <TooltipProvider delayDuration={200}>
+              {tasks.map(task => {
+                const pos = getTaskPosition(task);
+                return (
+                  <Tooltip key={task.id}>
+                    <TooltipTrigger asChild>
+                      <button
+                        className={`absolute z-20 w-5 h-5 rounded-full ${getTaskColor(task)} flex items-center justify-center shadow-md
+                          hover:scale-125 transition-transform cursor-pointer`}
+                        style={{ left: `calc(${pos}% - 10px)`, top: compact ? '10px' : '14px' }}
+                        onClick={(e) => { e.stopPropagation(); setViewingTask(task); }}
+                      >
+                        <ClipboardList className="h-3 w-3 text-white" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="bg-card border-border text-foreground font-body text-xs max-w-[200px]">
+                      <p className="font-semibold">{task.title}</p>
+                      {task.due_date && <p className="text-muted-foreground text-[10px]">{format(new Date(task.due_date), 'h:mm a')}</p>}
+                      <p className="text-[10px] capitalize text-muted-foreground">{task.status}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </TooltipProvider>
+            {/* Click empty area to add */}
+            <div className="absolute inset-0 z-0" onClick={() => openAdd(dateStr, emp.id)} />
+          </div>
+          <div className="shrink-0 w-8 flex items-center justify-center border-l border-border">
+            <button onClick={() => openAdd(dateStr, emp.id)} className="text-muted-foreground hover:text-accent p-1">
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
-        <div className="flex-1 relative" style={{ minHeight: compact ? '40px' : '48px' }}>
-          {/* Hour grid lines */}
-          {HOURS.map((h, i) => (
-            <div key={h} className="absolute top-0 bottom-0 border-r border-border/30"
-              style={{ left: `${(i / TIMELINE_HOURS) * 100}%` }} />
-          ))}
-          {/* Shift blocks */}
-          {shifts.map(s => <ShiftBlock key={s.id} s={s} compact={compact} />)}
-          {/* Task icons */}
-          <TooltipProvider delayDuration={200}>
-            {tasks.map(task => {
-              const pos = getTaskPosition(task);
-              return (
-                <Tooltip key={task.id}>
-                  <TooltipTrigger asChild>
-                    <button
-                      className={`absolute z-20 w-5 h-5 rounded-full ${getTaskColor(task)} flex items-center justify-center shadow-md
-                        hover:scale-125 transition-transform cursor-pointer`}
-                      style={{ left: `calc(${pos}% - 10px)`, top: compact ? '10px' : '14px' }}
-                      onClick={(e) => { e.stopPropagation(); setViewingTask(task); }}
-                    >
-                      <ClipboardList className="h-3 w-3 text-white" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="bg-card border-border text-foreground font-body text-xs max-w-[200px]">
-                    <p className="font-semibold">{task.title}</p>
-                    {task.due_date && <p className="text-muted-foreground text-[10px]">{format(new Date(task.due_date), 'h:mm a')}</p>}
-                    <p className="text-[10px] capitalize text-muted-foreground">{task.status}</p>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
-          </TooltipProvider>
-          {/* Click empty area to add */}
-          <div className="absolute inset-0 z-0" onClick={() => openAdd(dateStr, emp.id)} />
-        </div>
-        <div className="shrink-0 w-8 flex items-center justify-center border-l border-border">
-          <button onClick={() => openAdd(dateStr, emp.id)} className="text-muted-foreground hover:text-accent p-1">
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        {/* Undated tasks row */}
+        {empUndatedTasks.length > 0 && (
+          <div className={`flex items-center gap-1 px-2 py-1 bg-secondary/30 border-t border-border/30 ${compact ? 'ml-16' : 'ml-28'}`}>
+            <ClipboardList className="h-3 w-3 text-muted-foreground shrink-0" />
+            <div className="flex flex-wrap gap-1">
+              {empUndatedTasks.map(task => (
+                <button key={task.id} onClick={() => setViewingTask(task)}
+                  className={`text-[10px] font-body px-1.5 py-0.5 rounded ${
+                    task.status === 'in_progress' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'
+                  } hover:opacity-80 transition-opacity`}>
+                  {task.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
