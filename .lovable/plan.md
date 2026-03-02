@@ -1,78 +1,126 @@
 
 
-## Timeline Schedule View for Admin
+## Comprehensive Resort Management System -- Integration Plan
 
-### Overview
-Replace the current weekly schedule grid with an interactive horizontal timeline view (5 AM - 10 PM) where shifts appear as colored blocks spanning time columns. Each employee gets their own row. The view keeps the dark navy theme and is fully editable (tap to edit, add, delete).
+### What Already Exists (No Changes Needed)
+- Schedule timeline grid with shift blocks, presets, context menus, copy week
+- Rooms dashboard with check-in/out, guest info, orders, docs, notes, tours, vibe
+- Inventory system with stock tracking, low alerts, usage logs
+- Employee tasks with assignments, due dates, status tracking
+- Staff permissions (3-tier: Off/View/Edit per section)
+- Admin tabs: Setup, Menu, Orders, Reports, Inventory, HR, Resort Ops, Rooms, Timesheet, Schedules
+- Dark theme (#0F172A), mobile-first stacked cards
 
-### Layout
+### What Needs to Be Built (New Features)
 
-**Desktop**: Full timeline visible (5 AM - 10 PM) with employee rows, shift blocks span across hour columns. Hover reveals edit/delete actions.
+---
 
-**Mobile**: Horizontal scrollable timeline within each day card. Each day is a vertically stacked card (consistent with current mobile-first pattern). Inside each card, a compact timeline shows shift blocks that can be tapped to edit.
+### Phase 1: Database Schema (5 new tables)
 
-### Day Navigation
-- Tabs or horizontal day selector at the top showing the 7 days of the week
-- Tap a day to view that day's timeline
-- Week prev/next arrows and "Current Week" button remain
-- "Today" highlighted with accent color
+**`room_types`** -- Configurable room types
+- id, name, created_at
 
-### Timeline Grid
-- Hours from 5:00 AM to 10:00 PM across X-axis (18 columns)
-- Each employee as a row on Y-axis
-- Shift blocks rendered as colored bars spanning from time_in to time_out
-- Shift type tags (Morning, Evening, Maintenance) shown as small labels inside blocks
-- Color coding: Morning = blue/accent, Evening = purple, Maintenance = green, Broken = orange
-- Empty areas are tappable to add a new shift at that time slot
+**`housekeeping_checklists`** -- Inspection items per room type
+- id, room_type_id (FK), item_label, is_required, count_expected (nullable), sort_order
 
-### Shift Blocks
-- Semi-transparent colored backgrounds with light text
-- Minimum height 44px for touch targets
-- Tap block to open edit modal (pre-filled)
-- "+" button at the end of each employee row
-- Desktop: hover shows edit/delete icons overlay
-- Slight elevation on hover (desktop)
+**`cleaning_packages`** -- Default supply quantities per room type
+- id, room_type_id (FK), name (e.g. "Deep Clean"), created_at
 
-### Shift Modal Enhancements
-- Shift type/tag selector (Morning, Evening, Maintenance, Custom)
-- Overlap validation: warn if new shift overlaps existing one for same employee/date
-- "Duplicate to next day" option
-- "Copy previous week" button in the header area
+**`cleaning_package_items`** -- Individual supply line in a package
+- id, package_id (FK to cleaning_packages), ingredient_id (FK to ingredients), default_quantity, created_at
 
-### Context Menu
-- Desktop: right-click on shift block shows context menu (Edit, Duplicate, Delete, Assign to another employee)
-- Mobile: long-press on shift block shows same options via a bottom sheet dialog
+**`housekeeping_orders`** -- Active housekeeping jobs triggered by checkout
+- id, unit_name, room_type_id, status (pending_inspection / inspecting / cleaning / completed), assigned_to (employee_id, nullable), inspection_data (jsonb -- checklist results), damage_notes, cleaning_notes, supplies_used (jsonb -- actual quantities used), inspection_completed_at, cleaning_completed_at, created_at
 
-### Copy/Duplicate Features
-- "Copy Previous Week" button in header duplicates all shifts from prior week
-- "Duplicate Shift" in context menu copies shift to next day for same employee
-- Bulk select mode: toggle to select multiple shifts, then bulk delete or bulk reassign
+Add `room_type_id` column to `units` table (nullable FK to room_types) so each room knows its type.
 
-### Real-time Updates
-- Existing real-time subscription pattern maintained
-- Changes reflect immediately in the timeline
+Add `status` column to `units` table (text, default 'ready') -- values: 'occupied', 'to_clean', 'ready'.
 
-### Files to Change
+All tables get public RLS policies matching the existing pattern (open access for this app's auth model).
 
-1. **`src/components/admin/WeeklyScheduleManager.tsx`** -- Complete rewrite:
-   - New timeline grid component with hour columns (5AM-10PM)
-   - Day selector tabs at top
-   - Employee rows with colored shift blocks
-   - Shift type color coding and tags
-   - Context menu (right-click desktop, long-press mobile)
-   - Copy previous week functionality
-   - Duplicate shift functionality
-   - Overlap validation in shift modal
-   - Mobile: horizontally scrollable timeline inside stacked day cards
-   - Desktop: full timeline grid visible
+Enable realtime on `housekeeping_orders` for live status updates.
 
-2. **No database changes needed** -- existing `weekly_schedules` table has all required fields (employee_id, schedule_date, time_in, time_out)
+---
 
-### Technical Details
-- Timeline positioning calculated from time_in/time_out as percentages of the 5AM-10PM range (17 hours)
-- Shift blocks use `position: absolute` within a `position: relative` row container
-- CSS `overflow-x: auto` for mobile horizontal scroll
-- `onContextMenu` for desktop right-click, `onTouchStart`/`onTouchEnd` timer for mobile long-press
-- Shift type inferred from time_in/time_out matching presets, stored as visual tag only (no schema change)
-- Color map: `{ Morning: 'bg-blue-500/30', Evening: 'bg-purple-500/30', Maintenance: 'bg-green-500/30', Broken: 'bg-orange-500/30', Custom: 'bg-accent/20' }`
+### Phase 2: Room Status Board + Housekeeping Workflow
+
+**File: `src/components/admin/RoomsDashboard.tsx`** -- Enhance existing
+
+- Add a **Room Status Board** view at the top of the rooms list showing color-coded cards:
+  - Red = Occupied (guest name, checkout date)
+  - Yellow = To Clean (assigned housekeeper, "Start Cleaning" button)
+  - Green = Ready ("Check In" button)
+- Room status auto-updates: check-in sets "occupied", checkout sets "to_clean", cleaning complete sets "ready"
+
+**File: `src/components/admin/HousekeepingInspection.tsx`** -- New component
+
+- Two-step flow:
+  - **Step 1: Inspection** -- renders checklist items from `housekeeping_checklists` for the room's type. Each item is a checkbox with optional count field. Damage report textarea + photo upload. "Complete Inspection" button saves to `housekeeping_orders.inspection_data`.
+  - **Step 2: Cleaning** -- shows cleaning package defaults (from `cleaning_package_items`), quantities are editable. Notes field. "Cleaning Completed" button:
+    - Deducts actual quantities from `ingredients` table
+    - Logs deductions to `inventory_logs`
+    - Updates `units.status` to 'ready'
+    - Updates `housekeeping_orders.status` to 'completed'
+
+**Checkout integration**: When admin clicks "Check Out Guest" in RoomsDashboard:
+1. Booking checkout date updated (existing)
+2. `units.status` set to 'to_clean'
+3. New `housekeeping_orders` record created with status 'pending_inspection'
+4. Toast notification shown
+
+---
+
+### Phase 3: Admin Configuration Panels
+
+**File: `src/components/admin/HousekeepingConfig.tsx`** -- New component (added to Setup tab)
+
+Three sub-sections:
+
+1. **Room Types** -- CRUD list (Suite, Standard, Deluxe Cottage, Villa). Assign room type to each unit.
+
+2. **Inspection Checklists** -- Per room type, manage checklist items (label, required toggle, expected count). Reorderable list.
+
+3. **Cleaning Packages** -- Per room type, define supply packages. Each package maps ingredients from existing inventory to default quantities. Edit/Duplicate/Delete packages.
+
+**File: `src/pages/AdminPage.tsx`** -- Add HousekeepingConfig to Setup tab
+
+---
+
+### Phase 4: Task Icons on Schedule Timeline
+
+**File: `src/components/admin/WeeklyScheduleManager.tsx`** -- Enhance
+
+- Query `employee_tasks` for the visible week
+- Render task icons on employee timeline rows at their due time position
+- Icon colors: blue = pending, green = completed, red = overdue, yellow = in progress
+- Tap icon opens task detail/edit modal
+- Small task count badge on employee name if they have tasks that day
+
+---
+
+### Phase 5: Enhanced Permissions
+
+**File: `src/lib/permissions.ts`** -- Add 'schedules', 'setup', 'timesheet' to recognized sections
+
+**File: `src/components/admin/StaffAccessManager.tsx`** -- Add 'schedules', 'setup', 'timesheet' to GRANULAR_PERMISSIONS array
+
+**File: `src/pages/AdminPage.tsx`** / **ManagerPage.tsx** -- Check permissions for schedules/setup/timesheet tabs visibility and read-only state
+
+---
+
+### Implementation Order
+
+This should be built in **3-4 separate prompts** after approval:
+
+1. **Prompt 1**: Database migrations (all 5 tables + column additions) + Room Types config UI
+2. **Prompt 2**: Housekeeping workflow (inspection + cleaning components) + Room status board + checkout integration
+3. **Prompt 3**: Cleaning packages + inspection checklists admin config + inventory deduction on cleaning
+4. **Prompt 4**: Task icons on timeline + enhanced permissions for schedules/setup/timesheet
+
+### Technical Notes
+
+- All new components follow existing patterns: `bg-navy-texture`, `font-display` headers, `font-body` text, `border-border` cards, 44px touch targets
+- Housekeeping supply deduction reuses the same `inventory_logs` pattern as kitchen order deductions
+- Room status is derived from `units.status` column, kept in sync by check-in/checkout/cleaning actions
+- No new auth required -- uses existing admin login gate and employee portal auth
 
