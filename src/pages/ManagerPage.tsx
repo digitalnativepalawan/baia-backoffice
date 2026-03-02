@@ -11,6 +11,9 @@ import PayrollDashboard from '@/components/admin/PayrollDashboard';
 import InventoryDashboard from '@/components/admin/InventoryDashboard';
 import ResortOpsDashboard from '@/components/admin/ResortOpsDashboard';
 import RoomsDashboard from '@/components/admin/RoomsDashboard';
+import WeeklyScheduleManager from '@/components/admin/WeeklyScheduleManager';
+import TimesheetDashboard from '@/components/admin/TimesheetDashboard';
+import HousekeepingConfig from '@/components/admin/HousekeepingConfig';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
@@ -23,9 +26,12 @@ const TAB_MAP: Record<string, { value: string; label: string }> = {
   payroll: { value: 'payroll', label: 'HR' },
   resort_ops: { value: 'resort-ops', label: 'Resort Ops' },
   rooms: { value: 'rooms', label: 'Rooms' },
+  schedules: { value: 'schedules', label: 'Schedules' },
+  setup: { value: 'setup', label: 'Setup' },
+  timesheet: { value: 'timesheet', label: 'Timesheet' },
 };
 
-const SECTIONS = ['orders', 'reports', 'inventory', 'payroll', 'resort_ops', 'rooms'] as const;
+const SECTIONS = ['orders', 'reports', 'inventory', 'payroll', 'resort_ops', 'rooms', 'schedules', 'setup', 'timesheet'] as const;
 
 const ManagerPage = () => {
   const navigate = useNavigate();
@@ -188,6 +194,28 @@ const ManagerPage = () => {
 
           {hasAccess(permissions, 'rooms') && (
             <TabsContent value="rooms"><RoomsDashboard readOnly={readOnly('rooms')} canViewDocuments={docsAllowed} /></TabsContent>
+          )}
+
+          {hasAccess(permissions, 'schedules') && (
+            <TabsContent value="schedules">
+              <WeeklyScheduleManager />
+            </TabsContent>
+          )}
+
+          {hasAccess(permissions, 'setup') && (
+            <TabsContent value="setup">
+              <div className={readOnly('setup') ? 'pointer-events-none opacity-70' : ''}>
+                <HousekeepingConfig />
+              </div>
+            </TabsContent>
+          )}
+
+          {hasAccess(permissions, 'timesheet') && (
+            <TabsContent value="timesheet">
+              <div className={readOnly('timesheet') ? 'pointer-events-none opacity-70' : ''}>
+                <TimesheetDashboard />
+              </div>
+            </TabsContent>
           )}
         </Tabs>
       </div>

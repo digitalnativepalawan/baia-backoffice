@@ -11,11 +11,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { format, startOfWeek, addDays, isToday } from 'date-fns';
-import { Plus, Pencil, Trash2, Calendar as CalIcon, Clock, Copy, UserPlus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { format, startOfWeek, addDays, isToday, isBefore } from 'date-fns';
+import { Plus, Pencil, Trash2, Calendar as CalIcon, Clock, Copy, UserPlus, ChevronLeft, ChevronRight, ClipboardList } from 'lucide-react';
 
 type Employee = { id: string; name: string };
+type Task = {
+  id: string; employee_id: string; title: string; description: string;
+  status: string; due_date: string | null; created_by: string;
+};
 type Schedule = {
   id: string; employee_id: string; schedule_date: string;
   time_in: string; time_out: string; created_at: string; updated_at: string;
@@ -113,6 +119,37 @@ const WeeklyScheduleManager = () => {
       return (data || []) as Schedule[];
     },
   });
+
+  // Tasks for the visible week
+  const { data: weekTasks = [] } = useQuery<Task[]>({
+    queryKey: ['week-tasks', startStr],
+    queryFn: async () => {
+      const { data } = await supabase.from('employee_tasks').select('*')
+        .gte('due_date', startStr + 'T00:00:00')
+        .lte('due_date', endStr + 'T23:59:59');
+      return (data || []) as Task[];
+    },
+  });
+
+  const getTasksForEmpDate = (empId: string, dateStr: string) =>
+    weekTasks.filter(t => t.employee_id === empId && t.due_date?.startsWith(dateStr));
+
+  const getTaskColor = (task: Task) => {
+    if (task.status === 'completed') return 'bg-emerald-500';
+    if (task.status === 'in_progress') return 'bg-amber-500';
+    if (task.due_date && isBefore(new Date(task.due_date), new Date()) && task.status === 'pending') return 'bg-destructive';
+    return 'bg-blue-500';
+  };
+
+  const getTaskPosition = (task: Task): number => {
+    if (!task.due_date) return 0;
+    const d = new Date(task.due_date);
+    const h = d.getHours();
+    const m = d.getMinutes();
+    const totalMinutes = (h - TIMELINE_START) * 60 + m;
+    const totalRange = TIMELINE_HOURS * 60;
+    return Math.max(0, Math.min(100, (totalMinutes / totalRange) * 100));
+  };
 
   useEffect(() => {
     const ch = supabase.channel('schedules-rt')
@@ -303,13 +340,23 @@ const WeeklyScheduleManager = () => {
     return block;
   };
 
+  // Task detail state
+  const [viewingTask, setViewingTask] = useState<Task | null>(null);
+
   // Timeline Row for one employee on one date
   const TimelineRow = ({ emp, dateStr, compact = false }: { emp: Employee; dateStr: string; compact?: boolean }) => {
     const shifts = getDateShifts(dateStr).filter(s => s.employee_id === emp.id);
+    const tasks = getTasksForEmpDate(emp.id, dateStr);
+    const taskCount = tasks.length;
     return (
       <div className="flex items-stretch border-b border-border last:border-b-0">
-        <div className={`shrink-0 ${compact ? 'w-16' : 'w-28'} p-1.5 font-body text-xs font-semibold text-foreground border-r border-border flex items-center`}>
+        <div className={`shrink-0 ${compact ? 'w-16' : 'w-28'} p-1.5 font-body text-xs font-semibold text-foreground border-r border-border flex items-center gap-1`}>
           <span className="truncate">{emp.name}</span>
+          {taskCount > 0 && (
+            <Badge variant="secondary" className="text-[8px] h-4 min-w-[16px] px-1 bg-blue-500/20 text-blue-400 border-none">
+              {taskCount}
+            </Badge>
+          )}
         </div>
         <div className="flex-1 relative" style={{ minHeight: compact ? '40px' : '48px' }}>
           {/* Hour grid lines */}
@@ -319,6 +366,31 @@ const WeeklyScheduleManager = () => {
           ))}
           {/* Shift blocks */}
           {shifts.map(s => <ShiftBlock key={s.id} s={s} compact={compact} />)}
+          {/* Task icons */}
+          <TooltipProvider delayDuration={200}>
+            {tasks.map(task => {
+              const pos = getTaskPosition(task);
+              return (
+                <Tooltip key={task.id}>
+                  <TooltipTrigger asChild>
+                    <button
+                      className={`absolute z-20 w-5 h-5 rounded-full ${getTaskColor(task)} flex items-center justify-center shadow-md
+                        hover:scale-125 transition-transform cursor-pointer`}
+                      style={{ left: `calc(${pos}% - 10px)`, top: compact ? '10px' : '14px' }}
+                      onClick={(e) => { e.stopPropagation(); setViewingTask(task); }}
+                    >
+                      <ClipboardList className="h-3 w-3 text-white" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-card border-border text-foreground font-body text-xs max-w-[200px]">
+                    <p className="font-semibold">{task.title}</p>
+                    {task.due_date && <p className="text-muted-foreground text-[10px]">{format(new Date(task.due_date), 'h:mm a')}</p>}
+                    <p className="text-[10px] capitalize text-muted-foreground">{task.status}</p>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </TooltipProvider>
           {/* Click empty area to add */}
           <div className="absolute inset-0 z-0" onClick={() => openAdd(dateStr, emp.id)} />
         </div>
@@ -438,6 +510,48 @@ const WeeklyScheduleManager = () => {
           onClose={() => setShiftModal(null)} onDuplicate={shiftModal?.mode === 'edit' && shiftModal.schedule ? () => { duplicateShift(shiftModal.schedule!); setShiftModal(null); } : undefined} />
 
         <DeleteConfirm deleteId={deleteId} setDeleteId={setDeleteId} onConfirm={confirmDelete} />
+
+        {/* Task Detail Dialog (mobile) */}
+        <Dialog open={!!viewingTask} onOpenChange={() => setViewingTask(null)}>
+          <DialogContent className="bg-card border-border max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="font-display text-foreground">Task Details</DialogTitle>
+            </DialogHeader>
+            {viewingTask && (
+              <div className="space-y-3">
+                <div>
+                  <p className="font-display text-sm text-foreground">{viewingTask.title}</p>
+                  {viewingTask.description && (
+                    <p className="font-body text-xs text-muted-foreground mt-1">{viewingTask.description}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-xs font-body text-muted-foreground">
+                  <span className="capitalize">Status: <span className={`font-semibold ${
+                    viewingTask.status === 'completed' ? 'text-emerald-400' :
+                    viewingTask.status === 'in_progress' ? 'text-amber-400' :
+                    (viewingTask.due_date && isBefore(new Date(viewingTask.due_date), new Date())) ? 'text-destructive' : 'text-blue-400'
+                  }`}>{viewingTask.status}</span></span>
+                </div>
+                {viewingTask.due_date && (
+                  <p className="font-body text-xs text-muted-foreground">
+                    Due: {format(new Date(viewingTask.due_date), 'MMM d, yyyy h:mm a')}
+                  </p>
+                )}
+                <p className="font-body text-[11px] text-muted-foreground">From: {viewingTask.created_by}</p>
+                {viewingTask.status !== 'completed' && (
+                  <Button size="sm" className="w-full font-display text-xs" onClick={async () => {
+                    await supabase.from('employee_tasks').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', viewingTask.id);
+                    qc.invalidateQueries({ queryKey: ['week-tasks'] });
+                    setViewingTask(null);
+                    toast.success('Task completed');
+                  }}>
+                    ✓ Mark Complete
+                  </Button>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
@@ -519,6 +633,48 @@ const WeeklyScheduleManager = () => {
         onClose={() => setShiftModal(null)} onDuplicate={shiftModal?.mode === 'edit' && shiftModal.schedule ? () => { duplicateShift(shiftModal.schedule!); setShiftModal(null); } : undefined} />
 
       <DeleteConfirm deleteId={deleteId} setDeleteId={setDeleteId} onConfirm={confirmDelete} />
+
+      {/* Task Detail Dialog */}
+      <Dialog open={!!viewingTask} onOpenChange={() => setViewingTask(null)}>
+        <DialogContent className="bg-card border-border max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display text-foreground">Task Details</DialogTitle>
+          </DialogHeader>
+          {viewingTask && (
+            <div className="space-y-3">
+              <div>
+                <p className="font-display text-sm text-foreground">{viewingTask.title}</p>
+                {viewingTask.description && (
+                  <p className="font-body text-xs text-muted-foreground mt-1">{viewingTask.description}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-xs font-body text-muted-foreground">
+                <span className="capitalize">Status: <span className={`font-semibold ${
+                  viewingTask.status === 'completed' ? 'text-emerald-400' :
+                  viewingTask.status === 'in_progress' ? 'text-amber-400' :
+                  (viewingTask.due_date && isBefore(new Date(viewingTask.due_date), new Date())) ? 'text-destructive' : 'text-blue-400'
+                }`}>{viewingTask.status}</span></span>
+              </div>
+              {viewingTask.due_date && (
+                <p className="font-body text-xs text-muted-foreground">
+                  Due: {format(new Date(viewingTask.due_date), 'MMM d, yyyy h:mm a')}
+                </p>
+              )}
+              <p className="font-body text-[11px] text-muted-foreground">From: {viewingTask.created_by}</p>
+              {viewingTask.status !== 'completed' && (
+                <Button size="sm" className="w-full font-display text-xs" onClick={async () => {
+                  await supabase.from('employee_tasks').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', viewingTask.id);
+                  qc.invalidateQueries({ queryKey: ['week-tasks'] });
+                  setViewingTask(null);
+                  toast.success('Task completed');
+                }}>
+                  ✓ Mark Complete
+                </Button>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
