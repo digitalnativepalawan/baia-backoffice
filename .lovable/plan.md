@@ -1,87 +1,88 @@
 
 
-## Multi-Department Inventory Management
+## Housekeeping System Enhancement: Staff Accountability and Mobile Portal
 
-### Overview
-Add a `department` column to ingredients and inventory logs so stock is tracked per department (Kitchen, Bar, Gardens, Rooms/Housekeeping). The inventory dashboard will get department tabs, a transfer feature, and department-scoped reporting.
+### What Already Exists (No Changes Needed)
+- `housekeeping_orders` table with inspection/cleaning workflow
+- `housekeeping_checklists` per room type (admin-configurable)
+- `cleaning_packages` with inventory deduction from housekeeping department
+- `HousekeepingConfig.tsx` (admin checklist/package setup)
+- `HousekeepingInspection.tsx` (inspection + cleaning with inventory deduction)
+- Checkout auto-creates housekeeping orders
 
 ### 1. Database Migration
 
-Add `department` column to both `ingredients` and `inventory_logs` tables:
-- `ingredients.department TEXT NOT NULL DEFAULT 'kitchen'` -- existing items default to kitchen
-- `inventory_logs.department TEXT NOT NULL DEFAULT 'kitchen'`
-- No CHECK constraints (use application-level validation per project conventions)
+Add accountability columns to existing `housekeeping_orders` table:
 
-### 2. Update Inventory Dashboard (`src/components/admin/InventoryDashboard.tsx`)
+```text
+ALTER TABLE housekeeping_orders ADD COLUMN:
+  - accepted_by UUID (references employees)
+  - accepted_by_name TEXT
+  - accepted_at TIMESTAMPTZ
+  - completed_by_name TEXT
+  - priority TEXT DEFAULT 'normal'
+  - inspection_by_name TEXT
+  - cleaning_by_name TEXT
+  - time_to_complete_minutes INTEGER
+```
 
-Major refactor of the main component:
+No new tables needed -- the existing `housekeeping_orders` + `housekeeping_checklists` structure covers everything. Adding staff attribution columns is sufficient.
 
-- **Department selector** at the top: pill/tab buttons for Kitchen, Bar, Gardens, Rooms/Housekeeping, and "All" 
-- All queries filter by selected department (or show all)
-- Summary cards (value, out-of-stock, low-stock) are department-scoped
-- Low stock alerts are department-scoped
-- **Add/Edit dialog** gets a department selector (radio group or dropdown)
-- CSV export includes department column
-- Usage log tab also filters by department
+### 2. New Page: Housekeeper Portal (`src/pages/HousekeeperPage.tsx`)
 
-### 3. Stock Transfer Feature
+Mobile-first page at `/housekeeper` route. Sections:
 
-New transfer dialog within InventoryDashboard:
-- "Transfer" button appears in the toolbar
-- Modal with: From Department, To Department, Ingredient (filtered by source dept), Quantity, Reason
-- On submit: creates two inventory_log entries (negative from source, positive to destination) and updates stock on the ingredient
-- Since ingredients are department-scoped, a transfer actually means moving quantity: decrement source ingredient stock, increment (or create) the matching ingredient in the target department
+- **My Assignments**: Pending orders the housekeeper can accept (password-confirm to accept)
+- **In Progress**: Orders they've accepted, with "Continue" button leading to existing `HousekeepingInspection` component
+- **Completed Today**: Summary of finished rooms
+- **My Stats**: Rooms cleaned this month, average time
 
-**Simpler approach**: Since each ingredient row has a department, a "transfer" will:
-1. Reduce `current_stock` on the source ingredient
-2. Find or create the same-named ingredient in the target department
-3. Increase its `current_stock`
-4. Log both changes in `inventory_logs`
+Uses existing `housekeeping_orders` query filtered by `accepted_by` (or all pending for acceptance).
 
-### 4. Update Inventory Deduction Logic (`src/lib/inventoryDeduction.ts`)
+### 3. Password Confirmation Component (`src/components/housekeeping/PasswordConfirmModal.tsx`)
 
-- When deducting for orders, use `menu_items.department` to determine which department's ingredients to deduct from
-- Recipe ingredients query should join through to get the ingredient's department
-- This is mostly automatic since recipes already link menu items to specific ingredients -- as long as ingredients are assigned correct departments
+Dialog that requires PIN entry before:
+- Accepting an assignment (sets `accepted_by`, `accepted_at`)
+- Completing inspection (sets `inspection_by_name`)
+- Completing cleaning (sets `cleaning_by_name`, `completed_by_name`)
 
-### 5. Update Stock Check (`src/lib/stockCheck.ts`)
+Verifies PIN against the `employee-auth` edge function (already exists).
 
-- No major changes needed since recipes already reference specific ingredient rows
-- The department field is informational; the recipe linkage handles correctness
+### 4. Update `HousekeepingInspection.tsx`
 
-### 6. Update Recipe Editor (`src/components/admin/RecipeEditor.tsx`)
+- Record `inspection_by_name` when completing inspection
+- Record `cleaning_by_name` and calculate `time_to_complete_minutes` when completing cleaning
+- Add password confirmation before completing each step
+- Include `department: 'housekeeping'` in inventory log entries
 
-- When showing available ingredients for a recipe, optionally filter or group by department matching the menu item's department
-- Show department badge next to each ingredient name
+### 5. Performance Dashboard (`src/components/admin/HousekeepingPerformance.tsx`)
 
-### 7. Files to Change
+New sub-section in Admin, accessible from Rooms or Reports tab:
+- Table: housekeeper name, rooms cleaned, average time, inspection results
+- Filters: date range, housekeeper
+- Derived from `housekeeping_orders` data (accepted_by, timestamps, inspection_data)
 
-| File | Change |
+### 6. Add Route in `App.tsx`
+
+```text
+/housekeeper -> RequireAuth -> HousekeeperPage
+```
+
+### 7. Files to Create/Modify
+
+| File | Action |
 |------|--------|
-| Migration SQL | Add `department` column to `ingredients` and `inventory_logs` |
-| `src/components/admin/InventoryDashboard.tsx` | Department tabs, filtered queries, department in add/edit form, transfer dialog, department in CSV |
-| `src/lib/inventoryDeduction.ts` | Log department in inventory_logs inserts |
-| `src/components/admin/RecipeEditor.tsx` | Show department badge on ingredients, group by department |
-| `src/integrations/supabase/types.ts` | Auto-updated after migration |
+| Migration SQL | Add accountability columns to `housekeeping_orders` |
+| `src/pages/HousekeeperPage.tsx` | NEW -- mobile housekeeper portal |
+| `src/components/housekeeping/PasswordConfirmModal.tsx` | NEW -- PIN confirmation dialog |
+| `src/components/admin/HousekeepingPerformance.tsx` | NEW -- performance dashboard |
+| `src/components/admin/HousekeepingInspection.tsx` | EDIT -- add staff attribution + password gates |
+| `src/App.tsx` | EDIT -- add /housekeeper route |
+| `src/pages/Index.tsx` | EDIT -- add Housekeeping button for staff navigation (if applicable) |
 
-### 8. Department Values
-
-```text
-kitchen | bar | gardens | housekeeping
-```
-
-"Rooms" and "Housekeeping" will be combined as `housekeeping` since room supplies and cleaning supplies overlap.
-
-### 9. UI Layout
-
-The department selector will be a row of pill buttons above the existing Stock/Usage Log tabs:
-
-```text
-[All] [Kitchen] [Bar] [Gardens] [Housekeeping]
-─────────────────────────────────────────────
-[Stock] [Usage Log]
-... existing content filtered by department ...
-```
-
-A "Transfer Stock" button will appear next to "Add Ingredient" when a specific department is selected.
+### Key Design Decisions
+- Reuse the existing `HousekeepingInspection` component inside the housekeeper portal rather than rebuilding inspection/cleaning screens
+- Performance stats are computed from query aggregation on `housekeeping_orders` (no separate counters table needed)
+- PIN verification uses the existing `employee-auth` edge function
+- No new permissions columns on employees -- use existing `employee_permissions` table with `housekeeping:view` / `housekeeping:edit` levels already supported by StaffAccessManager
 
