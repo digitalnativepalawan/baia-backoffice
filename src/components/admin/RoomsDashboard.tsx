@@ -6,11 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Upload, Trash2, Plus, Users, FileText, UtensilsCrossed, MapPin, StickyNote, Sparkles, LogIn, LogOut, Camera, Download, Link as LinkIcon } from 'lucide-react';
+import { ArrowLeft, Upload, Trash2, Plus, Users, FileText, UtensilsCrossed, MapPin, StickyNote, Sparkles, LogIn, LogOut, Camera, Download, Link as LinkIcon, ClipboardCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import VibeCheckInForm from './vibe/VibeCheckInForm';
 import VibeDetailView from './vibe/VibeDetailView';
+import HousekeepingInspection from './HousekeepingInspection';
 
 const from = (table: string) => supabase.from(table as any);
 
@@ -23,6 +24,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
   const [vibeMode, setVibeMode] = useState<'list' | 'form' | 'detail'>('list');
   const [editingVibeRecord, setEditingVibeRecord] = useState<any>(null);
   const [viewingVibeRecord, setViewingVibeRecord] = useState<any>(null);
+  const [viewingHousekeepingOrder, setViewingHousekeepingOrder] = useState<any>(null);
 
   // Check-in form state
   const [checkInForm, setCheckInForm] = useState({
@@ -89,6 +91,25 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
     },
   });
 
+  // Housekeeping orders (active)
+  const { data: housekeepingOrders = [] } = useQuery({
+    queryKey: ['housekeeping-orders'],
+    queryFn: async () => {
+      const { data } = await from('housekeeping_orders')
+        .select('*').neq('status', 'completed').order('created_at', { ascending: false });
+      return (data || []) as any[];
+    },
+  });
+
+  // Employees for housekeeper names
+  const { data: employees = [] } = useQuery({
+    queryKey: ['employees-active'],
+    queryFn: async () => {
+      const { data } = await supabase.from('employees').select('id, name, display_name').eq('active', true).order('name');
+      return data || [];
+    },
+  });
+
   // Orders for selected unit
   const { data: unitOrders = [] } = useQuery({
     queryKey: ['rooms-orders', selectedUnit?.name],
@@ -152,6 +173,11 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
 
   // Vibe records for selected unit
   const unitVibeRecords = vibeRecords.filter((v: any) => v.unit_name === selectedUnit?.name);
+
+  const getEmployeeName = (id: string) => {
+    const emp = employees.find((e: any) => e.id === id);
+    return emp ? (emp.display_name || emp.name) : '';
+  };
 
   const addNote = async () => {
     if (!noteContent.trim() || !selectedUnit) return;
@@ -263,6 +289,16 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
     return records.some((v: any) => (v.review_risk_level || []).includes('High'));
   };
 
+  // Get unit status
+  const getUnitStatus = (unit: any): 'occupied' | 'to_clean' | 'ready' => {
+    return (unit as any).status || 'ready';
+  };
+
+  // Get housekeeping order for unit
+  const getHousekeepingOrder = (unitName: string) => {
+    return housekeepingOrders.find((o: any) => o.unit_name === unitName);
+  };
+
   // --- CHECK-IN ---
   const handleCheckIn = async () => {
     if (!selectedUnit || !checkInForm.guestName.trim() || !checkInForm.checkOut) {
@@ -322,8 +358,12 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
       });
       if (bErr) throw new Error(bErr.message);
 
-      // 4. Refresh
+      // 4. Set unit status to occupied
+      await supabase.from('units').update({ status: 'occupied' } as any).eq('id', selectedUnit.id);
+
+      // 5. Refresh
       qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
+      qc.invalidateQueries({ queryKey: ['rooms-units'] });
       setShowCheckInForm(false);
       setCheckInForm({
         guestName: '', phone: '', email: '',
@@ -338,20 +378,48 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
     }
   };
 
-  // --- CHECK-OUT ---
+  // --- CHECK-OUT (now triggers housekeeping) ---
   const handleCheckOut = async () => {
     if (!currentBooking) return;
     const today = new Date().toISOString().split('T')[0];
     const { error } = await from('resort_ops_bookings').update({ check_out: today }).eq('id', currentBooking.id);
     if (error) { toast.error('Checkout failed'); return; }
+
+    // Set unit status to 'to_clean'
+    await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', selectedUnit.id);
+
+    // Create housekeeping order
+    await from('housekeeping_orders').insert({
+      unit_name: selectedUnit.name,
+      room_type_id: (selectedUnit as any).room_type_id || null,
+      status: 'pending_inspection',
+    });
+
     qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
-    toast.success('Guest checked out');
+    qc.invalidateQueries({ queryKey: ['rooms-units'] });
+    qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
+    toast.success('Guest checked out — housekeeping order created');
   };
+
+  // ── HOUSEKEEPING INSPECTION VIEW ──
+  if (viewingHousekeepingOrder) {
+    return (
+      <HousekeepingInspection
+        order={viewingHousekeepingOrder}
+        onClose={() => {
+          setViewingHousekeepingOrder(null);
+          qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
+          qc.invalidateQueries({ queryKey: ['rooms-units'] });
+        }}
+      />
+    );
+  }
 
   // DETAIL VIEW
   if (selectedUnit) {
     const booking = getActiveBooking(selectedUnit);
     const guest = (booking as any)?.resort_ops_guests;
+    const unitHkOrder = getHousekeepingOrder(selectedUnit.name);
 
     // Vibe sub-views
     if (detailTab === 'vibe' && vibeMode === 'form') {
@@ -382,9 +450,30 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
           </Button>
           <h3 className="font-display text-lg tracking-wider text-foreground">{selectedUnit.name}</h3>
           <Badge variant={booking ? 'default' : 'secondary'} className="font-body text-xs">
-            {booking ? 'Occupied' : 'Vacant'}
+            {booking ? 'Occupied' : getUnitStatus(selectedUnit) === 'to_clean' ? 'To Clean' : 'Vacant'}
           </Badge>
         </div>
+
+        {/* Housekeeping banner */}
+        {unitHkOrder && (
+          <button
+            onClick={() => setViewingHousekeepingOrder(unitHkOrder)}
+            className="w-full border-2 border-amber-500/50 bg-amber-500/10 rounded-lg p-3 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="w-4 h-4 text-amber-400" />
+              <span className="font-display text-sm text-amber-400 tracking-wider">
+                Housekeeping: {unitHkOrder.status === 'pending_inspection' ? 'Pending Inspection' : unitHkOrder.status === 'inspecting' ? 'Inspecting' : 'Cleaning'}
+              </span>
+            </div>
+            {unitHkOrder.assigned_to && (
+              <p className="font-body text-xs text-muted-foreground mt-1">
+                Assigned to: {getEmployeeName(unitHkOrder.assigned_to)}
+              </p>
+            )}
+            <p className="font-body text-xs text-amber-400/70 mt-1">Tap to open →</p>
+          </button>
+        )}
 
         {/* Detail tabs */}
         <div className="flex gap-1 flex-wrap">
@@ -727,45 +816,44 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
               <div className="grid grid-cols-2 gap-2">
                 <Input value={tourProvider} onChange={e => setTourProvider(e.target.value)} placeholder="Provider / vendor"
                   className="bg-secondary border-border text-foreground font-body text-xs" />
-                <Input value={tourPickupTime} onChange={e => setTourPickupTime(e.target.value)} placeholder="Pickup time"
+                <Input type="date" value={tourDate} onChange={e => setTourDate(e.target.value)}
                   className="bg-secondary border-border text-foreground font-body text-xs" />
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <Input type="date" value={tourDate} onChange={e => setTourDate(e.target.value)}
+                <Input type="number" value={tourPax} onChange={e => setTourPax(e.target.value)} placeholder="Pax"
                   className="bg-secondary border-border text-foreground font-body text-xs" />
-                <Input value={tourPax} onChange={e => setTourPax(e.target.value)} placeholder="Pax"
-                  className="bg-secondary border-border text-foreground font-body text-xs" type="number" />
-                <Input value={tourPrice} onChange={e => setTourPrice(e.target.value)} placeholder="₱ Price"
-                  className="bg-secondary border-border text-foreground font-body text-xs" type="number" />
+                <Input type="number" value={tourPrice} onChange={e => setTourPrice(e.target.value)} placeholder="Price"
+                  className="bg-secondary border-border text-foreground font-body text-xs" />
+                <Input value={tourPickupTime} onChange={e => setTourPickupTime(e.target.value)} placeholder="Pickup time"
+                  className="bg-secondary border-border text-foreground font-body text-xs" />
               </div>
-              <Textarea value={tourNotes} onChange={e => setTourNotes(e.target.value)}
-                placeholder="Notes / instructions"
-                className="bg-secondary border-border text-foreground font-body text-xs min-h-[50px]" />
+              <Input value={tourNotes} onChange={e => setTourNotes(e.target.value)} placeholder="Notes (optional)"
+                className="bg-secondary border-border text-foreground font-body text-xs" />
               <Button size="sm" onClick={addTour} disabled={!tourName.trim() || !tourDate}
-                className="font-display text-xs tracking-wider w-full">
+                className="font-display text-xs tracking-wider w-full min-h-[44px]">
                 <Plus className="w-3.5 h-3.5 mr-1" /> Add Tour
               </Button>
             </div>
-
             {tours.map((tour: any) => (
-              <div key={tour.id} className="border border-border rounded-lg p-3">
+              <div key={tour.id} className="border border-border rounded-lg p-3 space-y-1">
                 <div className="flex justify-between items-start">
-                  <div className="flex-1 min-w-0">
+                  <div>
                     <p className="font-display text-sm text-foreground">{tour.tour_name}</p>
                     <p className="font-body text-xs text-muted-foreground">
-                      {format(new Date(tour.tour_date + 'T00:00:00'), 'MMM d, yyyy')} · {tour.pax} pax · ₱{Number(tour.price).toLocaleString()}
+                      {format(new Date(tour.tour_date + 'T00:00:00'), 'MMM d')} · {tour.pax} pax · ₱{tour.price}
                     </p>
-                    {tour.provider && <p className="font-body text-xs text-muted-foreground">Provider: {tour.provider}</p>}
+                    {tour.provider && <p className="font-body text-xs text-muted-foreground">via {tour.provider}</p>}
                     {tour.pickup_time && <p className="font-body text-xs text-muted-foreground">Pickup: {tour.pickup_time}</p>}
-                    {tour.notes && <p className="font-body text-xs text-muted-foreground mt-1">{tour.notes}</p>}
+                    {tour.notes && <p className="font-body text-xs text-foreground mt-1">{tour.notes}</p>}
                   </div>
-                  <div className="flex flex-col gap-1 items-end">
+                  <div className="flex gap-1">
                     <Select value={tour.status} onValueChange={v => updateTourStatus(tour.id, v)}>
-                      <SelectTrigger className="w-28 bg-secondary border-border text-foreground font-body text-xs">
+                      <SelectTrigger className="h-7 w-24 text-xs bg-secondary border-border text-foreground font-body">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="booked">Booked</SelectItem>
+                        <SelectItem value="confirmed">Confirmed</SelectItem>
                         <SelectItem value="completed">Completed</SelectItem>
                         <SelectItem value="cancelled">Cancelled</SelectItem>
                       </SelectContent>
@@ -823,29 +911,99 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
     );
   }
 
-  // GRID VIEW
+  // ── ROOM STATUS BOARD + GRID VIEW ──
+  const occupiedUnits = units.filter((u: any) => getUnitStatus(u) === 'occupied' || getUnitGuest(u.name));
+  const toCleanUnits = units.filter((u: any) => getUnitStatus(u) === 'to_clean');
+  const readyUnits = units.filter((u: any) => getUnitStatus(u) === 'ready' && !getUnitGuest(u.name));
+
   return (
     <div className="space-y-4">
-      <h3 className="font-display text-sm tracking-wider text-foreground">Rooms & Units</h3>
+      <h3 className="font-display text-sm tracking-wider text-foreground">Room Status Board</h3>
+
+      {/* Status summary */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="border border-red-500/30 bg-red-500/10 rounded-lg p-3 text-center">
+          <p className="font-display text-2xl text-red-400">{occupiedUnits.length}</p>
+          <p className="font-body text-xs text-red-400/70">Occupied</p>
+        </div>
+        <div className="border border-amber-500/30 bg-amber-500/10 rounded-lg p-3 text-center">
+          <p className="font-display text-2xl text-amber-400">{toCleanUnits.length}</p>
+          <p className="font-body text-xs text-amber-400/70">To Clean</p>
+        </div>
+        <div className="border border-emerald-500/30 bg-emerald-500/10 rounded-lg p-3 text-center">
+          <p className="font-display text-2xl text-emerald-400">{readyUnits.length}</p>
+          <p className="font-body text-xs text-emerald-400/70">Ready</p>
+        </div>
+      </div>
+
+      {/* To Clean cards (most actionable) */}
+      {toCleanUnits.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="font-display text-xs tracking-wider text-amber-400 uppercase">🟨 To Clean</h4>
+          {toCleanUnits.map((unit: any) => {
+            const hkOrder = getHousekeepingOrder(unit.name);
+            return (
+              <div key={unit.id} className="border-2 border-amber-500/40 bg-amber-500/5 rounded-lg p-3">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
+                    {hkOrder?.assigned_to && (
+                      <p className="font-body text-xs text-muted-foreground">
+                        Assigned: {getEmployeeName(hkOrder.assigned_to)}
+                      </p>
+                    )}
+                    {hkOrder && (
+                      <Badge variant="outline" className="font-body text-xs mt-1 text-amber-400 border-amber-500/40">
+                        {hkOrder.status === 'pending_inspection' ? 'Pending Inspection' : hkOrder.status === 'cleaning' ? 'Cleaning' : hkOrder.status}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {hkOrder && (
+                      <Button size="sm" onClick={() => setViewingHousekeepingOrder(hkOrder)}
+                        className="font-display text-xs tracking-wider min-h-[44px]">
+                        <ClipboardCheck className="w-4 h-4 mr-1" /> Start
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={() => { setSelectedUnit(unit); setDetailTab('info'); setVibeMode('list'); setShowCheckInForm(false); }}
+                      className="font-display text-xs tracking-wider min-h-[44px]">
+                      View
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Room grid */}
+      <h4 className="font-display text-xs tracking-wider text-muted-foreground uppercase">All Rooms</h4>
       <div className="grid grid-cols-2 gap-3">
         {units.map((unit: any) => {
           const booking = getUnitGuest(unit.name);
           const guest = (booking as any)?.resort_ops_guests;
           const isHighRisk = getUnitVibeRisk(unit.name);
+          const status = getUnitStatus(unit);
+          const borderColor = status === 'occupied' ? 'border-red-500/40' : status === 'to_clean' ? 'border-amber-500/40' : 'border-emerald-500/40';
+          const statusBg = status === 'occupied' ? 'bg-red-500/5' : status === 'to_clean' ? 'bg-amber-500/5' : '';
+
           return (
             <button key={unit.id} onClick={() => { setSelectedUnit(unit); setDetailTab('info'); setVibeMode('list'); setShowCheckInForm(false); }}
-              className={`border rounded-lg p-3 text-left hover:bg-secondary/50 transition-colors ${isHighRisk ? 'border-2 border-destructive' : 'border-border'}`}>
+              className={`border-2 rounded-lg p-3 text-left hover:bg-secondary/50 transition-colors ${borderColor} ${statusBg} ${isHighRisk ? 'ring-2 ring-destructive' : ''}`}>
               <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
               {booking ? (
                 <div className="mt-2">
-                  <Badge variant="default" className="font-body text-xs">Occupied</Badge>
+                  <Badge className="font-body text-xs bg-red-500/20 text-red-400 border-red-500/40">Occupied</Badge>
                   <p className="font-body text-xs text-foreground mt-1">{guest?.full_name || 'Guest'}</p>
                   <p className="font-body text-xs text-muted-foreground">
                     {format(new Date(booking.check_in + 'T00:00:00'), 'MMM d')} – {format(new Date(booking.check_out + 'T00:00:00'), 'MMM d')}
                   </p>
                 </div>
+              ) : status === 'to_clean' ? (
+                <Badge className="font-body text-xs mt-2 bg-amber-500/20 text-amber-400 border-amber-500/40">To Clean</Badge>
               ) : (
-                <Badge variant="secondary" className="font-body text-xs mt-2">Vacant</Badge>
+                <Badge className="font-body text-xs mt-2 bg-emerald-500/20 text-emerald-400 border-emerald-500/40">Ready</Badge>
               )}
               {isHighRisk && (
                 <Badge variant="destructive" className="font-body text-xs mt-1">⚠ High Risk</Badge>
