@@ -1,77 +1,69 @@
 
+# Fix Housekeeping Flow, Schedule Editing, and Shift Type Bug
 
-# Fix Permissions, Order Flow, and Navigation
+## Issue 1: Housekeeping Inspection Still Stuck
 
-## Overview
-Three critical fixes: (1) Remove payment requirement for Walk-In/Dine-In orders, (2) Use existing permissions to control which navigation tiles staff can see, (3) Use permissions to control action buttons in Kitchen/Bar views.
+**Root Cause:** The `completeInspection()` function on line 144 does call `setCurrentStep('cleaning')`, but the `qc.invalidateQueries()` calls on lines 141-142 trigger a parent re-render. In `HousekeeperPage.tsx`, the `activeOrder` is set from `allOrders` query data. When the query refreshes after invalidation, the parent component may cause the `HousekeepingInspection` to re-mount, resetting `currentStep` back to the `derivedStep` (which reads from the now-updated `order.status`).
 
-## Changes
+**Fix in `src/components/admin/HousekeepingInspection.tsx`:**
+- Move `setCurrentStep('cleaning')` BEFORE the query invalidations so the UI transitions first
+- Add a guard: if `currentStep` is already `'cleaning'`, keep it there even if the derived step would say otherwise (use `useEffect` sync or move invalidation to after state is set)
+- Alternatively, invalidate queries after a short delay so React processes the state update first
 
-### 1. CartDrawer: Remove Payment Requirement for Walk-In and Dine-In
-**File: `src/components/CartDrawer.tsx`**
+**Fix in `src/pages/HousekeeperPage.tsx`:**
+- When `activeOrder` is set and the `allOrders` query refreshes, update `activeOrder` with the fresh data from the query so the order object stays in sync. This prevents stale props. Add a `useEffect` that syncs `activeOrder` with the latest data from `allOrders`.
 
-- Change the payment section (lines 465-479) to only show for order types that need upfront payment (Room, Beach/Takeaway)
-- Update the validation in `handleSendToKitchen` (line 131) to skip payment check for WalkIn and DineIn
-- Walk-In and Dine-In orders will submit with empty `payment_type` (payment collected later at the register)
+## Issue 2: Schedule Shifts - Edit/Delete Visibility
 
-### 2. Index Page: Permission-Based Navigation Tiles
-**File: `src/pages/Index.tsx`**
+**Current state:** Edit and Delete already exist via:
+- Click on a shift block to open Edit modal
+- Hover over a shift to see Edit/Delete icons (desktop)
+- Long-press on mobile opens a context sheet with Edit/Delete/Duplicate
 
-Currently, every logged-in staff member sees: Staff Order, Kitchen, Bar, Housekeeping, Employee Portal. This needs to be filtered using the existing `session.permissions` array.
+**The issue:** These actions are not obvious. The hover icons are tiny and hidden until hover. On mobile, long-press is not discoverable.
 
-New visibility rules using the existing permission system:
-- **Staff Order**: Show if admin OR has `orders:view` or `orders:edit` permission
-- **Kitchen**: Show if admin OR has `kitchen:view` or `kitchen:edit` permission (new permission key)
-- **Bar**: Show if admin OR has `bar:view` or `bar:edit` permission (new permission key)
-- **Housekeeping**: Show if admin OR has `housekeeping:view` or `housekeeping:edit` permission (new permission key)
-- **Employee Portal**: Always visible (own timeclock/schedule)
-- **Admin**: Only if `isAdmin` (unchanged)
-- **Manager**: Only if non-admin with permissions (unchanged)
+**Fix in `src/components/admin/WeeklyScheduleManager.tsx`:**
+- Make the Edit and Delete icons always visible (not just on hover) by removing the `hidden group-hover/block:flex` class and using `flex` directly
+- On the shift block, show the shift type label more prominently so users know they can interact with it
+- No functional changes needed -- the edit/delete already works
 
-This uses the existing `hasAccess()` helper from `src/lib/permissions.ts` -- no database changes needed, just new permission keys assigned via the existing StaffAccessManager.
+## Issue 3: Task Colors (Deferred)
 
-### 3. StaffAccessManager: Add Kitchen/Bar/Housekeeping Permission Keys
-**File: `src/components/admin/StaffAccessManager.tsx`**
+The user mentioned task color-coding by category. This requires:
+- Adding a `category` column to `employee_tasks` table
+- UI for selecting category when creating tasks
+- Color mapping in the schedule timeline
 
-Add new entries to `GRANULAR_PERMISSIONS`:
-- `{ key: 'kitchen', label: 'Kitchen Display' }`
-- `{ key: 'bar', label: 'Bar Display' }`
-- `{ key: 'housekeeping', label: 'Housekeeping' }` (already exists? checking... no, current list has `setup` for housekeeping config but not a `housekeeping` key)
+This is a feature enhancement, not a bug fix. Will note it but focus on the critical fixes first. Can be implemented in a follow-up.
 
-These are added to the existing permission cycling UI (Off/View/Edit). No database migration needed -- the `employee_permissions` table already stores arbitrary permission strings.
+## Issue 4: Shift Type Preset Resets Custom Time
 
-### 4. DepartmentOrdersView: Permission-Based Action Buttons
-**File: `src/components/DepartmentOrdersView.tsx`**
+**Root Cause (line 763):** Clicking any preset button (Morning, Evening, Maintenance) overwrites `time_in` and `time_out`:
+```
+onClick={() => setShiftForm((f) => ({ ...f, time_in: p.time_in, time_out: p.time_out }))}
+```
 
-Read the session permissions from `sessionStorage` and use them to control:
-- **"Start Preparing" button**: Only show if user has `kitchen:edit` (for kitchen) or `bar:edit` (for bar) or is admin
-- **"Mark Ready" button**: Same as above
-- Staff with `kitchen:view` or `bar:view` can SEE orders but NOT act on them (read-only display)
+**Fix in `src/components/admin/WeeklyScheduleManager.tsx`:**
+- Add a `shiftType` state to the `ShiftModal` component to track the selected type label independently
+- Preset buttons should ONLY set the shift type label, NOT change times, when the user has already manually edited the time fields
+- Add a `userEditedTime` flag: when the user changes time_in or time_out manually, set this flag. If the flag is set, preset buttons only change the label. If not set (fresh form), presets still set both label and times for convenience.
+- Simpler approach: Split the preset into two behaviors -- on a fresh "Add" form, presets set times. On an "Edit" form or after any manual time change, presets only act as labels.
 
-### 5. RequireAuth Enhancement
-**File: `src/components/RequireAuth.tsx`** -- no changes needed. Route-level auth stays the same (any logged-in staff can access the route). The visibility control happens at the tile level on the Index page and button level in the department views.
+Actually, simplest correct fix: Add a separate `shiftType` state tracked in the modal. Presets always set times (that's their purpose as quick-fill). The real issue the user describes is specifically about the interaction: they set a custom time, then tap a shift type expecting it to be a label, but it overwrites their time. 
+
+**Solution:** Convert shift type to a separate selector that does NOT change times. Move it above the time fields. If the user wants preset times, they click the preset and THEN can adjust. The type is purely a label.
+
+### Changes to ShiftModal:
+- Add `shiftType` local state (inferred from current times on edit, default 'Morning' on add)
+- Shift Type buttons set only the `shiftType` label, no longer modify time_in/time_out  
+- Add a separate "Use Preset Times" link/button under the type selector for users who want to auto-fill times from the preset
 
 ---
 
-## Technical Details
-
-### Permission Keys (existing + new)
-
-Existing keys already in `GRANULAR_PERMISSIONS`:
-`orders`, `menu`, `reports`, `inventory`, `payroll`, `resort_ops`, `rooms`, `schedules`, `setup`, `timesheet`
-
-New keys to add:
-`kitchen`, `bar`, `housekeeping`
-
-### No Database Migration Needed
-The `employee_permissions` table stores `permission` as free-text. New keys like `kitchen:edit` are just new string values inserted via the existing StaffAccessManager UI.
-
-### File Changes Summary
+## Files to Change
 
 | File | Change |
 |------|--------|
-| `src/components/CartDrawer.tsx` | Hide payment selector and skip validation for WalkIn/DineIn |
-| `src/pages/Index.tsx` | Filter navigation tiles based on `session.permissions` using `hasAccess()` |
-| `src/components/admin/StaffAccessManager.tsx` | Add `kitchen`, `bar`, `housekeeping` to `GRANULAR_PERMISSIONS` |
-| `src/components/DepartmentOrdersView.tsx` | Read session permissions; hide action buttons for view-only users |
-
+| `src/components/admin/HousekeepingInspection.tsx` | Reorder state update before query invalidation; ensure `currentStep` persists through re-renders |
+| `src/pages/HousekeeperPage.tsx` | Sync `activeOrder` with refreshed query data so props stay current |
+| `src/components/admin/WeeklyScheduleManager.tsx` | (1) Make shift Edit/Delete icons always visible, (2) Decouple shift type presets from time fields |
