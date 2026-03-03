@@ -31,11 +31,17 @@ const HousekeeperPage = () => {
     refetchInterval: 15000,
   });
 
-  // Pending (unassigned)
-  const pendingOrders = allOrders.filter((o: any) => !o.accepted_by && o.status !== 'completed');
+  // Derive latest order per unit (ignore stale duplicates)
+  const latestByUnit = new Map<string, any>();
+  allOrders.filter((o: any) => o.status !== 'completed').forEach((o: any) => {
+    if (!latestByUnit.has(o.unit_name)) latestByUnit.set(o.unit_name, o);
+  });
 
-  // My in-progress
-  const myInProgress = allOrders.filter((o: any) => o.accepted_by === empId && o.status !== 'completed');
+  // Pending (unassigned) — only latest per unit
+  const pendingOrders = Array.from(latestByUnit.values()).filter((o: any) => !o.accepted_by);
+
+  // My in-progress — only latest per unit
+  const myInProgress = Array.from(latestByUnit.values()).filter((o: any) => o.accepted_by === empId);
 
   // My completed today
   const today = new Date().toISOString().split('T')[0];

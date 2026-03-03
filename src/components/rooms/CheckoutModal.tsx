@@ -72,12 +72,19 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
       // Set unit status to to_clean
       await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', unitId);
 
-      // Create housekeeping order
-      await (supabase.from('housekeeping_orders' as any) as any).insert({
-        unit_name: unitName,
-        room_type_id: roomTypeId || null,
-        status: 'pending_inspection',
-      });
+      // Idempotent: check for existing open housekeeping order before creating
+      const { data: existingOrders } = await (supabase.from('housekeeping_orders' as any) as any)
+        .select('id')
+        .eq('unit_name', unitName)
+        .neq('status', 'completed');
+      
+      if (!existingOrders || existingOrders.length === 0) {
+        await (supabase.from('housekeeping_orders' as any) as any).insert({
+          unit_name: unitName,
+          room_type_id: roomTypeId || null,
+          status: 'pending_inspection',
+        });
+      }
 
       await logAudit('updated', 'units', unitId, `Checkout completed for ${guestName || 'Guest'} in ${unitName}`);
 

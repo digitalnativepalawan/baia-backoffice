@@ -13,9 +13,10 @@ interface RoomBillingTabProps {
   unit: any;
   booking: any;
   guestName: string | null;
+  readOnly?: boolean;
 }
 
-const RoomBillingTab = ({ unit, booking, guestName }: RoomBillingTabProps) => {
+const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBillingTabProps) => {
   const { data: transactions = [], isLoading, refetch } = useRoomTransactions(unit?.id);
   const [showPayment, setShowPayment] = useState(false);
   const [showAdjustment, setShowAdjustment] = useState(false);
@@ -50,24 +51,32 @@ const RoomBillingTab = ({ unit, booking, guestName }: RoomBillingTabProps) => {
         </p>
       </div>
 
-      {/* Action buttons */}
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" onClick={() => setShowPayment(true)}
-          className="font-display text-xs tracking-wider gap-1 min-h-[44px]">
-          <DollarSign className="w-3.5 h-3.5" /> Add Payment
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setShowAdjustment(true)}
-          className="font-display text-xs tracking-wider min-h-[44px]">
-          Adjustment
-        </Button>
-        <PrintBill unitName={unit.name} guestName={guestName} booking={booking} transactions={transactions} />
-        {booking && (
-          <Button size="sm" variant="destructive" onClick={() => setShowCheckout(true)}
+      {/* Action buttons - hidden in readOnly mode */}
+      {!readOnly && (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowPayment(true)}
             className="font-display text-xs tracking-wider gap-1 min-h-[44px]">
-            <LogOut className="w-3.5 h-3.5" /> Check Out
+            <DollarSign className="w-3.5 h-3.5" /> Add Payment
           </Button>
-        )}
-      </div>
+          <Button size="sm" variant="outline" onClick={() => setShowAdjustment(true)}
+            className="font-display text-xs tracking-wider min-h-[44px]">
+            Adjustment
+          </Button>
+          <PrintBill unitName={unit.name} guestName={guestName} booking={booking} transactions={transactions} />
+          {booking && (
+            <Button size="sm" variant="destructive" onClick={() => setShowCheckout(true)}
+              className="font-display text-xs tracking-wider gap-1 min-h-[44px]">
+              <LogOut className="w-3.5 h-3.5" /> Check Out
+            </Button>
+          )}
+        </div>
+      )}
+      {/* Print bill always available even in readOnly */}
+      {readOnly && (
+        <div className="flex flex-wrap gap-2">
+          <PrintBill unitName={unit.name} guestName={guestName} booking={booking} transactions={transactions} />
+        </div>
+      )}
 
       <Separator />
 
@@ -122,18 +131,22 @@ const RoomBillingTab = ({ unit, booking, guestName }: RoomBillingTabProps) => {
         </div>
       </div>
 
-      {/* Modals */}
-      <AddPaymentModal open={showPayment} onOpenChange={setShowPayment}
-        unitId={unit.id} unitName={unit.name} guestName={guestName}
-        bookingId={booking?.id || null} currentBalance={balance} />
-      <AdjustmentModal open={showAdjustment} onOpenChange={setShowAdjustment}
-        unitId={unit.id} unitName={unit.name} guestName={guestName}
-        bookingId={booking?.id || null} transactions={transactions} />
-      {booking && (
-        <CheckoutModal open={showCheckout} onOpenChange={setShowCheckout}
-          unitId={unit.id} unitName={unit.name} guestName={guestName}
-          bookingId={booking.id} booking={booking} transactions={transactions}
-          roomTypeId={(unit as any).room_type_id || null} />
+      {/* Modals - only rendered when not readOnly */}
+      {!readOnly && (
+        <>
+          <AddPaymentModal open={showPayment} onOpenChange={setShowPayment}
+            unitId={unit.id} unitName={unit.name} guestName={guestName}
+            bookingId={booking?.id || null} currentBalance={balance} />
+          <AdjustmentModal open={showAdjustment} onOpenChange={setShowAdjustment}
+            unitId={unit.id} unitName={unit.name} guestName={guestName}
+            bookingId={booking?.id || null} transactions={transactions} />
+          {booking && (
+            <CheckoutModal open={showCheckout} onOpenChange={setShowCheckout}
+              unitId={unit.id} unitName={unit.name} guestName={guestName}
+              bookingId={booking.id} booking={booking} transactions={transactions}
+              roomTypeId={(unit as any).room_type_id || null} />
+          )}
+        </>
       )}
     </div>
   );
