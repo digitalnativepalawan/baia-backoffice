@@ -9,6 +9,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { Home, LogOut } from 'lucide-react';
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
+import { canEdit } from '@/lib/permissions';
 
 interface DepartmentOrdersViewProps {
   department: 'kitchen' | 'bar';
@@ -36,6 +37,15 @@ const DepartmentOrdersView = ({ department }: DepartmentOrdersViewProps) => {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [activeTab, setActiveTab] = useState<DeptStatus>('pending');
+
+  // Read session permissions for edit access
+  const sessionPerms = (() => {
+    try {
+      const s = JSON.parse(sessionStorage.getItem('staff_home_session') || '{}');
+      return { isAdmin: s.isAdmin || false, permissions: s.permissions || [] as string[] };
+    } catch { return { isAdmin: false, permissions: [] as string[] }; }
+  })();
+  const canAct = sessionPerms.isAdmin || canEdit(sessionPerms.permissions, department);
 
   const statusField = department === 'kitchen' ? 'kitchen_status' : 'bar_status';
   const otherStatusField = department === 'kitchen' ? 'bar_status' : 'kitchen_status';
@@ -323,7 +333,7 @@ const DepartmentOrdersView = ({ department }: DepartmentOrdersViewProps) => {
               {/* Action */}
               <div className="pt-3 border-t border-border flex items-center justify-between">
                 <span className="font-display text-sm text-gold">₱{order.total.toLocaleString()}</span>
-                {deptStatus === 'pending' && (
+              {canAct && deptStatus === 'pending' && (
                   <Button
                     onClick={() => advanceDeptStatus(order, 'preparing')}
                     className="font-body text-xs gap-1.5 bg-gold text-primary-foreground hover:bg-gold/90 font-bold"
@@ -331,7 +341,7 @@ const DepartmentOrdersView = ({ department }: DepartmentOrdersViewProps) => {
                     <ChefHat className="w-4 h-4" /> Start Preparing
                   </Button>
                 )}
-                {deptStatus === 'preparing' && (
+                {canAct && deptStatus === 'preparing' && (
                   <Button
                     onClick={() => advanceDeptStatus(order, 'ready')}
                     variant="outline"

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useResortProfile } from '@/hooks/useResortProfile';
 import { supabase } from '@/integrations/supabase/client';
+import { hasAccess } from '@/lib/permissions';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { LogIn, LogOut, DoorOpen } from 'lucide-react';
@@ -115,32 +116,42 @@ const Index = () => {
         {/* Staff section */}
         {session ? (
           <>
-            <button
-              onClick={() => navigate('/order-type?mode=staff')}
-              className="font-display text-base tracking-wider py-4 border border-foreground/20 text-cream-dim hover:bg-foreground/5 transition-colors"
-            >
-              Staff Order
-            </button>
-            <div className="flex gap-2">
+            {(session.isAdmin || hasAccess(session.permissions || [], 'orders')) && (
               <button
-                onClick={() => navigate('/kitchen')}
-                className="font-display text-sm tracking-wider py-3 flex-1 border border-foreground/10 text-cream-dim hover:bg-foreground/5 transition-colors"
+                onClick={() => navigate('/order-type?mode=staff')}
+                className="font-display text-base tracking-wider py-4 border border-foreground/20 text-cream-dim hover:bg-foreground/5 transition-colors"
               >
-                🍳 Kitchen
+                Staff Order
               </button>
+            )}
+            {(session.isAdmin || hasAccess(session.permissions || [], 'kitchen') || hasAccess(session.permissions || [], 'bar')) && (
+              <div className="flex gap-2">
+                {(session.isAdmin || hasAccess(session.permissions || [], 'kitchen')) && (
+                  <button
+                    onClick={() => navigate('/kitchen')}
+                    className="font-display text-sm tracking-wider py-3 flex-1 border border-foreground/10 text-cream-dim hover:bg-foreground/5 transition-colors"
+                  >
+                    🍳 Kitchen
+                  </button>
+                )}
+                {(session.isAdmin || hasAccess(session.permissions || [], 'bar')) && (
+                  <button
+                    onClick={() => navigate('/bar')}
+                    className="font-display text-sm tracking-wider py-3 flex-1 border border-foreground/10 text-cream-dim hover:bg-foreground/5 transition-colors"
+                  >
+                    🍹 Bar
+                  </button>
+                )}
+              </div>
+            )}
+            {(session.isAdmin || hasAccess(session.permissions || [], 'housekeeping')) && (
               <button
-                onClick={() => navigate('/bar')}
-                className="font-display text-sm tracking-wider py-3 flex-1 border border-foreground/10 text-cream-dim hover:bg-foreground/5 transition-colors"
+                onClick={() => navigate('/housekeeper')}
+                className="font-display text-sm tracking-wider py-3 border border-foreground/10 text-cream-dim hover:bg-foreground/5 transition-colors"
               >
-                🍹 Bar
+                🧹 Housekeeping
               </button>
-            </div>
-            <button
-              onClick={() => navigate('/housekeeper')}
-              className="font-display text-sm tracking-wider py-3 border border-foreground/10 text-cream-dim hover:bg-foreground/5 transition-colors"
-            >
-              🧹 Housekeeping
-            </button>
+            )}
             {session.isAdmin && (
               <button
                 onClick={() => navigate('/admin')}

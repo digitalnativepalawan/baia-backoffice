@@ -7,6 +7,9 @@ import { type PermissionLevel, getPermissionLevel } from '@/lib/permissions';
 const GRANULAR_PERMISSIONS = [
   { key: 'orders', label: 'Orders' },
   { key: 'menu', label: 'Menu' },
+  { key: 'kitchen', label: 'Kitchen Display' },
+  { key: 'bar', label: 'Bar Display' },
+  { key: 'housekeeping', label: 'Housekeeping' },
   { key: 'reports', label: 'Reports' },
   { key: 'inventory', label: 'Inventory' },
   { key: 'payroll', label: 'Payroll' },

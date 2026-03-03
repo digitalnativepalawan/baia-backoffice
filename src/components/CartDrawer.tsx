@@ -128,7 +128,8 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
       toast.error('Please select order type and location');
       return;
     }
-    if (isStaff && !paymentType) {
+    const skipPayment = selectedOrderType === 'WalkIn' || selectedOrderType === 'DineIn';
+    if (isStaff && !paymentType && !skipPayment) {
       toast.error('Please select a payment type');
       return;
     }
@@ -462,7 +463,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
                     </div>
                   )}
 
-                  {isStaff && (
+                  {isStaff && selectedOrderType !== 'WalkIn' && selectedOrderType !== 'DineIn' && (
                     <div className="mt-4 pt-3 border-t border-border">
                       <p className="font-display text-sm text-foreground tracking-wider mb-2">Payment Type</p>
                       <Select onValueChange={setPaymentType} value={paymentType}>
