@@ -198,7 +198,7 @@ const ManagerPage = () => {
 
           {hasAccess(permissions, 'schedules') && (
             <TabsContent value="schedules">
-              <WeeklyScheduleManager />
+              <WeeklyScheduleManager readOnly={readOnly('schedules')} />
             </TabsContent>
           )}
 

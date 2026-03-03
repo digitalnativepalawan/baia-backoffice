@@ -87,7 +87,7 @@ const timeToPercent = (t: string): number => {
   return Math.max(0, Math.min(100, (totalMinutes / totalRange) * 100));
 };
 
-const WeeklyScheduleManager = () => {
+const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => {
   const isMobile = useIsMobile();
   const qc = useQueryClient();
 
@@ -322,15 +322,16 @@ const WeeklyScheduleManager = () => {
             )}
             <span className={`text-[8px] font-display ${SHIFT_TEXT_COLORS[type]} opacity-80`}>{type}</span>
           </div>
-          {/* Always-visible action icons */}
-          <div className="flex gap-0.5 shrink-0">
-            <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} className="p-0.5 rounded hover:bg-background/30 text-foreground/60 hover:text-accent">
-              <Pencil className="h-3 w-3" />
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); setDeleteId(s.id); }} className="p-0.5 rounded hover:bg-background/30 text-foreground/60 hover:text-destructive">
-              <Trash2 className="h-3 w-3" />
-            </button>
-          </div>
+          {!readOnly && (
+            <div className="flex gap-0.5 shrink-0">
+              <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} className="p-0.5 rounded hover:bg-background/30 text-foreground/60 hover:text-accent">
+                <Pencil className="h-3 w-3" />
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setDeleteId(s.id); }} className="p-0.5 rounded hover:bg-background/30 text-foreground/60 hover:text-destructive">
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -411,14 +412,15 @@ const WeeklyScheduleManager = () => {
                 );
               })}
             </TooltipProvider>
-            {/* Click empty area to add */}
-            <div className="absolute inset-0 z-0" onClick={() => openAdd(dateStr, emp.id)} />
+            {!readOnly && <div className="absolute inset-0 z-0" onClick={() => openAdd(dateStr, emp.id)} />}
           </div>
-          <div className="shrink-0 w-8 flex items-center justify-center border-l border-border">
-            <button onClick={() => openAdd(dateStr, emp.id)} className="text-muted-foreground hover:text-accent p-1">
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          {!readOnly && (
+            <div className="shrink-0 w-8 flex items-center justify-center border-l border-border">
+              <button onClick={() => openAdd(dateStr, emp.id)} className="text-muted-foreground hover:text-accent p-1">
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
         </div>
         {/* Undated tasks row */}
         {empUndatedTasks.length > 0 && (
@@ -466,14 +468,16 @@ const WeeklyScheduleManager = () => {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg tracking-wider text-foreground">Schedule</h2>
-            <div className="flex gap-1">
-              <Button size="sm" variant="outline" className="font-display text-[10px] h-9 px-2" onClick={copyPreviousWeek}>
-                <Copy className="h-3 w-3 mr-1" /> Copy Week
-              </Button>
-              <Button size="sm" variant="outline" className="font-display text-xs h-9" onClick={() => openAdd()}>
-                <Plus className="h-3.5 w-3.5 mr-1" /> Add
-              </Button>
-            </div>
+            {!readOnly && (
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" className="font-display text-[10px] h-9 px-2" onClick={copyPreviousWeek}>
+                  <Copy className="h-3 w-3 mr-1" /> Copy Week
+                </Button>
+                <Button size="sm" variant="outline" className="font-display text-xs h-9" onClick={() => openAdd()}>
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add
+                </Button>
+              </div>
+            )}
           </div>
           {/* Week nav */}
           <div className="flex items-center gap-1">
@@ -605,12 +609,16 @@ const WeeklyScheduleManager = () => {
           <CalIcon className="h-5 w-5 text-muted-foreground" />
           <h2 className="font-display text-lg tracking-wider text-foreground">Schedule Timeline</h2>
         </div>
-        <Button size="sm" variant="outline" className="font-display text-xs h-9" onClick={copyPreviousWeek}>
-          <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy Previous Week
-        </Button>
-        <Button size="sm" variant="outline" className="font-display text-xs h-9" onClick={() => openAdd()}>
-          <Plus className="h-3.5 w-3.5 mr-1.5" /> Add Shift
-        </Button>
+        {!readOnly && (
+          <>
+            <Button size="sm" variant="outline" className="font-display text-xs h-9" onClick={copyPreviousWeek}>
+              <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy Previous Week
+            </Button>
+            <Button size="sm" variant="outline" className="font-display text-xs h-9" onClick={() => openAdd()}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" /> Add Shift
+            </Button>
+          </>
+        )}
       </div>
 
       {/* Week navigation */}

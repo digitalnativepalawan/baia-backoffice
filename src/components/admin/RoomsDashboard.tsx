@@ -130,9 +130,12 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
     return resortUnits.find((ru: any) => ru.name.toLowerCase().trim() === roomName.toLowerCase().trim());
   };
 
-  // Guest documents - match booking by resort_ops_unit mapped from room name
+  // Active booking: only when unit is operationally occupied (not just date overlap)
   const getActiveBooking = (unit: any) => {
     if (!unit) return null;
+    const unitStatus = getUnitStatus(unit);
+    // If unit has been checked out (to_clean or ready), don't show booking as active
+    if (unitStatus !== 'occupied') return null;
     const today = new Date().toISOString().split('T')[0];
     const resortUnit = resolveResortUnit(unit.name);
     if (!resortUnit) return null;
@@ -181,6 +184,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
   };
 
   const addNote = async () => {
+    if (readOnly) { toast.error('View-only access'); return; }
     if (!noteContent.trim() || !selectedUnit) return;
     await from('guest_notes').insert({
       booking_id: currentBooking?.id || null,
@@ -195,12 +199,14 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
   };
 
   const deleteNote = async (id: string) => {
+    if (readOnly) { toast.error('View-only access'); return; }
     await from('guest_notes').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['guest-notes', selectedUnit?.name] });
     toast.success('Note deleted');
   };
 
   const addTour = async () => {
+    if (readOnly) { toast.error('View-only access'); return; }
     if (!tourName.trim() || !tourDate || !selectedUnit) return;
     await from('guest_tours').insert({
       booking_id: currentBooking?.id || null,
@@ -220,12 +226,14 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
   };
 
   const updateTourStatus = async (id: string, status: string) => {
+    if (readOnly) { toast.error('View-only access'); return; }
     await from('guest_tours').update({ status }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['guest-tours', selectedUnit?.name] });
     toast.success('Tour updated');
   };
 
   const deleteTour = async (id: string) => {
+    if (readOnly) { toast.error('View-only access'); return; }
     await from('guest_tours').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['guest-tours', selectedUnit?.name] });
     toast.success('Tour deleted');
@@ -233,6 +241,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
 
   // Document upload (file or camera)
   const uploadDocument = async (file: File) => {
+    if (readOnly) { toast.error('View-only access'); return; }
     if (!selectedUnit) return;
     const ext = file.name.split('.').pop();
     const folder = guestId || selectedUnit.name.replace(/\s+/g, '_');
@@ -253,6 +262,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
   };
 
   const addDocumentUrl = async () => {
+    if (readOnly) { toast.error('View-only access'); return; }
     if (!docUrl.trim() || !selectedUnit) return;
     await from('guest_documents').insert({
       guest_id: guestId || null,
@@ -267,6 +277,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
   };
 
   const deleteDocument = async (doc: any) => {
+    if (readOnly) { toast.error('View-only access'); return; }
     const path = doc.image_url.split('/guest-documents/')[1];
     if (path && !doc.image_url.startsWith('http://') && !doc.image_url.includes('//') === false) {
       await supabase.storage.from('guest-documents').remove([path]);
@@ -276,8 +287,10 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
     toast.success('Document deleted');
   };
 
-  // Get current guest for a unit (grid view)
+  // Get current guest for a unit (grid view) — only when occupied
   const getUnitGuest = (unitName: string) => {
+    const unit = units.find((u: any) => u.name === unitName);
+    if (!unit || getUnitStatus(unit) !== 'occupied') return null;
     const today = new Date().toISOString().split('T')[0];
     const resortUnit = resolveResortUnit(unitName);
     if (!resortUnit) return null;
@@ -295,15 +308,22 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
     return (unit as any).status || 'ready';
   };
 
-  // Get housekeeping order for unit
+  // Get latest housekeeping order for unit (only latest per unit)
   const getHousekeepingOrder = (unitName: string) => {
+    // housekeepingOrders is already sorted by created_at DESC, so first match is latest
     return housekeepingOrders.find((o: any) => o.unit_name === unitName);
   };
 
   // --- CHECK-IN ---
   const handleCheckIn = async () => {
+    if (readOnly) { toast.error('View-only access'); return; }
     if (!selectedUnit || !checkInForm.guestName.trim() || !checkInForm.checkOut) {
       toast.error('Guest name and check-out date are required');
+      return;
+    }
+    // Prevent check-in if room is to_clean
+    if (getUnitStatus(selectedUnit) === 'to_clean') {
+      toast.error('Complete housekeeping before check-in');
       return;
     }
     if (checkInForm.checkOut <= checkInForm.checkIn) {
@@ -386,8 +406,9 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
     }
   };
 
-  // --- CHECK-OUT (now triggers housekeeping) ---
+  // --- CHECK-OUT (idempotent — reuses existing housekeeping order) ---
   const handleCheckOut = async () => {
+    if (readOnly) { toast.error('View-only access'); return; }
     if (!currentBooking) return;
     const today = new Date().toISOString().split('T')[0];
     const { error } = await from('resort_ops_bookings').update({ check_out: today }).eq('id', currentBooking.id);
@@ -396,12 +417,15 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
     // Set unit status to 'to_clean'
     await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', selectedUnit.id);
 
-    // Create housekeeping order
-    await from('housekeeping_orders').insert({
-      unit_name: selectedUnit.name,
-      room_type_id: (selectedUnit as any).room_type_id || null,
-      status: 'pending_inspection',
-    });
+    // Check for existing open housekeeping order before creating a new one
+    const existingOrder = housekeepingOrders.find((o: any) => o.unit_name === selectedUnit.name);
+    if (!existingOrder) {
+      await from('housekeeping_orders').insert({
+        unit_name: selectedUnit.name,
+        room_type_id: (selectedUnit as any).room_type_id || null,
+        status: 'pending_inspection',
+      });
+    }
 
     qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
     qc.invalidateQueries({ queryKey: ['rooms-units'] });
@@ -463,7 +487,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
         </div>
 
         {/* Housekeeping banner */}
-        {unitHkOrder && (
+        {unitHkOrder && !readOnly && (
           <button
             onClick={() => setViewingHousekeepingOrder(unitHkOrder)}
             className="w-full border-2 border-amber-500/50 bg-amber-500/10 rounded-lg p-3 text-left"
@@ -481,6 +505,22 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
             )}
             <p className="font-body text-xs text-amber-400/70 mt-1">Tap to open →</p>
           </button>
+        )}
+        {/* Read-only housekeeping status banner */}
+        {unitHkOrder && readOnly && (
+          <div className="w-full border-2 border-amber-500/50 bg-amber-500/10 rounded-lg p-3">
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="w-4 h-4 text-amber-400" />
+              <span className="font-display text-sm text-amber-400 tracking-wider">
+                Housekeeping: {unitHkOrder.status === 'pending_inspection' ? 'Pending Inspection' : unitHkOrder.status === 'inspecting' ? 'Inspecting' : 'Cleaning'}
+              </span>
+            </div>
+            {unitHkOrder.assigned_to && (
+              <p className="font-body text-xs text-muted-foreground mt-1">
+                Assigned to: {getEmployeeName(unitHkOrder.assigned_to)}
+              </p>
+            )}
+          </div>
         )}
 
         {/* Detail tabs */}
@@ -560,21 +600,31 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
                     </div>
                   )}
                 </div>
-                <Button size="sm" variant="destructive" onClick={handleCheckOut}
-                  className="w-full font-display text-xs tracking-wider min-h-[44px]">
-                  <LogOut className="w-4 h-4 mr-2" /> Check Out Guest
-                </Button>
+                {!readOnly && (
+                  <Button size="sm" variant="destructive" onClick={handleCheckOut}
+                    className="w-full font-display text-xs tracking-wider min-h-[44px]">
+                    <LogOut className="w-4 h-4 mr-2" /> Check Out Guest
+                  </Button>
+                )}
               </>
             ) : (
               <div className="space-y-3">
                 {!showCheckInForm ? (
                   <div className="border border-dashed border-border rounded-lg p-6 text-center space-y-3">
                     <p className="font-body text-sm text-muted-foreground">No guest currently checked in</p>
-                    <p className="font-body text-xs text-muted-foreground">Check in a guest to enable full room management.</p>
-                    <Button size="sm" onClick={() => setShowCheckInForm(true)}
-                      className="font-display text-xs tracking-wider min-h-[44px]">
-                      <LogIn className="w-4 h-4 mr-2" /> Check In Guest
-                    </Button>
+                    {getUnitStatus(selectedUnit) === 'to_clean' ? (
+                      <p className="font-body text-xs text-amber-400">Complete housekeeping before check-in.</p>
+                    ) : !readOnly ? (
+                      <>
+                        <p className="font-body text-xs text-muted-foreground">Check in a guest to enable full room management.</p>
+                        <Button size="sm" onClick={() => setShowCheckInForm(true)}
+                          className="font-display text-xs tracking-wider min-h-[44px]">
+                          <LogIn className="w-4 h-4 mr-2" /> Check In Guest
+                        </Button>
+                      </>
+                    ) : (
+                      <p className="font-body text-xs text-muted-foreground">View-only access — cannot check in guests.</p>
+                    )}
                   </div>
                 ) : (
                   <div className="border border-border rounded-lg p-4 space-y-3">
@@ -690,61 +740,59 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
         {/* DOCUMENTS - always available */}
         {detailTab === 'documents' && (
           <div className="space-y-3">
-            {/* Document type selector */}
-            <div className="border border-border rounded-lg p-3 space-y-2">
-              <Select value={docType} onValueChange={setDocType}>
-                <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs">
-                  <SelectValue placeholder="Document type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="passport">Passport</SelectItem>
-                  <SelectItem value="government_id">Government ID</SelectItem>
-                  <SelectItem value="booking_confirmation">Booking Confirmation</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
+            {!readOnly && (
+              <div className="border border-border rounded-lg p-3 space-y-2">
+                <Select value={docType} onValueChange={setDocType}>
+                  <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs">
+                    <SelectValue placeholder="Document type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="passport">Passport</SelectItem>
+                    <SelectItem value="government_id">Government ID</SelectItem>
+                    <SelectItem value="booking_confirmation">Booking Confirmation</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
 
-              <Input value={docNotes} onChange={e => setDocNotes(e.target.value)}
-                placeholder="Notes (e.g., expires March 2027)"
-                className="bg-secondary border-border text-foreground font-body text-xs" />
+                <Input value={docNotes} onChange={e => setDocNotes(e.target.value)}
+                  placeholder="Notes (e.g., expires March 2027)"
+                  className="bg-secondary border-border text-foreground font-body text-xs" />
 
-              {/* Camera capture */}
-              <div className="grid grid-cols-2 gap-2">
-                <label className="flex items-center gap-2 cursor-pointer border border-dashed border-border rounded-lg p-3 justify-center hover:bg-secondary/50 min-h-[44px]">
-                  <Camera className="w-4 h-4 text-muted-foreground" />
-                  <span className="font-body text-xs text-muted-foreground">Take Photo</span>
-                  <input type="file" accept="image/*" capture="environment" className="hidden"
-                    onChange={e => { if (e.target.files?.[0]) uploadDocument(e.target.files[0]); }} />
-                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer border border-dashed border-border rounded-lg p-3 justify-center hover:bg-secondary/50 min-h-[44px]">
+                    <Camera className="w-4 h-4 text-muted-foreground" />
+                    <span className="font-body text-xs text-muted-foreground">Take Photo</span>
+                    <input type="file" accept="image/*" capture="environment" className="hidden"
+                      onChange={e => { if (e.target.files?.[0]) uploadDocument(e.target.files[0]); }} />
+                  </label>
 
-                {/* File upload */}
-                <label className="flex items-center gap-2 cursor-pointer border border-dashed border-border rounded-lg p-3 justify-center hover:bg-secondary/50 min-h-[44px]">
-                  <Upload className="w-4 h-4 text-muted-foreground" />
-                  <span className="font-body text-xs text-muted-foreground">Upload File</span>
-                  <input type="file" accept="image/*,application/pdf" className="hidden"
-                    onChange={e => { if (e.target.files?.[0]) uploadDocument(e.target.files[0]); }} />
-                </label>
-              </div>
-
-              {/* URL input toggle */}
-              {!showUrlInput ? (
-                <Button size="sm" variant="outline" onClick={() => setShowUrlInput(true)}
-                  className="w-full font-display text-xs tracking-wider min-h-[44px]">
-                  <LinkIcon className="w-3.5 h-3.5 mr-1" /> Add Document Link
-                </Button>
-              ) : (
-                <div className="flex gap-2">
-                  <Input value={docUrl} onChange={e => setDocUrl(e.target.value)}
-                    placeholder="https://..." className="bg-secondary border-border text-foreground font-body text-xs flex-1" />
-                  <Button size="sm" onClick={addDocumentUrl} disabled={!docUrl.trim()}
-                    className="font-display text-xs tracking-wider min-h-[44px]">
-                    <Plus className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setShowUrlInput(false); setDocUrl(''); }}
-                    className="font-display text-xs min-h-[44px]">✕</Button>
+                  <label className="flex items-center gap-2 cursor-pointer border border-dashed border-border rounded-lg p-3 justify-center hover:bg-secondary/50 min-h-[44px]">
+                    <Upload className="w-4 h-4 text-muted-foreground" />
+                    <span className="font-body text-xs text-muted-foreground">Upload File</span>
+                    <input type="file" accept="image/*,application/pdf" className="hidden"
+                      onChange={e => { if (e.target.files?.[0]) uploadDocument(e.target.files[0]); }} />
+                  </label>
                 </div>
-              )}
-            </div>
+
+                {!showUrlInput ? (
+                  <Button size="sm" variant="outline" onClick={() => setShowUrlInput(true)}
+                    className="w-full font-display text-xs tracking-wider min-h-[44px]">
+                    <LinkIcon className="w-3.5 h-3.5 mr-1" /> Add Document Link
+                  </Button>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input value={docUrl} onChange={e => setDocUrl(e.target.value)}
+                      placeholder="https://..." className="bg-secondary border-border text-foreground font-body text-xs flex-1" />
+                    <Button size="sm" onClick={addDocumentUrl} disabled={!docUrl.trim()}
+                      className="font-display text-xs tracking-wider min-h-[44px]">
+                      <Plus className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setShowUrlInput(false); setDocUrl(''); }}
+                      className="font-display text-xs min-h-[44px]">✕</Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Document list */}
             {documents.map((doc: any) => (
@@ -768,9 +816,11 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
                     <a href={doc.image_url} target="_blank" rel="noopener noreferrer">
                       <Button size="sm" variant="ghost"><Download className="w-3.5 h-3.5 text-foreground" /></Button>
                     </a>
-                    <Button size="sm" variant="ghost" onClick={() => deleteDocument(doc)}>
-                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                    </Button>
+                    {!readOnly && (
+                      <Button size="sm" variant="ghost" onClick={() => deleteDocument(doc)}>
+                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -782,26 +832,28 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
         {/* NOTES */}
         {detailTab === 'notes' && (
           <div className="space-y-3">
-            <div className="border border-border rounded-lg p-3 space-y-2">
-              <div className="flex gap-2">
-                <Select value={noteType} onValueChange={setNoteType}>
-                  <SelectTrigger className="w-32 bg-secondary border-border text-foreground font-body text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="general">General</SelectItem>
-                    <SelectItem value="request">Request</SelectItem>
-                    <SelectItem value="allergy">Allergy</SelectItem>
-                    <SelectItem value="preference">Preference</SelectItem>
-                  </SelectContent>
-                </Select>
+            {!readOnly && (
+              <div className="border border-border rounded-lg p-3 space-y-2">
+                <div className="flex gap-2">
+                  <Select value={noteType} onValueChange={setNoteType}>
+                    <SelectTrigger className="w-32 bg-secondary border-border text-foreground font-body text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="general">General</SelectItem>
+                      <SelectItem value="request">Request</SelectItem>
+                      <SelectItem value="allergy">Allergy</SelectItem>
+                      <SelectItem value="preference">Preference</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Textarea value={noteContent} onChange={e => setNoteContent(e.target.value)}
+                  placeholder="Add a note..." className="bg-secondary border-border text-foreground font-body text-sm min-h-[60px]" />
+                <Button size="sm" onClick={addNote} disabled={!noteContent.trim()} className="font-display text-xs tracking-wider w-full">
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Note
+                </Button>
               </div>
-              <Textarea value={noteContent} onChange={e => setNoteContent(e.target.value)}
-                placeholder="Add a note..." className="bg-secondary border-border text-foreground font-body text-sm min-h-[60px]" />
-              <Button size="sm" onClick={addNote} disabled={!noteContent.trim()} className="font-display text-xs tracking-wider w-full">
-                <Plus className="w-3.5 h-3.5 mr-1" /> Add Note
-              </Button>
-            </div>
+            )}
             {notes.map((note: any) => (
               <div key={note.id} className="border border-border rounded-lg p-3">
                 <div className="flex justify-between items-start">
@@ -812,9 +864,11 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
                       {note.created_by} · {format(new Date(note.created_at), 'MMM d · h:mm a')}
                     </p>
                   </div>
-                  <Button size="sm" variant="ghost" onClick={() => deleteNote(note.id)}>
-                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                  </Button>
+                  {!readOnly && (
+                    <Button size="sm" variant="ghost" onClick={() => deleteNote(note.id)}>
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -825,30 +879,32 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
         {/* TOURS - always available */}
         {detailTab === 'tours' && (
           <div className="space-y-3">
-            <div className="border border-border rounded-lg p-3 space-y-2">
-              <Input value={tourName} onChange={e => setTourName(e.target.value)} placeholder="Tour name *"
-                className="bg-secondary border-border text-foreground font-body text-sm" />
-              <div className="grid grid-cols-2 gap-2">
-                <Input value={tourProvider} onChange={e => setTourProvider(e.target.value)} placeholder="Provider / vendor"
+            {!readOnly && (
+              <div className="border border-border rounded-lg p-3 space-y-2">
+                <Input value={tourName} onChange={e => setTourName(e.target.value)} placeholder="Tour name *"
+                  className="bg-secondary border-border text-foreground font-body text-sm" />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input value={tourProvider} onChange={e => setTourProvider(e.target.value)} placeholder="Provider / vendor"
+                    className="bg-secondary border-border text-foreground font-body text-xs" />
+                  <Input type="date" value={tourDate} onChange={e => setTourDate(e.target.value)}
+                    className="bg-secondary border-border text-foreground font-body text-xs" />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Input type="number" value={tourPax} onChange={e => setTourPax(e.target.value)} placeholder="Pax"
+                    className="bg-secondary border-border text-foreground font-body text-xs" />
+                  <Input type="number" value={tourPrice} onChange={e => setTourPrice(e.target.value)} placeholder="Price"
+                    className="bg-secondary border-border text-foreground font-body text-xs" />
+                  <Input value={tourPickupTime} onChange={e => setTourPickupTime(e.target.value)} placeholder="Pickup time"
+                    className="bg-secondary border-border text-foreground font-body text-xs" />
+                </div>
+                <Input value={tourNotes} onChange={e => setTourNotes(e.target.value)} placeholder="Notes (optional)"
                   className="bg-secondary border-border text-foreground font-body text-xs" />
-                <Input type="date" value={tourDate} onChange={e => setTourDate(e.target.value)}
-                  className="bg-secondary border-border text-foreground font-body text-xs" />
+                <Button size="sm" onClick={addTour} disabled={!tourName.trim() || !tourDate}
+                  className="font-display text-xs tracking-wider w-full min-h-[44px]">
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Tour
+                </Button>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <Input type="number" value={tourPax} onChange={e => setTourPax(e.target.value)} placeholder="Pax"
-                  className="bg-secondary border-border text-foreground font-body text-xs" />
-                <Input type="number" value={tourPrice} onChange={e => setTourPrice(e.target.value)} placeholder="Price"
-                  className="bg-secondary border-border text-foreground font-body text-xs" />
-                <Input value={tourPickupTime} onChange={e => setTourPickupTime(e.target.value)} placeholder="Pickup time"
-                  className="bg-secondary border-border text-foreground font-body text-xs" />
-              </div>
-              <Input value={tourNotes} onChange={e => setTourNotes(e.target.value)} placeholder="Notes (optional)"
-                className="bg-secondary border-border text-foreground font-body text-xs" />
-              <Button size="sm" onClick={addTour} disabled={!tourName.trim() || !tourDate}
-                className="font-display text-xs tracking-wider w-full min-h-[44px]">
-                <Plus className="w-3.5 h-3.5 mr-1" /> Add Tour
-              </Button>
-            </div>
+            )}
             {tours.map((tour: any) => (
               <div key={tour.id} className="border border-border rounded-lg p-3 space-y-1">
                 <div className="flex justify-between items-start">
@@ -862,20 +918,26 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
                     {tour.notes && <p className="font-body text-xs text-foreground mt-1">{tour.notes}</p>}
                   </div>
                   <div className="flex gap-1">
-                    <Select value={tour.status} onValueChange={v => updateTourStatus(tour.id, v)}>
-                      <SelectTrigger className="h-7 w-24 text-xs bg-secondary border-border text-foreground font-body">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="booked">Booked</SelectItem>
-                        <SelectItem value="confirmed">Confirmed</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                        <SelectItem value="cancelled">Cancelled</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button size="sm" variant="ghost" onClick={() => deleteTour(tour.id)}>
-                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                    </Button>
+                    {!readOnly ? (
+                      <>
+                        <Select value={tour.status} onValueChange={v => updateTourStatus(tour.id, v)}>
+                          <SelectTrigger className="h-7 w-24 text-xs bg-secondary border-border text-foreground font-body">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="booked">Booked</SelectItem>
+                            <SelectItem value="confirmed">Confirmed</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button size="sm" variant="ghost" onClick={() => deleteTour(tour.id)}>
+                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                        </Button>
+                      </>
+                    ) : (
+                      <Badge variant="outline" className="font-body text-xs">{tour.status}</Badge>
+                    )}
                   </div>
                 </div>
               </div>
@@ -887,10 +949,12 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
         {/* VIBE */}
         {detailTab === 'vibe' && vibeMode === 'list' && (
           <div className="space-y-3">
-            <Button onClick={() => { setEditingVibeRecord(null); setVibeMode('form'); }}
-              className="w-full font-display text-xs tracking-wider min-h-[44px]">
-              <Plus className="w-4 h-4 mr-2" /> New Vibe Check-In
-            </Button>
+            {!readOnly && (
+              <Button onClick={() => { setEditingVibeRecord(null); setVibeMode('form'); }}
+                className="w-full font-display text-xs tracking-wider min-h-[44px]">
+                <Plus className="w-4 h-4 mr-2" /> New Vibe Check-In
+              </Button>
+            )}
             {unitVibeRecords.length === 0 ? (
               <p className="font-body text-sm text-muted-foreground text-center py-4">No vibe records for this room</p>
             ) : unitVibeRecords.map((rec: any) => {
@@ -955,7 +1019,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
             </Button>
           ))}
         </div>
-        <RoomBillingTab unit={selectedUnit} booking={booking} guestName={guest?.full_name || null} />
+        <RoomBillingTab unit={selectedUnit} booking={booking} guestName={guest?.full_name || null} readOnly={readOnly} />
       </div>
     );
   }
@@ -1006,7 +1070,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
                     )}
                   </div>
                   <div className="flex gap-2">
-                    {hkOrder && (
+                    {hkOrder && !readOnly && (
                       <Button size="sm" onClick={() => setViewingHousekeepingOrder(hkOrder)}
                         className="font-display text-xs tracking-wider min-h-[44px]">
                         <ClipboardCheck className="w-4 h-4 mr-1" /> Start
