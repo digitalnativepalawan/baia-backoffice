@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { hasAccess } from '@/lib/permissions';
+import { toast } from 'sonner';
 
 const SESSION_KEY = 'staff_home_session';
 const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
 interface RequireAuthProps {
   children: ReactNode;
+  requiredPermission?: string;
+  adminOnly?: boolean;
 }
 
 const getSession = () => {
@@ -22,17 +26,30 @@ const getSession = () => {
   return null;
 };
 
-const RequireAuth = ({ children }: RequireAuthProps) => {
+const RequireAuth = ({ children, requiredPermission, adminOnly }: RequireAuthProps) => {
   const navigate = useNavigate();
   const [session, setSession] = useState(getSession);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Redirect if no session
+  // Redirect if no session or insufficient permissions
   useEffect(() => {
     if (!session) {
       navigate('/', { replace: true });
+      return;
     }
-  }, [session, navigate]);
+    const perms: string[] = session.permissions || [];
+    const isAdmin = perms.includes('admin');
+
+    if (adminOnly && !isAdmin) {
+      toast.error('Admin access required');
+      navigate('/', { replace: true });
+      return;
+    }
+    if (requiredPermission && !isAdmin && !hasAccess(perms, requiredPermission)) {
+      toast.error('You do not have access to this section');
+      navigate('/', { replace: true });
+    }
+  }, [session, navigate, requiredPermission, adminOnly]);
 
   // Inactivity timeout
   useEffect(() => {
@@ -59,6 +76,11 @@ const RequireAuth = ({ children }: RequireAuthProps) => {
   }, [session]);
 
   if (!session) return null;
+
+  const perms: string[] = session.permissions || [];
+  const isAdmin = perms.includes('admin');
+  if (adminOnly && !isAdmin) return null;
+  if (requiredPermission && !isAdmin && !hasAccess(perms, requiredPermission)) return null;
 
   return <>{children}</>;
 };
