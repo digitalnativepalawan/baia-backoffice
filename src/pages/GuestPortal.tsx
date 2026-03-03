@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { LogOut, UtensilsCrossed, MapPin, Car, Bike, MessageSquare, Star, Receipt, ArrowLeft, ChevronRight, ClipboardList, Calendar, Clock, Users, StickyNote, CheckCircle2 } from 'lucide-react';
+import { LogOut, UtensilsCrossed, MapPin, Car, Bike, MessageSquare, Star, Receipt, ArrowLeft, ChevronRight, ClipboardList, Calendar, Clock, Users, StickyNote, CheckCircle2, Utensils, Palmtree, Truck, CreditCard, FileText, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { setGuestSession } from '@/hooks/useGuestSession';
 
@@ -795,7 +795,19 @@ const RequestsTrackerView = ({ session }: { session: GuestPortalSession }) => {
 };
 
 // --- Bill ---
+const getBillIcon = (notes: string | null, txType: string) => {
+  const n = (notes || '').toLowerCase();
+  if (txType === 'payment') return <CreditCard className="w-4 h-4 text-green-400" />;
+  if (n.includes('food') || n.includes('order') || n.includes('kitchen') || n.includes('bar')) return <Utensils className="w-4 h-4 text-amber-400" />;
+  if (n.includes('tour') || n.includes('island')) return <Palmtree className="w-4 h-4 text-emerald-400" />;
+  if (n.includes('transport') || n.includes('van') || n.includes('transfer')) return <Truck className="w-4 h-4 text-blue-400" />;
+  if (n.includes('scooter') || n.includes('bike') || n.includes('rental')) return <Bike className="w-4 h-4 text-purple-400" />;
+  return <FileText className="w-4 h-4 text-muted-foreground" />;
+};
+
 const BillView = ({ session }: { session: GuestPortalSession }) => {
+  const qc = useQueryClient();
+
   const { data: transactions = [] } = useQuery({
     queryKey: ['guest-bill', session.booking_id],
     queryFn: async () => {
@@ -807,15 +819,68 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
     },
   });
 
+  // Pending tours
+  const { data: pendingTours = [] } = useQuery({
+    queryKey: ['guest-bill-pending-tours', session.booking_id],
+    queryFn: async () => {
+      const { data } = await (supabase.from('guest_tours') as any)
+        .select('*')
+        .eq('booking_id', session.booking_id)
+        .in('status', ['booked', 'pending']);
+      return data || [];
+    },
+  });
+
+  // Pending requests (transport, rentals)
+  const { data: pendingRequests = [] } = useQuery({
+    queryKey: ['guest-bill-pending-requests', session.booking_id],
+    queryFn: async () => {
+      const { data } = await (supabase.from('guest_requests') as any)
+        .select('*')
+        .eq('booking_id', session.booking_id)
+        .eq('status', 'pending');
+      return data || [];
+    },
+  });
+
+  // Realtime subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel('guest-bill-realtime')
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'room_transactions',
+        filter: `booking_id=eq.${session.booking_id}`,
+      }, () => {
+        qc.invalidateQueries({ queryKey: ['guest-bill', session.booking_id] });
+      })
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'guest_tours',
+        filter: `booking_id=eq.${session.booking_id}`,
+      }, () => {
+        qc.invalidateQueries({ queryKey: ['guest-bill-pending-tours', session.booking_id] });
+      })
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'guest_requests',
+        filter: `booking_id=eq.${session.booking_id}`,
+      }, () => {
+        qc.invalidateQueries({ queryKey: ['guest-bill-pending-requests', session.booking_id] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [session.booking_id, qc]);
+
   const charges = transactions.filter((t: any) => t.transaction_type === 'charge');
   const payments = transactions.filter((t: any) => t.transaction_type === 'payment');
-  const totalCharges = charges.reduce((s: number, t: any) => s + (t.total_amount || 0), 0);
-  const totalPayments = payments.reduce((s: number, t: any) => s + (t.total_amount || 0), 0);
+  const totalCharges = charges.reduce((s: number, t: any) => s + Math.abs(t.total_amount || 0), 0);
+  const totalPayments = payments.reduce((s: number, t: any) => s + Math.abs(t.total_amount || 0), 0);
   const balance = totalCharges - totalPayments;
+  const hasPending = pendingTours.length > 0 || pendingRequests.length > 0;
 
   return (
     <div className="space-y-4">
       <h2 className="font-display text-lg text-foreground">My Bill</h2>
+
+      {/* Balance summary */}
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex justify-between mb-2">
           <span className="font-body text-sm text-muted-foreground">Total Charges</span>
@@ -830,19 +895,66 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
           <span className={`font-body text-sm font-medium ${balance > 0 ? 'text-amber-400' : 'text-green-400'}`}>₱{balance.toLocaleString()}</span>
         </div>
       </div>
+
+      {/* Pending items */}
+      {hasPending && (
+        <div className="space-y-2">
+          <p className="font-display text-xs tracking-wider text-muted-foreground uppercase flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" /> Pending Confirmation
+          </p>
+          {pendingTours.map((t: any) => (
+            <div key={t.id} className="bg-secondary/50 border border-dashed border-border p-3 rounded flex justify-between items-start opacity-70">
+              <div className="flex items-start gap-2">
+                <Palmtree className="w-4 h-4 text-emerald-400 mt-0.5" />
+                <div>
+                  <p className="font-body text-sm text-foreground">{t.tour_name}</p>
+                  <p className="font-body text-xs text-muted-foreground">{t.tour_date} · {t.pax} pax</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="font-body text-sm text-muted-foreground">₱{(t.price || 0).toLocaleString()}</span>
+                <Badge variant="outline" className="ml-2 text-[10px]">Pending</Badge>
+              </div>
+            </div>
+          ))}
+          {pendingRequests.map((r: any) => (
+            <div key={r.id} className="bg-secondary/50 border border-dashed border-border p-3 rounded flex justify-between items-start opacity-70">
+              <div className="flex items-start gap-2">
+                {r.request_type?.toLowerCase().includes('transport') ? <Truck className="w-4 h-4 text-blue-400 mt-0.5" /> : <Bike className="w-4 h-4 text-purple-400 mt-0.5" />}
+                <div>
+                  <p className="font-body text-sm text-foreground">{r.request_type}</p>
+                  <p className="font-body text-xs text-muted-foreground">{r.details}</p>
+                </div>
+              </div>
+              <Badge variant="outline" className="text-[10px]">Pending</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Confirmed transactions */}
       <div className="space-y-2">
+        {transactions.length > 0 && (
+          <p className="font-display text-xs tracking-wider text-muted-foreground uppercase">Transactions</p>
+        )}
         {transactions.map((t: any) => (
           <div key={t.id} className="bg-secondary p-3 rounded flex justify-between items-start">
-            <div>
-              <p className="font-body text-sm text-foreground">{t.notes || t.transaction_type}</p>
-              <p className="font-body text-xs text-muted-foreground">{new Date(t.created_at).toLocaleString()}</p>
+            <div className="flex items-start gap-2">
+              {getBillIcon(t.notes, t.transaction_type)}
+              <div>
+                <p className="font-body text-sm text-foreground">{t.notes || t.transaction_type}</p>
+                <p className="font-body text-xs text-muted-foreground">
+                  {new Date(t.created_at).toLocaleString()}
+                  {t.staff_name ? ` · ${t.staff_name}` : ''}
+                </p>
+              </div>
             </div>
-            <span className={`font-body text-sm ${t.transaction_type === 'payment' ? 'text-green-400' : 'text-foreground'}`}>
-              {t.transaction_type === 'payment' ? '-' : '+'}₱{(t.total_amount || 0).toLocaleString()}
+            <span className={`font-body text-sm font-medium ${t.transaction_type === 'payment' ? 'text-green-400' : 'text-foreground'}`}>
+              {t.transaction_type === 'payment' ? '-' : '+'}₱{Math.abs(t.total_amount || 0).toLocaleString()}
             </span>
           </div>
         ))}
-        {transactions.length === 0 && <p className="font-body text-sm text-muted-foreground text-center">No transactions yet.</p>}
+        {transactions.length === 0 && !hasPending && <p className="font-body text-sm text-muted-foreground text-center">No transactions yet.</p>}
       </div>
     </div>
   );
