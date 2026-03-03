@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, LogIn, LogOut, DollarSign, Users, BedDouble } from 'lucide-react';
+import { ArrowLeft, LogIn, LogOut, DollarSign, BedDouble, MapPin, Car, Bike, Palmtree, UtensilsCrossed, ClipboardList } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
@@ -42,11 +42,6 @@ const ReceptionPage = () => {
 
   const today = new Date().toISOString().split('T')[0];
 
-  // Check-in modal state
-  const [checkInBooking, setCheckInBooking] = useState<any>(null);
-  const [checkInModalOpen, setCheckInModalOpen] = useState(false);
-  const [checkingIn, setCheckingIn] = useState(false);
-
   // Walk-in modal state
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [walkInUnit, setWalkInUnit] = useState<any>(null);
@@ -55,7 +50,12 @@ const ReceptionPage = () => {
   });
   const [walkingIn, setWalkingIn] = useState(false);
 
-  // Check-out modal state
+  // Check-in modal state (manage only)
+  const [checkInBooking, setCheckInBooking] = useState<any>(null);
+  const [checkInModalOpen, setCheckInModalOpen] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
+
+  // Check-out modal state (manage only)
   const [checkOutBooking, setCheckOutBooking] = useState<any>(null);
   const [checkOutUnit, setCheckOutUnit] = useState<any>(null);
   const [checkOutOpen, setCheckOutOpen] = useState(false);
@@ -102,6 +102,48 @@ const ReceptionPage = () => {
     },
   });
 
+  // Recent orders for all rooms
+  const { data: recentOrders = [] } = useQuery({
+    queryKey: ['reception-recent-orders'],
+    queryFn: async () => {
+      const { data } = await supabase.from('orders').select('*')
+        .eq('order_type', 'Room')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      return data || [];
+    },
+  });
+
+  // Today's tours (guest_tours + tour_bookings)
+  const { data: todayTours = [] } = useQuery({
+    queryKey: ['reception-tours-today'],
+    queryFn: async () => {
+      const { data } = await from('guest_tours').select('*').eq('tour_date', today).order('pickup_time');
+      return (data || []) as any[];
+    },
+  });
+
+  const { data: tourBookings = [] } = useQuery({
+    queryKey: ['reception-tour-bookings'],
+    queryFn: async () => {
+      const { data } = await (supabase.from('tour_bookings') as any)
+        .select('*')
+        .neq('status', 'cancelled')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      return (data || []) as any[];
+    },
+  });
+
+  // Guest requests (transport, rentals)
+  const { data: guestRequests = [] } = useQuery({
+    queryKey: ['reception-guest-requests'],
+    queryFn: async () => {
+      const { data } = await from('guest_requests').select('*').neq('status', 'cancelled').order('created_at', { ascending: false }).limit(20);
+      return (data || []) as any[];
+    },
+  });
+
   // Room transactions for checkout
   const { data: checkOutTransactions = [] } = useRoomTransactions(checkOutUnit?.id || null);
 
@@ -117,10 +159,9 @@ const ReceptionPage = () => {
     return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in <= today && b.check_out >= today) || null;
   };
 
-  // Today's arrivals: bookings with check_in === today that haven't been checked in yet
+  // Today's arrivals
   const todayArrivals = bookings.filter((b: any) => {
     if (b.check_in !== today) return false;
-    // Check if unit is already occupied for this booking
     const unit = units.find((u: any) => {
       const ru = resolveResortUnit(u.name);
       return ru && ru.id === b.unit_id;
@@ -128,7 +169,7 @@ const ReceptionPage = () => {
     return !unit || getUnitStatus(unit) !== 'occupied';
   });
 
-  // Today's departures: occupied units with booking check_out === today
+  // Today's departures
   const todayDepartures = units.filter((u: any) => {
     const booking = getActiveBooking(u);
     return booking && booking.check_out === today;
@@ -144,7 +185,21 @@ const ReceptionPage = () => {
     return ru?.name || 'Unknown';
   };
 
-  // ── CHECK-IN (reservation) ──
+  const pendingRequests = guestRequests.filter((r: any) => r.status === 'pending');
+  const pendingTourBookings = tourBookings.filter((b: any) => b.status === 'pending');
+
+  const statusColor = (status: string) => {
+    switch (status) {
+      case 'booked': return 'bg-blue-500/20 text-blue-400 border-blue-500/40';
+      case 'confirmed': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40';
+      case 'completed': return 'bg-muted text-muted-foreground';
+      case 'cancelled': return 'bg-red-500/20 text-red-400 border-red-500/40';
+      case 'pending': return 'bg-amber-500/20 text-amber-400 border-amber-500/40';
+      default: return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  // ── CHECK-IN (manage only) ──
   const handleReservationCheckIn = async () => {
     if (!checkInBooking) return;
     setCheckingIn(true);
@@ -154,7 +209,6 @@ const ReceptionPage = () => {
       if (!unit) throw new Error('Unit not found');
       if (getUnitStatus(unit) === 'to_clean') throw new Error('Complete housekeeping first');
 
-      // Generate room password
       const roomPassword = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = new Date(checkInBooking.check_out);
       expiresAt.setDate(expiresAt.getDate() + 1);
@@ -179,7 +233,7 @@ const ReceptionPage = () => {
     }
   };
 
-  // ── WALK-IN CHECK-IN ──
+  // ── WALK-IN CHECK-IN (edit level) ──
   const handleWalkIn = async () => {
     if (!walkInUnit || !walkInForm.guestName.trim() || !walkInForm.checkOut) {
       toast.error('Guest name and check-out date required');
@@ -187,7 +241,6 @@ const ReceptionPage = () => {
     }
     setWalkingIn(true);
     try {
-      // Create or find guest
       const { data: existing } = await from('resort_ops_guests')
         .select('id').ilike('full_name', walkInForm.guestName.trim()).maybeSingle() as any;
 
@@ -246,7 +299,7 @@ const ReceptionPage = () => {
     }
   };
 
-  // ── CHECK-OUT ──
+  // ── CHECK-OUT (manage only) ──
   const handleCheckOut = async () => {
     if (!checkOutBooking || !checkOutUnit) return;
     setCheckingOut(true);
@@ -272,7 +325,6 @@ const ReceptionPage = () => {
       await from('resort_ops_bookings').update({ check_out: today }).eq('id', checkOutBooking.id);
       await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', checkOutUnit.id);
 
-      // Create housekeeping order if none exists
       const existing = housekeepingOrders.find((o: any) => o.unit_name === checkOutUnit.name);
       if (!existing) {
         await from('housekeeping_orders').insert({
@@ -300,7 +352,7 @@ const ReceptionPage = () => {
     }
   };
 
-  // Checkout billing summary
+  // Checkout billing
   const charges = checkOutTransactions.filter(t => t.total_amount > 0);
   const payments = checkOutTransactions.filter(t => t.total_amount < 0);
   const totalCharges = charges.reduce((s, t) => s + t.total_amount, 0);
@@ -320,7 +372,7 @@ const ReceptionPage = () => {
       </div>
 
       {/* ── Summary ── */}
-      <div className="grid grid-cols-3 gap-2 mb-6">
+      <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="border border-red-500/30 bg-red-500/10 rounded-lg p-3 text-center">
           <p className="font-display text-2xl text-red-400">{occupiedUnits.length}</p>
           <p className="font-body text-xs text-red-400/70">Occupied</p>
@@ -350,6 +402,62 @@ const ReceptionPage = () => {
         </div>
       </div>
 
+      {/* ── Current Guests (all occupied rooms) ── */}
+      {occupiedUnits.length > 0 && (
+        <div className="mb-6 space-y-2">
+          <h2 className="font-display text-xs tracking-wider text-foreground uppercase">🏨 Current Guests ({occupiedUnits.length})</h2>
+          {occupiedUnits.map((unit: any) => {
+            const booking = getActiveBooking(unit);
+            const guest = (booking as any)?.resort_ops_guests;
+            const nights = booking ? Math.max(1, Math.ceil((new Date(booking.check_out).getTime() - new Date(booking.check_in).getTime()) / 86400000)) : 0;
+            const roomOrders = recentOrders.filter((o: any) => o.location_detail === unit.name);
+            const isDepartingToday = booking?.check_out === today;
+
+            return (
+              <div key={unit.id} className={`border rounded-lg p-3 space-y-2 ${isDepartingToday ? 'border-amber-500/40 bg-amber-500/5' : 'border-border'}`}>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
+                    <p className="font-body text-xs text-foreground">{guest?.full_name || 'Guest'}</p>
+                    <p className="font-body text-[10px] text-muted-foreground">
+                      {booking && `${format(new Date(booking.check_in + 'T00:00:00'), 'MMM d')} – ${format(new Date(booking.check_out + 'T00:00:00'), 'MMM d')} · ${nights} night${nights !== 1 ? 's' : ''}`}
+                      {booking && ` · ${booking.platform}`}
+                    </p>
+                    {booking && Number(booking.room_rate) > 0 && (
+                      <p className="font-body text-[10px] text-muted-foreground">₱{Number(booking.room_rate).toLocaleString()}/night · {booking.adults} adult{booking.adults > 1 ? 's' : ''}{booking.children > 0 ? `, ${booking.children} child` : ''}</p>
+                    )}
+                    {guest?.phone && <p className="font-body text-[10px] text-muted-foreground">📞 {guest.phone}</p>}
+                    {guest?.email && <p className="font-body text-[10px] text-muted-foreground">✉️ {guest.email}</p>}
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge className={`font-body text-[10px] ${isDepartingToday ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-red-500/20 text-red-400 border-red-500/40'}`}>
+                      {isDepartingToday ? 'Departing' : 'Occupied'}
+                    </Badge>
+                    {roomOrders.length > 0 && (
+                      <span className="font-body text-[10px] text-muted-foreground flex items-center gap-1">
+                        <UtensilsCrossed className="w-3 h-3" /> {roomOrders.length} order{roomOrders.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {/* Manage-level: check-out button for departing rooms */}
+                {canDoManage && isDepartingToday && (
+                  <Button size="sm" variant="destructive" onClick={() => {
+                    setCheckOutBooking(booking);
+                    setCheckOutUnit(unit);
+                    setCheckOutPayment('');
+                    setCheckOutAmount('');
+                    setCheckOutOpen(true);
+                  }} className="font-display text-xs tracking-wider min-h-[36px]">
+                    <LogOut className="w-4 h-4 mr-1" /> Check Out
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── Arrivals Today ── */}
       {todayArrivals.length > 0 && (
         <div className="mb-6 space-y-2">
@@ -364,7 +472,7 @@ const ReceptionPage = () => {
                   <p className="font-body text-xs text-muted-foreground">{guest?.full_name || 'Guest'} · {b.adults} adult{b.adults > 1 ? 's' : ''}</p>
                   <p className="font-body text-xs text-muted-foreground">{b.platform} · ₱{Number(b.room_rate).toLocaleString()}/night</p>
                 </div>
-                {canDoEdit && (
+                {canDoManage && (
                   <Button size="sm" onClick={() => { setCheckInBooking(b); setCheckInModalOpen(true); }}
                     className="font-display text-xs tracking-wider min-h-[44px]">
                     <LogIn className="w-4 h-4 mr-1" /> Check In
@@ -376,36 +484,7 @@ const ReceptionPage = () => {
         </div>
       )}
 
-      {/* ── Departures Today ── */}
-      {todayDepartures.length > 0 && (
-        <div className="mb-6 space-y-2">
-          <h2 className="font-display text-xs tracking-wider text-amber-400 uppercase">🟨 Departures Today ({todayDepartures.length})</h2>
-          {todayDepartures.map(({ unit, booking }) => {
-            const guest = (booking as any)?.resort_ops_guests;
-            return (
-              <div key={unit.id} className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3 flex justify-between items-center">
-                <div>
-                  <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
-                  <p className="font-body text-xs text-muted-foreground">{guest?.full_name || 'Guest'}</p>
-                </div>
-                {canDoEdit && (
-                  <Button size="sm" variant="destructive" onClick={() => {
-                    setCheckOutBooking(booking);
-                    setCheckOutUnit(unit);
-                    setCheckOutPayment('');
-                    setCheckOutAmount('');
-                    setCheckOutOpen(true);
-                  }} className="font-display text-xs tracking-wider min-h-[44px]">
-                    <LogOut className="w-4 h-4 mr-1" /> Check Out
-                  </Button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── Walk-In / Sell Room ── */}
+      {/* ── Walk-In / Sell Room (edit level) ── */}
       {readyUnits.length > 0 && (
         <div className="mb-6 space-y-2">
           <div className="flex justify-between items-center">
@@ -434,8 +513,93 @@ const ReceptionPage = () => {
         </div>
       )}
 
+      {/* ── Tours & Activities Today ── */}
+      {(todayTours.length > 0 || tourBookings.length > 0) && (
+        <div className="mb-6 space-y-2">
+          <h2 className="font-display text-xs tracking-wider text-muted-foreground uppercase">🏝️ Tours & Activities ({todayTours.length + pendingTourBookings.length})</h2>
+          {todayTours.map((tour: any) => (
+            <div key={tour.id} className="border border-border rounded-lg p-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-primary" />
+                    <p className="font-display text-sm text-foreground tracking-wider">{tour.tour_name}</p>
+                  </div>
+                  <p className="font-body text-xs text-muted-foreground mt-1">
+                    {tour.pickup_time && `${tour.pickup_time} · `}{tour.unit_name} · {tour.pax} pax
+                  </p>
+                  {tour.provider && <p className="font-body text-xs text-muted-foreground">Provider: {tour.provider}</p>}
+                </div>
+                <Badge className={`font-body text-xs ${statusColor(tour.status)}`}>{tour.status}</Badge>
+              </div>
+            </div>
+          ))}
+          {pendingTourBookings.map((b: any) => (
+            <div key={b.id} className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Palmtree className="w-3.5 h-3.5 text-amber-400" />
+                    <p className="font-display text-sm text-foreground tracking-wider">{b.tour_name}</p>
+                  </div>
+                  <p className="font-body text-xs text-muted-foreground mt-1">
+                    {b.tour_date && format(new Date(b.tour_date + 'T00:00:00'), 'MMM d')} · {b.guest_name} · {b.pax} pax
+                  </p>
+                  {Number(b.price) > 0 && <p className="font-body text-xs text-foreground">₱{Number(b.price).toLocaleString()}</p>}
+                </div>
+                <Badge className={`font-body text-xs ${statusColor('pending')}`}>pending</Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Guest Requests ── */}
+      {guestRequests.length > 0 && (
+        <div className="mb-6 space-y-2">
+          <h2 className="font-display text-xs tracking-wider text-muted-foreground uppercase">
+            📋 Guest Requests ({pendingRequests.length} pending)
+          </h2>
+          {guestRequests.slice(0, 10).map((req: any) => (
+            <div key={req.id} className={`border rounded-lg p-3 ${req.status === 'pending' ? 'border-amber-500/30 bg-amber-500/5' : 'border-border'}`}>
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-display text-sm text-foreground tracking-wider">{req.request_type}</p>
+                  <p className="font-body text-xs text-muted-foreground">{req.guest_name} · {req.details}</p>
+                  <p className="font-body text-[10px] text-muted-foreground">{format(new Date(req.created_at), 'MMM d, h:mm a')}</p>
+                </div>
+                <Badge className={`font-body text-xs ${statusColor(req.status)}`}>{req.status}</Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Recent Room Orders ── */}
+      {recentOrders.length > 0 && (
+        <div className="mb-6 space-y-2">
+          <h2 className="font-display text-xs tracking-wider text-muted-foreground uppercase">
+            🍽️ Recent Room Orders
+          </h2>
+          {recentOrders.slice(0, 8).map((order: any) => (
+            <div key={order.id} className="border border-border rounded-lg p-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-display text-sm text-foreground tracking-wider">{order.location_detail}</p>
+                  <p className="font-body text-xs text-muted-foreground">{order.guest_name} · ₱{Number(order.total).toLocaleString()}</p>
+                  <p className="font-body text-[10px] text-muted-foreground">{format(new Date(order.created_at), 'MMM d, h:mm a')}</p>
+                </div>
+                <Badge className={`font-body text-xs ${order.status === 'Served' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' : order.status === 'New' ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : 'bg-muted text-muted-foreground'}`}>
+                  {order.status}
+                </Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Quick Room Status ── */}
-      <div className="space-y-2">
+      <div className="space-y-2 mb-6">
         <h2 className="font-display text-xs tracking-wider text-muted-foreground uppercase">Quick Room Status</h2>
         <div className="grid grid-cols-3 gap-2">
           {units.map((unit: any) => {
@@ -460,7 +624,7 @@ const ReceptionPage = () => {
         </div>
       </div>
 
-      {/* ══════ CHECK-IN MODAL (reservation) ══════ */}
+      {/* ══════ CHECK-IN MODAL (manage only) ══════ */}
       <Dialog open={checkInModalOpen} onOpenChange={setCheckInModalOpen}>
         <DialogContent className="bg-card border-border max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -561,7 +725,7 @@ const ReceptionPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* ══════ CHECK-OUT MODAL ══════ */}
+      {/* ══════ CHECK-OUT MODAL (manage only) ══════ */}
       <Dialog open={checkOutOpen} onOpenChange={setCheckOutOpen}>
         <DialogContent className="bg-card border-border max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
