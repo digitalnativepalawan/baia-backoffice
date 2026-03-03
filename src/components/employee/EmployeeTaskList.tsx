@@ -13,10 +13,11 @@ import { useResortProfile } from '@/hooks/useResortProfile';
 interface Props {
   employeeId?: string; // filter to one employee (portal) or all (admin)
   createdBy?: 'admin' | 'employee';
+  readOnly?: boolean;
   employees?: { id: string; name: string; messenger_link?: string; whatsapp_number?: string; active?: boolean; display_name?: string; preferred_contact_method?: string }[];
 }
 
-const EmployeeTaskList = ({ employeeId, createdBy = 'admin', employees = [] }: Props) => {
+const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, employees = [] }: Props) => {
   const qc = useQueryClient();
   const { data: resortProfile } = useResortProfile();
   const [title, setTitle] = useState('');
@@ -124,10 +125,12 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', employees = [] }: P
             onClick={() => setFilter(f)} className="font-body text-xs flex-1 capitalize">{f}</Button>
         ))}
       </div>
-      <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)}
-        className="font-display text-xs tracking-wider gap-1 w-full">
-        <Plus className="w-3.5 h-3.5" /> Add Task
-      </Button>
+      {!readOnly && (
+        <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)}
+          className="font-display text-xs tracking-wider gap-1 w-full">
+          <Plus className="w-3.5 h-3.5" /> Add Task
+        </Button>
+      )}
 
       {showForm && (
         <div className="border border-primary/30 rounded-lg p-3 space-y-2">
@@ -191,42 +194,51 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', employees = [] }: P
                   {task.description && <p className="font-body text-xs text-muted-foreground">{task.description}</p>}
                 </div>
                 <div className="flex items-center gap-0.5">
-                   <Button size="icon" variant="ghost" className="h-10 w-10" onClick={() => toggleComplete(task)}>
-                     <Check className={`${task.status === 'completed' ? 'w-7 h-7 text-green-500 stroke-[4]' : 'w-5 h-5 text-muted-foreground'}`} />
-                   </Button>
-                   <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground" onClick={() => {
-                     setEditId(task.id); setEditTitle(task.title); setEditDesc(task.description || '');
-                     setEditDue(task.due_date ? format(new Date(task.due_date), "yyyy-MM-dd'T'HH:mm") : '');
-                   }}><Pencil className="w-5 h-5" /></Button>
-                   <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive"
-                     onClick={() => deleteTask(task.id)}><Trash2 className="w-5 h-5" /></Button>
-                   <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground"
-                      title="Send via Messenger"
-                      disabled={(() => { const emp = employees.find(e => e.id === task.employee_id); return !emp?.messenger_link || emp?.active === false; })()}
-                      onClick={() => {
-                        const emp = employees.find(e => e.id === task.employee_id);
-                        if (emp) sendMessengerMessage(
-                          { name: emp.name, display_name: emp.display_name, messenger_link: emp.messenger_link || '', active: emp.active !== false },
-                          `Task: ${task.title}${task.description ? '\n' + task.description : ''}`,
-                          resortProfile?.resort_name || 'Resort'
-                        );
-                      }}>
-                      <MessageCircle className="w-5 h-5" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="h-10 w-10 text-green-600"
-                      title="Send via WhatsApp"
-                      disabled={(() => { const emp = employees.find(e => e.id === task.employee_id); return !emp?.whatsapp_number || emp?.active === false; })()}
-                      onClick={() => {
-                        const emp = employees.find(e => e.id === task.employee_id);
-                        if (emp?.whatsapp_number) {
-                          const displayName = emp.display_name || emp.name;
-                          const due = task.due_date ? `\nDue: ${format(new Date(task.due_date), 'MMM d, h:mm a')}` : '';
-                          const msg = `Hi ${displayName},\n\nTask: ${task.title}${task.description ? '\n' + task.description : ''}${due}\n\n— ${resortProfile?.resort_name || 'Resort'} Admin`;
-                          openWhatsApp(emp.whatsapp_number, msg);
-                        }
-                      }}>
-                      <Phone className="w-5 h-5" />
-                    </Button>
+                   {!readOnly && (
+                     <Button size="icon" variant="ghost" className="h-10 w-10" onClick={() => toggleComplete(task)}>
+                       <Check className={`${task.status === 'completed' ? 'w-7 h-7 text-green-500 stroke-[4]' : 'w-5 h-5 text-muted-foreground'}`} />
+                     </Button>
+                   )}
+                   {readOnly && task.status === 'completed' && (
+                     <Check className="w-7 h-7 text-green-500 stroke-[4] mr-1" />
+                   )}
+                   {!readOnly && (
+                     <>
+                       <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground" onClick={() => {
+                         setEditId(task.id); setEditTitle(task.title); setEditDesc(task.description || '');
+                         setEditDue(task.due_date ? format(new Date(task.due_date), "yyyy-MM-dd'T'HH:mm") : '');
+                       }}><Pencil className="w-5 h-5" /></Button>
+                       <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive"
+                         onClick={() => deleteTask(task.id)}><Trash2 className="w-5 h-5" /></Button>
+                       <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground"
+                         title="Send via Messenger"
+                         disabled={(() => { const emp = employees.find(e => e.id === task.employee_id); return !emp?.messenger_link || emp?.active === false; })()}
+                         onClick={() => {
+                           const emp = employees.find(e => e.id === task.employee_id);
+                           if (emp) sendMessengerMessage(
+                             { name: emp.name, display_name: emp.display_name, messenger_link: emp.messenger_link || '', active: emp.active !== false },
+                             `Task: ${task.title}${task.description ? '\n' + task.description : ''}`,
+                             resortProfile?.resort_name || 'Resort'
+                           );
+                         }}>
+                         <MessageCircle className="w-5 h-5" />
+                       </Button>
+                       <Button size="icon" variant="ghost" className="h-10 w-10 text-green-600"
+                         title="Send via WhatsApp"
+                         disabled={(() => { const emp = employees.find(e => e.id === task.employee_id); return !emp?.whatsapp_number || emp?.active === false; })()}
+                         onClick={() => {
+                           const emp = employees.find(e => e.id === task.employee_id);
+                           if (emp?.whatsapp_number) {
+                             const displayName = emp.display_name || emp.name;
+                             const due = task.due_date ? `\nDue: ${format(new Date(task.due_date), 'MMM d, h:mm a')}` : '';
+                             const msg = `Hi ${displayName},\n\nTask: ${task.title}${task.description ? '\n' + task.description : ''}${due}\n\n— ${resortProfile?.resort_name || 'Resort'} Admin`;
+                             openWhatsApp(emp.whatsapp_number, msg);
+                           }
+                         }}>
+                         <Phone className="w-5 h-5" />
+                       </Button>
+                     </>
+                   )}
                  </div>
               </div>
               <div className="flex gap-2 items-center">
