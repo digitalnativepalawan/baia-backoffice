@@ -1,37 +1,39 @@
 
 
-## Plan: Expand Receptionist Powers in Reception Dashboard
+## Plan: Add Role Templates to Staff Access Manager
 
-### Problem
-Currently, check-in and check-out are locked behind `reception:manage` level. Receptionists with `reception:edit` can only sell rooms. There's no billing access, no ability to send housekeepers, and room info is limited.
+### What
+Add a "Role" dropdown next to each employee name in the Staff Access Manager. Selecting a role (e.g., Receptionist, Cook, Bartender) auto-applies a predefined set of permissions, replacing manual per-section toggling.
 
-### Changes to `src/pages/ReceptionPage.tsx`
+### Role Templates and Their Permissions
 
-**1. Downgrade check-in/check-out from `canDoManage` to `canDoEdit`**
-- Line 444: Change checkout button guard from `canDoManage` to `canDoEdit`
-- Line 475: Change check-in button guard from `canDoManage` to `canDoEdit`
-- Receptionists with `edit` permission can now check guests in and out
+| Role | Permissions granted |
+|------|-------------------|
+| **Admin** | `admin` (full access) |
+| **GM** | `admin` (full access) |
+| **Receptionist** | `reception:edit`, `experiences:edit`, `rooms:edit`, `housekeeping:view`, `orders:view`, `documents:view` |
+| **Cook** | `kitchen:edit`, `orders:view`, `inventory:view` |
+| **Chef** | `kitchen:edit`, `menu:edit`, `orders:edit`, `inventory:edit` |
+| **Bartender / Barista** | `bar:edit`, `orders:view`, `inventory:view` |
+| **Tours** | `experiences:edit`, `orders:view` |
+| **Transportation** | `experiences:view`, `tasks:edit` |
+| **Maintenance** | `resort_ops:edit`, `tasks:edit`, `housekeeping:view` |
+| **Landscaping** | `tasks:edit`, `resort_ops:view` |
 
-**2. Add "Add Payment" button on each occupied room card**
-- Import and render `AddPaymentModal` from existing component
-- Show a payment button on occupied room cards for `canDoEdit` users
-- Reuses the existing billing modal already built for the Rooms dashboard
+### Changes
 
-**3. Add "Send to Clean" button on occupied rooms (after checkout or manually)**
-- Add a button on rooms that are `occupied` or need manual housekeeping trigger
-- On click: update unit status to `to_clean`, create a `housekeeping_orders` row (idempotent check), invalidate queries
-- Gated behind `canDoEdit`
+**`src/components/admin/StaffAccessManager.tsx`**:
+1. Define a `ROLE_TEMPLATES` map with role name → array of permission strings
+2. Add a role selector (dropdown or button row) above the admin toggle for each employee
+3. When a role is selected:
+   - Delete all existing `employee_permissions` rows for that employee
+   - Insert all permissions from the template
+   - Invalidate queries, show toast
+4. Individual permission badges remain below for fine-tuning after role selection
+5. No database changes needed -- uses existing `employee_permissions` table
 
-**4. Add "View Bill" button on each occupied room**
-- Show a collapsible or modal view of `room_transactions` for any occupied unit
-- Uses existing `useRoomTransactions` hook
-- Available to all permission levels (including `view`)
-
-**5. Permission level summary after changes**
-- `view`: See all room info, guests, tours, requests, bills (read-only)
-- `edit`: Check-in, check-out, sell rooms (set price), add payments, send housekeepers
-- `manage`: Override rates on existing bookings (future use)
-
-### No database changes needed
-All tables and RLS policies already exist.
+### Technical Details
+- Role is not stored as a column; it's a UI shortcut that bulk-sets permissions
+- After applying a role, individual badges update to reflect the new state
+- The granular toggles still work for customization on top of the template
 
