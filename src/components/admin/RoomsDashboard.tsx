@@ -364,8 +364,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
         qc.invalidateQueries({ queryKey: ['resort-ops-units'] });
       }
 
-      // 3. Generate room password
-      const roomPassword = Math.floor(100000 + Math.random() * 900000).toString();
+      // 3. Use guest's last name as room password
+      const roomPassword = checkInForm.guestName.trim().split(' ').pop()?.toLowerCase() || 'guest';
       const expiresAt = new Date(checkInForm.checkOut);
       expiresAt.setDate(expiresAt.getDate() + 1);
 
@@ -583,8 +583,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
                   </div>
                   {(booking as any).room_password && (
                     <div className="mt-2 p-2 border border-primary/30 rounded bg-primary/5">
-                      <p className="font-body text-xs text-muted-foreground">Room Password (for guest ordering)</p>
-                      <p className="font-display text-lg tracking-[0.3em] text-primary">{(booking as any).room_password}</p>
+                      <p className="font-body text-xs text-muted-foreground">Guest Password (last name)</p>
+                      <p className="font-display text-lg tracking-wider text-primary">{(booking as any).room_password}</p>
                     </div>
                   )}
                   {booking.notes && (
