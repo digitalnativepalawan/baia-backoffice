@@ -250,7 +250,8 @@ const ReceptionPage = () => {
       if (!unit) throw new Error('Unit not found');
       if (getUnitStatus(unit) === 'to_clean') throw new Error('Complete housekeeping first');
 
-      const roomPassword = Math.floor(100000 + Math.random() * 900000).toString();
+      const guestFullName = checkInBooking.resort_ops_guests?.full_name || '';
+      const roomPassword = guestFullName.split(' ').pop()?.toLowerCase() || 'guest';
       const expiresAt = new Date(checkInBooking.check_out);
       expiresAt.setDate(expiresAt.getDate() + 1);
 
@@ -306,7 +307,7 @@ const ReceptionPage = () => {
         qc.invalidateQueries({ queryKey: ['resort-ops-units'] });
       }
 
-      const roomPassword = Math.floor(100000 + Math.random() * 900000).toString();
+      const roomPassword = walkInForm.guestName.trim().split(' ').pop()?.toLowerCase() || 'guest';
       const expiresAt = new Date(walkInForm.checkOut);
       expiresAt.setDate(expiresAt.getDate() + 1);
 
