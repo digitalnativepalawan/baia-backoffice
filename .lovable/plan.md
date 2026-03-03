@@ -1,58 +1,47 @@
 
-# Add Route-Level Permission Enforcement
+
+# Fix Employee Portal to Respect Admin Permission Settings
 
 ## Problem
-The Index page tiles are properly hidden based on permissions, but the routes themselves only check "is logged in" via `RequireAuth`. Susan (or any employee with no permissions) can still:
-- Type `/kitchen` in the browser and access Kitchen Display
-- Type `/order-type` and make orders
-- Type `/housekeeper` and do housekeeping
-- Type `/manager` and potentially see Rooms/check-in
+The Employee Portal shows Schedule and Tasks tabs to ALL employees, ignoring the permissions configured by admin in Staff Access Manager. For example, if Susan has Schedules set to "Off" and no task permissions, she can still see and use those tabs.
 
 ## Solution
 
-### 1. Upgrade `RequireAuth` to accept a `requiredPermission` prop
+### 1. Add "Tasks" Permission Key to StaffAccessManager
+**File: `src/components/admin/StaffAccessManager.tsx`**
 
-**File: `src/components/RequireAuth.tsx`**
+The `GRANULAR_PERMISSIONS` array currently has `schedules` but no `tasks` key. Add a new entry:
+- `{ key: 'tasks', label: 'Tasks' }`
 
-Add an optional `requiredPermission` prop. When provided, the component reads the session's `permissions` array and checks `hasAccess()`. If the user lacks the required permission (and is not admin), redirect to `/` with a toast message.
+This lets admins control task access per employee (Off / View / Edit).
 
-```text
-interface RequireAuthProps {
-  children: ReactNode;
-  requiredPermission?: string;  // e.g. 'kitchen', 'bar', 'orders', 'housekeeping'
-  adminOnly?: boolean;          // for /admin route
-}
-```
+### 2. Filter Employee Portal Tabs by Permissions
+**File: `src/pages/EmployeePortal.tsx`**
 
-Logic:
-- If no session: redirect to `/` (existing behavior)
-- If `adminOnly` and not admin: redirect to `/`
-- If `requiredPermission` and not admin and no access: redirect to `/`
-- Otherwise: render children
+The `empPermissions` array (line 88) already fetches the employee's permissions. Use `hasAccess()` from `@/lib/permissions` to conditionally include tabs:
 
-### 2. Update routes in `App.tsx`
+- **Clock** tab: Always visible (basic timeclock for all staff)
+- **Schedule** tab: Only if `hasAccess(empPermissions, 'schedules')` or admin
+- **Tasks** tab: Only if `hasAccess(empPermissions, 'tasks')` or admin
+- **Pay** tab: Only if `hasAccess(empPermissions, 'payroll')` or admin
+- **Settings** tab: Always visible (own display name)
+- **Dashboard** tab: Already permission-gated (unchanged)
 
-**File: `src/App.tsx`**
+### 3. Restrict Task Actions for View-Only Users
+**File: `src/components/employee/EmployeeTaskList.tsx`**
 
-Apply permission requirements to each protected route:
+Add a `readOnly` prop. When true:
+- Hide "Add Task" button
+- Hide Edit and Delete buttons
+- Keep the checkmark (complete/uncomplete) visible only for Edit-level access
+- View-level users can see their tasks but not modify them
 
-| Route | RequiredPermission |
-|-------|-------------------|
-| `/order-type` | `orders` |
-| `/kitchen` | `kitchen` |
-| `/bar` | `bar` |
-| `/housekeeper` | `housekeeping` |
-| `/admin` | `adminOnly` |
-| `/manager` | (any permission -- keep current behavior) |
-| `/employee` | (none -- all staff) |
-
-### 3. No database changes needed
-
-The permission system already works via `employee_permissions` table with string keys and the `hasAccess()` helper. This change just enforces those same checks at the route level.
+The Employee Portal will pass `readOnly={!canEdit(empPermissions, 'tasks')}` to the task list.
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `src/components/RequireAuth.tsx` | Add `requiredPermission` and `adminOnly` props with permission checking logic |
-| `src/App.tsx` | Pass permission props to each `RequireAuth` wrapper |
+| `src/components/admin/StaffAccessManager.tsx` | Add `tasks` to `GRANULAR_PERMISSIONS` |
+| `src/pages/EmployeePortal.tsx` | Import `hasAccess`/`canEdit`, filter tabs based on `empPermissions` |
+| `src/components/employee/EmployeeTaskList.tsx` | Add `readOnly` prop to hide add/edit/delete when user lacks edit permission |
