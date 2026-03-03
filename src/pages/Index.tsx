@@ -77,7 +77,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-navy-texture flex flex-col items-center justify-center px-6">
       {profile?.logo_url && (
-        <div className="mb-6 rounded-lg overflow-hidden" style={{ width: logoSize, height: logoSize, backgroundColor: 'hsl(220, 35%, 8%)' }}>
+        <div className="mb-6" style={{ width: logoSize, height: logoSize }}>
           <img
             src={profile.logo_url}
             alt={profile.resort_name || 'Resort logo'}
