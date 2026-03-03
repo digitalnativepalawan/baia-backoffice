@@ -160,14 +160,6 @@ const Index = () => {
                 Admin
               </button>
             )}
-            {!session.isAdmin && session.permissions && session.permissions.length > 0 && (
-              <button
-                onClick={() => navigate('/manager')}
-                className="font-body text-sm tracking-wider py-3 text-cream-dim/60 hover:text-cream-dim transition-colors"
-              >
-                Manager
-              </button>
-            )}
             <button
               onClick={() => navigate('/employee')}
               className="font-body text-sm tracking-wider py-3 text-cream-dim/60 hover:text-cream-dim transition-colors"
