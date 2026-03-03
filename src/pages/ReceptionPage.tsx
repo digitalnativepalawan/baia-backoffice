@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, LogIn, LogOut, DollarSign, BedDouble, MapPin, Car, Bike, Palmtree, UtensilsCrossed, ClipboardList } from 'lucide-react';
+import { ArrowLeft, LogIn, LogOut, DollarSign, BedDouble, MapPin, Car, Bike, Palmtree, UtensilsCrossed, ClipboardList, Sparkles, Receipt, ChevronDown, ChevronUp } from 'lucide-react';
+import AddPaymentModal from '@/components/rooms/AddPaymentModal';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
@@ -18,6 +19,35 @@ import { canEdit, canManage } from '@/lib/permissions';
 import { logAudit } from '@/lib/auditLog';
 
 const from = (table: string) => supabase.from(table as any);
+
+/** Inline bill summary for a unit */
+const InlineBill = ({ unitId }: { unitId: string }) => {
+  const { data: txns = [], isLoading } = useRoomTransactions(unitId);
+  if (isLoading) return <p className="font-body text-xs text-muted-foreground py-2">Loading...</p>;
+  if (txns.length === 0) return <p className="font-body text-xs text-muted-foreground py-2">No transactions</p>;
+  const charges = txns.filter(t => t.total_amount > 0);
+  const payments = txns.filter(t => t.total_amount < 0);
+  const totalC = charges.reduce((s, t) => s + t.total_amount, 0);
+  const totalP = Math.abs(payments.reduce((s, t) => s + t.total_amount, 0));
+  const bal = totalC - totalP;
+  return (
+    <div className="border border-border rounded-lg p-2 bg-secondary space-y-1 mt-1">
+      {txns.slice(0, 8).map(t => (
+        <div key={t.id} className="flex justify-between font-body text-[10px]">
+          <span className="text-muted-foreground truncate flex-1">{t.notes || t.transaction_type.replace('_', ' ')}</span>
+          <span className={t.total_amount > 0 ? 'text-foreground' : 'text-green-400'}>
+            {t.total_amount > 0 ? '' : '-'}₱{Math.abs(t.total_amount).toLocaleString()}
+          </span>
+        </div>
+      ))}
+      {txns.length > 8 && <p className="font-body text-[10px] text-muted-foreground">+{txns.length - 8} more</p>}
+      <div className="flex justify-between font-display text-xs tracking-wider pt-1 border-t border-border">
+        <span className="text-foreground">Balance</span>
+        <span className={bal > 0 ? 'text-destructive' : 'text-green-400'}>₱{Math.abs(bal).toLocaleString()}</span>
+      </div>
+    </div>
+  );
+};
 
 const SESSION_KEY = 'staff_home_session';
 const getSession = () => {
@@ -55,13 +85,24 @@ const ReceptionPage = () => {
   const [checkInModalOpen, setCheckInModalOpen] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
 
-  // Check-out modal state (manage only)
+  // Check-out modal state
   const [checkOutBooking, setCheckOutBooking] = useState<any>(null);
   const [checkOutUnit, setCheckOutUnit] = useState<any>(null);
   const [checkOutOpen, setCheckOutOpen] = useState(false);
   const [checkOutPayment, setCheckOutPayment] = useState('');
   const [checkOutAmount, setCheckOutAmount] = useState('');
   const [checkingOut, setCheckingOut] = useState(false);
+
+  // Add Payment modal state
+  const [paymentUnit, setPaymentUnit] = useState<any>(null);
+  const [paymentBooking, setPaymentBooking] = useState<any>(null);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+
+  // View Bill state
+  const [billUnitId, setBillUnitId] = useState<string | null>(null);
+
+  // Send to clean loading
+  const [sendingClean, setSendingClean] = useState<string | null>(null);
 
   const { data: paymentMethods = [] } = usePaymentMethods();
   const activePM = paymentMethods.filter(m => m.is_active && m.name !== 'Charge to Room');
@@ -299,7 +340,31 @@ const ReceptionPage = () => {
     }
   };
 
-  // ── CHECK-OUT (manage only) ──
+  // ── SEND TO CLEAN ──
+  const handleSendToClean = async (unit: any) => {
+    setSendingClean(unit.id);
+    try {
+      await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', unit.id);
+      const existing = housekeepingOrders.find((o: any) => o.unit_name === unit.name);
+      if (!existing) {
+        await from('housekeeping_orders').insert({
+          unit_name: unit.name,
+          room_type_id: (unit as any).room_type_id || null,
+          status: 'pending_inspection',
+        });
+      }
+      await logAudit('updated', 'units', unit.id, `Sent ${unit.name} to clean`);
+      qc.invalidateQueries({ queryKey: ['rooms-units'] });
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
+      toast.success(`${unit.name} sent to housekeeping`);
+    } catch {
+      toast.error('Failed to send to clean');
+    } finally {
+      setSendingClean(null);
+    }
+  };
+
+  // ── CHECK-OUT ──
   const handleCheckOut = async () => {
     if (!checkOutBooking || !checkOutUnit) return;
     setCheckingOut(true);
@@ -441,7 +506,7 @@ const ReceptionPage = () => {
                   </div>
                 </div>
                 {/* Manage-level: check-out button for departing rooms */}
-                {canDoManage && isDepartingToday && (
+                {canDoEdit && isDepartingToday && (
                   <Button size="sm" variant="destructive" onClick={() => {
                     setCheckOutBooking(booking);
                     setCheckOutUnit(unit);
@@ -452,6 +517,31 @@ const ReceptionPage = () => {
                     <LogOut className="w-4 h-4 mr-1" /> Check Out
                   </Button>
                 )}
+                {/* Action buttons for occupied rooms */}
+                <div className="flex flex-wrap gap-1.5">
+                  {canDoEdit && booking && (
+                    <Button size="sm" variant="outline" onClick={() => {
+                      setPaymentUnit(unit);
+                      setPaymentBooking(booking);
+                      setPaymentOpen(true);
+                    }} className="font-display text-[10px] tracking-wider min-h-[32px]">
+                      <DollarSign className="w-3 h-3 mr-0.5" /> Pay
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => setBillUnitId(billUnitId === unit.id ? null : unit.id)}
+                    className="font-display text-[10px] tracking-wider min-h-[32px]">
+                    <Receipt className="w-3 h-3 mr-0.5" /> Bill {billUnitId === unit.id ? <ChevronUp className="w-3 h-3 ml-0.5" /> : <ChevronDown className="w-3 h-3 ml-0.5" />}
+                  </Button>
+                  {canDoEdit && (
+                    <Button size="sm" variant="outline" onClick={() => handleSendToClean(unit)}
+                      disabled={sendingClean === unit.id}
+                      className="font-display text-[10px] tracking-wider min-h-[32px]">
+                      <Sparkles className="w-3 h-3 mr-0.5" /> {sendingClean === unit.id ? '...' : 'Clean'}
+                    </Button>
+                  )}
+                </div>
+                {/* Inline bill view */}
+                {billUnitId === unit.id && <InlineBill unitId={unit.id} />}
               </div>
             );
           })}
@@ -472,7 +562,7 @@ const ReceptionPage = () => {
                   <p className="font-body text-xs text-muted-foreground">{guest?.full_name || 'Guest'} · {b.adults} adult{b.adults > 1 ? 's' : ''}</p>
                   <p className="font-body text-xs text-muted-foreground">{b.platform} · ₱{Number(b.room_rate).toLocaleString()}/night</p>
                 </div>
-                {canDoManage && (
+                {canDoEdit && (
                   <Button size="sm" onClick={() => { setCheckInBooking(b); setCheckInModalOpen(true); }}
                     className="font-display text-xs tracking-wider min-h-[44px]">
                     <LogIn className="w-4 h-4 mr-1" /> Check In
@@ -814,6 +904,19 @@ const ReceptionPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ══════ ADD PAYMENT MODAL ══════ */}
+      {paymentUnit && (
+        <AddPaymentModal
+          open={paymentOpen}
+          onOpenChange={setPaymentOpen}
+          unitId={paymentUnit.id}
+          unitName={paymentUnit.name}
+          guestName={paymentBooking?.resort_ops_guests?.full_name || null}
+          bookingId={paymentBooking?.id || null}
+          currentBalance={0}
+        />
+      )}
     </div>
   );
 };
