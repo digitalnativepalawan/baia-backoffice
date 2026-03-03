@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import EmployeeTaskList from '@/components/employee/EmployeeTaskList';
 import EmployeeScheduleView from '@/components/employee/EmployeeScheduleView';
+import { hasAccess, canEdit } from '@/lib/permissions';
 
 type Tab = 'clock' | 'schedule' | 'tasks' | 'pay' | 'settings' | 'dashboard';
 
@@ -258,14 +259,26 @@ const EmployeePortal = () => {
 
         {/* Tab nav */}
         <div className="flex gap-1 mb-4 flex-wrap">
-          {([
-            { key: 'clock' as Tab, label: 'Clock', icon: Clock },
-            { key: 'schedule' as Tab, label: 'Schedule', icon: CalendarDays },
-            { key: 'tasks' as Tab, label: 'Tasks', icon: ListTodo },
-            { key: 'pay' as Tab, label: 'Pay', icon: Banknote },
-            { key: 'settings' as Tab, label: 'Settings', icon: Settings },
-            ...(empPermissions.length > 0 ? [{ key: 'dashboard' as Tab, label: 'Dashboard', icon: LayoutDashboard }] : []),
-          ]).map(({ key, label, icon: Icon }) => (
+          {(() => {
+            const isAdmin = empPermissions.includes('admin');
+            const tabs: { key: Tab; label: string; icon: any }[] = [
+              { key: 'clock', label: 'Clock', icon: Clock },
+            ];
+            if (isAdmin || hasAccess(empPermissions, 'schedules')) {
+              tabs.push({ key: 'schedule', label: 'Schedule', icon: CalendarDays });
+            }
+            if (isAdmin || hasAccess(empPermissions, 'tasks')) {
+              tabs.push({ key: 'tasks', label: 'Tasks', icon: ListTodo });
+            }
+            if (isAdmin || hasAccess(empPermissions, 'payroll')) {
+              tabs.push({ key: 'pay', label: 'Pay', icon: Banknote });
+            }
+            tabs.push({ key: 'settings', label: 'Settings', icon: Settings });
+            if (empPermissions.length > 0) {
+              tabs.push({ key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard });
+            }
+            return tabs;
+          })().map(({ key, label, icon: Icon }) => (
             <Button key={key} size="sm" variant={tab === key ? 'default' : 'outline'}
               onClick={() => {
                 if (key === 'dashboard') {
@@ -321,7 +334,7 @@ const EmployeePortal = () => {
 
         {/* TASKS TAB */}
         {tab === 'tasks' && (
-          <EmployeeTaskList employeeId={empId} createdBy="employee" />
+          <EmployeeTaskList employeeId={empId} createdBy="employee" readOnly={!canEdit(empPermissions, 'tasks')} />
         )}
 
         {/* PAY TAB */}

@@ -17,6 +17,7 @@ const GRANULAR_PERMISSIONS = [
   { key: 'rooms', label: 'Rooms' },
   { key: 'schedules', label: 'Schedules' },
   { key: 'setup', label: 'Setup' },
+  { key: 'tasks', label: 'Tasks' },
   { key: 'timesheet', label: 'Timesheet' },
 ] as const;
 
