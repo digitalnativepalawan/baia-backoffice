@@ -1,51 +1,68 @@
 
 
-## Plan: Real-time Guest Bill with Itemized Charges
+## Plan: Fix Missing Room Charges When Staff Confirms via Reception/Experiences
 
-### Problem
-The Guest Portal "My Bill" view has no real-time subscription, so guests don't see new charges (food, tours, transport, rentals) until they manually refresh. The bill should update live as staff confirms items and charges them to the room.
+### Root Cause
+
+There are **two separate confirm flows** for tours and requests, and only one creates `room_transactions`:
+
+| Action | Page | Creates room_transaction? |
+|--------|------|--------------------------|
+| Confirm tour booking | **GuestPortalConfig** (Admin) | YES |
+| Confirm tour booking | **ReceptionPage** | NO |
+| Confirm tour booking | **ExperiencesPage** | NO |
+| Confirm guest request | **GuestPortalConfig** (Admin) | YES |
+| Confirm guest request | **ReceptionPage** | NO |
+| Confirm guest request | **ExperiencesPage** | NO |
+| Complete tour/request | All pages | NO |
+
+When Reception or Experiences staff confirms a transport or rental, it only updates the status -- it never inserts a `room_transactions` charge. So the guest bill stays empty. The charge logic only exists in `GuestPortalConfig.tsx`.
+
+Additionally, `ExperiencesPage.updateRequestStatus` just does a simple status update with no price parsing or room charge insertion.
 
 ### Changes
 
-**1. Add Realtime Subscription to BillView** (`src/pages/GuestPortal.tsx`)
+**1. Fix `ReceptionPage.tsx` — `confirmTourBooking` and `updateRequestStatus`**
 
-Add a Supabase realtime channel on `room_transactions` filtered by `booking_id` so the bill updates instantly when staff adds charges or payments. Pattern already exists in `RequestsTrackerView`.
+- `confirmTourBooking`: After confirming, parse the price from the tour booking and insert a `room_transactions` charge (same pattern as `GuestPortalConfig.confirmTour`)
+- `updateRequestStatus` (when status = 'confirmed'): Parse price from `details` string, look up the room info, and insert a `room_transactions` charge (same pattern as `GuestPortalConfig.confirmRequest`)
 
-**2. Improve Bill Item Display**
+**2. Fix `ExperiencesPage.tsx` — `confirmTourBooking` and `updateRequestStatus`**
 
-Each transaction row should show:
-- A category icon based on `notes` content (food order, tour, transport, rental, payment)
-- The transaction description (currently `t.notes || t.transaction_type`)
-- Staff name who processed it
-- Timestamp
-- Amount with color coding (charges vs payments)
+- Same fix: when confirming a tour booking, insert a room charge
+- When confirming a guest request, parse price from details and insert a room charge
+- Need to add a `parsePriceFromDetails` helper (or extract the one from GuestPortalConfig)
 
-**3. Add Pending Items Section**
+**3. Fix `ExperiencesPage.tsx` — `updateTourStatus` (guest_tours confirm)**
 
-Show a "Pending" section above the confirmed transactions that displays:
-- Pending tour bookings (from `tour_bookings` where status = 'pending')
-- Pending guest requests (transport/rentals from `guest_requests` where status = 'pending')
-- These appear greyed out with a "Pending confirmation" badge so the guest knows these will be charged once staff confirms
+- When confirming admin-created `guest_tours` that have a price and booking_id, also insert a `room_transactions` charge
 
-This gives guests full visibility: what's been charged, what's been paid, and what's still pending.
+**4. Guest Bill display fix in `GuestPortal.tsx`**
+
+- The BillView currently filters `transaction_type === 'charge'` for charges -- but some transactions inserted elsewhere may use `total_amount > 0` pattern. Normalize the filter to handle both: charges are `total_amount > 0`, payments are `total_amount < 0` (matching `RoomBillingTab` logic)
 
 ### Technical Details
 
+The price parsing helper (already in GuestPortalConfig):
 ```typescript
-// Add realtime to BillView
-useEffect(() => {
-  const channel = supabase
-    .channel('guest-bill-realtime')
-    .on('postgres_changes', {
-      event: '*', schema: 'public', table: 'room_transactions',
-      filter: `booking_id=eq.${session.booking_id}`,
-    }, () => { qc.invalidateQueries({ queryKey: ['guest-bill', session.booking_id] }); })
-    .subscribe();
-  return () => { supabase.removeChannel(channel); };
-}, [session.booking_id, qc]);
+const parsePriceFromDetails = (details: string): number => {
+  const match = details.match(/₱([\d,]+)/);
+  return match ? Number(match[1].replace(/,/g, '')) : 0;
+};
 ```
 
-- Fetch pending `tour_bookings` and `guest_requests` for the booking to show as "upcoming charges"
-- No database changes needed -- all tables already exist
-- Single file edit: `src/pages/GuestPortal.tsx` (BillView component, ~lines 798-849)
+Room info lookup pattern (already in GuestPortalConfig):
+```typescript
+const getRoomInfo = async (roomId: string) => {
+  const { data } = await supabase.from('units').select('id, unit_name').eq('id', roomId).single();
+  return data;
+};
+```
+
+Both will be added to ReceptionPage and ExperiencesPage. The insert pattern is identical to what GuestPortalConfig already does successfully.
+
+### Files to Edit
+- `src/pages/ReceptionPage.tsx` — add room charge on confirm for tours and requests
+- `src/pages/ExperiencesPage.tsx` — add room charge on confirm for tours and requests  
+- `src/pages/GuestPortal.tsx` — normalize charge/payment filtering in BillView
 
