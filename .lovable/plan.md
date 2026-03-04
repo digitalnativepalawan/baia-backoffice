@@ -1,68 +1,37 @@
 
 
-## Plan: Fix Missing Room Charges When Staff Confirms via Reception/Experiences
+## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
 
-### Root Cause
+### Issues Found
 
-There are **two separate confirm flows** for tours and requests, and only one creates `room_transactions`:
+1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
 
-| Action | Page | Creates room_transaction? |
-|--------|------|--------------------------|
-| Confirm tour booking | **GuestPortalConfig** (Admin) | YES |
-| Confirm tour booking | **ReceptionPage** | NO |
-| Confirm tour booking | **ExperiencesPage** | NO |
-| Confirm guest request | **GuestPortalConfig** (Admin) | YES |
-| Confirm guest request | **ReceptionPage** | NO |
-| Confirm guest request | **ExperiencesPage** | NO |
-| Complete tour/request | All pages | NO |
-
-When Reception or Experiences staff confirms a transport or rental, it only updates the status -- it never inserts a `room_transactions` charge. So the guest bill stays empty. The charge logic only exists in `GuestPortalConfig.tsx`.
-
-Additionally, `ExperiencesPage.updateRequestStatus` just does a simple status update with no price parsing or room charge insertion.
+2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
 
 ### Changes
 
-**1. Fix `ReceptionPage.tsx` — `confirmTourBooking` and `updateRequestStatus`**
+**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
+- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
+- Increase touch target size for edit/delete buttons on shift blocks
+- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
 
-- `confirmTourBooking`: After confirming, parse the price from the tour booking and insert a `room_transactions` charge (same pattern as `GuestPortalConfig.confirmTour`)
-- `updateRequestStatus` (when status = 'confirmed'): Parse price from `details` string, look up the room info, and insert a `room_transactions` charge (same pattern as `GuestPortalConfig.confirmRequest`)
+**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
+- Add an "Assign Task" button alongside "Add Shift" 
+- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
+- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
+- For other tasks: creates an `employee_tasks` entry with due date and description
+- Tasks appear as colored pills on the timeline (already partially implemented)
 
-**2. Fix `ExperiencesPage.tsx` — `confirmTourBooking` and `updateRequestStatus`**
+**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
+- In the task detail dialog, show who completed the task and when (`completed_at`)
+- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
+- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
 
-- Same fix: when confirming a tour booking, insert a room charge
-- When confirming a guest request, parse price from details and insert a room charge
-- Need to add a `parsePriceFromDetails` helper (or extract the one from GuestPortalConfig)
-
-**3. Fix `ExperiencesPage.tsx` — `updateTourStatus` (guest_tours confirm)**
-
-- When confirming admin-created `guest_tours` that have a price and booking_id, also insert a `room_transactions` charge
-
-**4. Guest Bill display fix in `GuestPortal.tsx`**
-
-- The BillView currently filters `transaction_type === 'charge'` for charges -- but some transactions inserted elsewhere may use `total_amount > 0` pattern. Normalize the filter to handle both: charges are `total_amount > 0`, payments are `total_amount < 0` (matching `RoomBillingTab` logic)
-
-### Technical Details
-
-The price parsing helper (already in GuestPortalConfig):
-```typescript
-const parsePriceFromDetails = (details: string): number => {
-  const match = details.match(/₱([\d,]+)/);
-  return match ? Number(match[1].replace(/,/g, '')) : 0;
-};
-```
-
-Room info lookup pattern (already in GuestPortalConfig):
-```typescript
-const getRoomInfo = async (roomId: string) => {
-  const { data } = await supabase.from('units').select('id, unit_name').eq('id', roomId).single();
-  return data;
-};
-```
-
-Both will be added to ReceptionPage and ExperiencesPage. The insert pattern is identical to what GuestPortalConfig already does successfully.
+**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
+- Add edit capability: change title, description, due date, reassign to different employee
+- Add delete capability for tasks
+- Show completion audit trail
 
 ### Files to Edit
-- `src/pages/ReceptionPage.tsx` — add room charge on confirm for tours and requests
-- `src/pages/ExperiencesPage.tsx` — add room charge on confirm for tours and requests  
-- `src/pages/GuestPortal.tsx` — normalize charge/payment filtering in BillView
+- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
 
