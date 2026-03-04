@@ -74,9 +74,39 @@ const ExperiencesPage = () => {
   const confirmedBookings = tourBookings.filter((b: any) => b.status === 'confirmed');
   const todayBookings = tourBookings.filter((b: any) => b.tour_date === todayStr && b.status !== 'cancelled');
 
-  const updateTourStatus = async (id: string, status: string) => {
+  const parsePriceFromDetails = (details: string): number => {
+    const match = details.match(/₱([\d,]+)/);
+    return match ? Number(match[1].replace(/,/g, '')) : 0;
+  };
+
+  const getRoomInfo = async (roomId: string) => {
+    const { data } = await supabase.from('units').select('id, unit_name').eq('id', roomId).maybeSingle();
+    return data;
+  };
+
+  const updateTourStatus = async (id: string, status: string, tour?: any) => {
     if (!canDoEdit) { toast.error('View-only access'); return; }
     await from('guest_tours').update({ status }).eq('id', id);
+
+    // Insert room charge when confirming a guest_tour with a price
+    if (status === 'confirmed' && tour && Number(tour.price) > 0 && tour.booking_id) {
+      const { data: unit } = await supabase.from('units').select('id, unit_name').eq('unit_name', tour.unit_name).maybeSingle();
+      await (supabase.from('room_transactions') as any).insert({
+        unit_id: unit?.id || null,
+        unit_name: tour.unit_name || '',
+        booking_id: tour.booking_id,
+        guest_name: '',
+        transaction_type: 'charge',
+        amount: Number(tour.price),
+        tax_amount: 0,
+        service_charge_amount: 0,
+        total_amount: Number(tour.price),
+        payment_method: 'Charge to Room',
+        staff_name: staffName,
+        notes: `Tour: ${tour.tour_name} (${tour.pax} pax) on ${tour.tour_date}`,
+      });
+    }
+
     qc.invalidateQueries({ queryKey: ['all-tours-experiences'] });
     toast.success(`Tour ${status}`);
   };
@@ -87,8 +117,28 @@ const ExperiencesPage = () => {
       status: 'confirmed',
       confirmed_by: staffName,
     }).eq('id', b.id);
+
+    // Insert room charge
+    if (Number(b.price) > 0 && b.room_id) {
+      const room = await getRoomInfo(b.room_id);
+      await (supabase.from('room_transactions') as any).insert({
+        unit_id: b.room_id,
+        unit_name: room?.unit_name || '',
+        booking_id: b.booking_id,
+        guest_name: b.guest_name || '',
+        transaction_type: 'charge',
+        amount: Number(b.price),
+        tax_amount: 0,
+        service_charge_amount: 0,
+        total_amount: Number(b.price),
+        payment_method: 'Charge to Room',
+        staff_name: staffName,
+        notes: `Tour: ${b.tour_name} (${b.pax} pax) on ${b.tour_date}${b.pickup_time ? ` pickup ${b.pickup_time}` : ''}`,
+      });
+    }
+
     qc.invalidateQueries({ queryKey: ['tour-bookings-experiences'] });
-    toast.success('Tour booking confirmed');
+    toast.success('Tour booking confirmed & charged to room');
   };
 
   const cancelTourBooking = async (id: string) => {
@@ -108,9 +158,32 @@ const ExperiencesPage = () => {
     toast.success('Tour completed');
   };
 
-  const updateRequestStatus = async (id: string, status: string) => {
+  const updateRequestStatus = async (id: string, status: string, req?: any) => {
     if (!canDoEdit) { toast.error('View-only access'); return; }
     await from('guest_requests').update({ status }).eq('id', id);
+
+    // Insert room charge when confirming a request with a price
+    if (status === 'confirmed' && req) {
+      const price = parsePriceFromDetails(req.details);
+      if (price > 0 && req.room_id) {
+        const room = await getRoomInfo(req.room_id);
+        await (supabase.from('room_transactions') as any).insert({
+          unit_id: req.room_id,
+          unit_name: room?.unit_name || '',
+          booking_id: req.booking_id,
+          guest_name: req.guest_name || '',
+          transaction_type: 'charge',
+          amount: price,
+          tax_amount: 0,
+          service_charge_amount: 0,
+          total_amount: price,
+          payment_method: 'Charge to Room',
+          staff_name: staffName,
+          notes: `${req.request_type}: ${req.details}`,
+        });
+      }
+    }
+
     qc.invalidateQueries({ queryKey: ['all-requests-experiences'] });
     toast.success(`Request ${status}`);
   };
@@ -221,7 +294,7 @@ const ExperiencesPage = () => {
                 {canDoEdit && tour.status !== 'completed' && tour.status !== 'cancelled' && (
                   <div className="flex gap-2">
                     {tour.status === 'booked' && (
-                      <Button size="sm" variant="outline" onClick={() => updateTourStatus(tour.id, 'confirmed')}
+                      <Button size="sm" variant="outline" onClick={() => updateTourStatus(tour.id, 'confirmed', tour)}
                         className="font-display text-xs tracking-wider min-h-[36px]">Confirm</Button>
                     )}
                     <Button size="sm" onClick={() => updateTourStatus(tour.id, 'completed')}
@@ -296,7 +369,7 @@ const ExperiencesPage = () => {
               </div>
               {canDoEdit && req.status === 'pending' && (
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => updateRequestStatus(req.id, 'confirmed')}
+                  <Button size="sm" variant="outline" onClick={() => updateRequestStatus(req.id, 'confirmed', req)}
                     className="font-display text-xs tracking-wider min-h-[36px]">Confirm</Button>
                   <Button size="sm" variant="destructive" onClick={() => updateRequestStatus(req.id, 'cancelled')}
                     className="font-display text-xs tracking-wider min-h-[36px]">Cancel</Button>

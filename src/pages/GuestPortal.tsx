@@ -869,10 +869,10 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
     return () => { supabase.removeChannel(channel); };
   }, [session.booking_id, qc]);
 
-  const charges = transactions.filter((t: any) => t.transaction_type === 'charge');
-  const payments = transactions.filter((t: any) => t.transaction_type === 'payment');
-  const totalCharges = charges.reduce((s: number, t: any) => s + Math.abs(t.total_amount || 0), 0);
-  const totalPayments = payments.reduce((s: number, t: any) => s + Math.abs(t.total_amount || 0), 0);
+  const charges = transactions.filter((t: any) => (t.total_amount || 0) > 0);
+  const payments = transactions.filter((t: any) => (t.total_amount || 0) < 0);
+  const totalCharges = charges.reduce((s: number, t: any) => s + (t.total_amount || 0), 0);
+  const totalPayments = Math.abs(payments.reduce((s: number, t: any) => s + (t.total_amount || 0), 0));
   const balance = totalCharges - totalPayments;
   const hasPending = pendingTours.length > 0 || pendingRequests.length > 0;
 
