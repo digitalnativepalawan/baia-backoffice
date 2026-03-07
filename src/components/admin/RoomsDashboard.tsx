@@ -292,7 +292,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       notes: docNotes.trim() || null,
     });
     setDocNotes('');
-    qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit.name] });
+    qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit.name, guestId] });
     toast.success('Document uploaded');
   };
 
@@ -307,7 +307,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       notes: docNotes.trim() || null,
     });
     setDocUrl(''); setDocNotes(''); setShowUrlInput(false);
-    qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit.name] });
+    qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit.name, guestId] });
     toast.success('Document link added');
   };
 
@@ -318,7 +318,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       await supabase.storage.from('guest-documents').remove([path]);
     }
     await from('guest_documents').delete().eq('id', doc.id);
-    qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit?.name] });
+    qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit?.name, guestId] });
     toast.success('Document deleted');
   };
 
