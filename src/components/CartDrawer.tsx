@@ -9,7 +9,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter } from '
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Minus, Plus, Trash2, Send, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import { Minus, Plus, Trash2, Send, CheckCircle2, AlertTriangle, Clock, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { Separator } from '@/components/ui/separator';
 import { checkStock, type Shortage } from '@/lib/stockCheck';

@@ -87,7 +87,7 @@ const StaffAccessManager = () => {
   const { data: permissions = [] } = useQuery({
     queryKey: ['employee-permissions'],
     queryFn: async () => {
-      const { data } = await from('employee_permissions').select('*');
+      const { data } = await (from('employee_permissions') as any).select('*');
       return (data || []) as { id: string; employee_id: string; permission: string }[];
     },
   });
@@ -95,7 +95,7 @@ const StaffAccessManager = () => {
   const { data: customRoles = [] } = useQuery({
     queryKey: ['staff-roles'],
     queryFn: async () => {
-      const { data } = await from('staff_roles').select('*').order('created_at');
+      const { data } = await (from('staff_roles') as any).select('*').order('created_at');
       return (data || []) as CustomRole[];
     },
   });
