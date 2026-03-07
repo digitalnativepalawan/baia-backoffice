@@ -139,20 +139,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     },
   });
 
-  // Orders for selected unit
-  const { data: unitOrders = [] } = useQuery({
-    queryKey: ['rooms-orders', selectedUnit?.name],
-    enabled: !!selectedUnit,
-    queryFn: async () => {
-      const { data } = await supabase.from('orders').select('*')
-        .eq('order_type', 'Room')
-        .eq('location_detail', selectedUnit!.name)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      return data || [];
-    },
-  });
-
   // Get unit status — must be declared before getActiveBooking which depends on it
   const getUnitStatus = (unit: any): 'occupied' | 'to_clean' | 'ready' => {
     return (unit as any).status || 'ready';
@@ -178,32 +164,48 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const currentBooking = getActiveBooking(selectedUnit);
   const guestId = (currentBooking as any)?.guest_id;
 
-  // Documents - query by unit_name (works with or without guest)
+  // Orders for selected unit - only during current booking period
+  const { data: unitOrders = [] } = useQuery({
+    queryKey: ['rooms-orders', selectedUnit?.name, currentBooking?.id],
+    enabled: !!selectedUnit && !!currentBooking,
+    queryFn: async () => {
+      const { data } = await supabase.from('orders').select('*')
+        .eq('order_type', 'Room')
+        .eq('location_detail', selectedUnit!.name)
+        .gte('created_at', currentBooking!.check_in + 'T00:00:00')
+        .lte('created_at', currentBooking!.check_out + 'T23:59:59')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      return data || [];
+    },
+  });
+
+  // Documents - only show for current booking's guest
   const { data: documents = [] } = useQuery({
-    queryKey: ['guest-documents', selectedUnit?.name],
-    enabled: !!selectedUnit,
+    queryKey: ['guest-documents', selectedUnit?.name, guestId],
+    enabled: !!selectedUnit && !!guestId,
     queryFn: async () => {
-      const { data } = await from('guest_documents').select('*').eq('unit_name', selectedUnit!.name).order('created_at', { ascending: false });
+      const { data } = await from('guest_documents').select('*').eq('unit_name', selectedUnit!.name).eq('guest_id', guestId).order('created_at', { ascending: false });
       return (data || []) as any[];
     },
   });
 
-  // Guest notes
+  // Guest notes - only for current booking
   const { data: notes = [] } = useQuery({
-    queryKey: ['guest-notes', selectedUnit?.name],
-    enabled: !!selectedUnit,
+    queryKey: ['guest-notes', selectedUnit?.name, currentBooking?.id],
+    enabled: !!selectedUnit && !!currentBooking,
     queryFn: async () => {
-      const { data } = await from('guest_notes').select('*').eq('unit_name', selectedUnit!.name).order('created_at', { ascending: false });
+      const { data } = await from('guest_notes').select('*').eq('booking_id', currentBooking!.id).order('created_at', { ascending: false });
       return (data || []) as any[];
     },
   });
 
-  // Guest tours - query by unit_name (works without booking)
+  // Guest tours - only for current booking
   const { data: tours = [] } = useQuery({
-    queryKey: ['guest-tours', selectedUnit?.name],
-    enabled: !!selectedUnit,
+    queryKey: ['guest-tours', selectedUnit?.name, currentBooking?.id],
+    enabled: !!selectedUnit && !!currentBooking,
     queryFn: async () => {
-      const { data } = await from('guest_tours').select('*').eq('unit_name', selectedUnit!.name).order('tour_date');
+      const { data } = await from('guest_tours').select('*').eq('booking_id', currentBooking!.id).order('tour_date');
       return (data || []) as any[];
     },
   });
@@ -227,14 +229,14 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       created_by: 'admin',
     });
     setNoteContent('');
-    qc.invalidateQueries({ queryKey: ['guest-notes', selectedUnit.name] });
+    qc.invalidateQueries({ queryKey: ['guest-notes', selectedUnit.name, currentBooking?.id] });
     toast.success('Note added');
   };
 
   const deleteNote = async (id: string) => {
     if (readOnly) { toast.error('View-only access'); return; }
     await from('guest_notes').delete().eq('id', id);
-    qc.invalidateQueries({ queryKey: ['guest-notes', selectedUnit?.name] });
+    qc.invalidateQueries({ queryKey: ['guest-notes', selectedUnit?.name, currentBooking?.id] });
     toast.success('Note deleted');
   };
 
@@ -254,21 +256,21 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     });
     setTourName(''); setTourDate(''); setTourPax('1'); setTourPrice('');
     setTourProvider(''); setTourPickupTime(''); setTourNotes('');
-    qc.invalidateQueries({ queryKey: ['guest-tours', selectedUnit.name] });
+    qc.invalidateQueries({ queryKey: ['guest-tours', selectedUnit.name, currentBooking?.id] });
     toast.success('Tour added');
   };
 
   const updateTourStatus = async (id: string, status: string) => {
     if (readOnly) { toast.error('View-only access'); return; }
     await from('guest_tours').update({ status }).eq('id', id);
-    qc.invalidateQueries({ queryKey: ['guest-tours', selectedUnit?.name] });
+    qc.invalidateQueries({ queryKey: ['guest-tours', selectedUnit?.name, currentBooking?.id] });
     toast.success('Tour updated');
   };
 
   const deleteTour = async (id: string) => {
     if (readOnly) { toast.error('View-only access'); return; }
     await from('guest_tours').delete().eq('id', id);
-    qc.invalidateQueries({ queryKey: ['guest-tours', selectedUnit?.name] });
+    qc.invalidateQueries({ queryKey: ['guest-tours', selectedUnit?.name, currentBooking?.id] });
     toast.success('Tour deleted');
   };
 
@@ -290,7 +292,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       notes: docNotes.trim() || null,
     });
     setDocNotes('');
-    qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit.name] });
+    qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit.name, guestId] });
     toast.success('Document uploaded');
   };
 
@@ -305,7 +307,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       notes: docNotes.trim() || null,
     });
     setDocUrl(''); setDocNotes(''); setShowUrlInput(false);
-    qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit.name] });
+    qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit.name, guestId] });
     toast.success('Document link added');
   };
 
@@ -316,7 +318,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       await supabase.storage.from('guest-documents').remove([path]);
     }
     await from('guest_documents').delete().eq('id', doc.id);
-    qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit?.name] });
+    qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit?.name, guestId] });
     toast.success('Document deleted');
   };
 

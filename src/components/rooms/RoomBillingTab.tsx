@@ -17,7 +17,7 @@ interface RoomBillingTabProps {
 }
 
 const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBillingTabProps) => {
-  const { data: transactions = [], isLoading, refetch } = useRoomTransactions(unit?.id);
+  const { data: transactions = [], isLoading, refetch } = useRoomTransactions(unit?.id, booking?.id || null);
   const [showPayment, setShowPayment] = useState(false);
   const [showAdjustment, setShowAdjustment] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);

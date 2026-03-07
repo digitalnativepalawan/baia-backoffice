@@ -19,15 +19,18 @@ export interface RoomTransaction {
   created_at: string;
 }
 
-export const useRoomTransactions = (unitId: string | null) => {
+export const useRoomTransactions = (unitId: string | null, bookingId?: string | null) => {
   return useQuery({
-    queryKey: ['room-transactions', unitId],
+    queryKey: ['room-transactions', unitId, bookingId],
     enabled: !!unitId,
     queryFn: async () => {
-      const { data } = await (supabase.from('room_transactions' as any) as any)
+      let query = (supabase.from('room_transactions' as any) as any)
         .select('*')
-        .eq('unit_id', unitId)
-        .order('created_at', { ascending: false });
+        .eq('unit_id', unitId);
+      if (bookingId) {
+        query = query.eq('booking_id', bookingId);
+      }
+      const { data } = await query.order('created_at', { ascending: false });
       return (data || []) as RoomTransaction[];
     },
   });
