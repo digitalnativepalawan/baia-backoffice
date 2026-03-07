@@ -66,6 +66,15 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
     },
   });
 
+  // All guests for combo search
+  const { data: allGuests = [] } = useQuery({
+    queryKey: ['all-guests'],
+    queryFn: async () => {
+      const { data } = await from('resort_ops_guests').select('*').order('full_name');
+      return (data || []) as any[];
+    },
+  });
+
   // Resort ops units (for booking linkage)
   const { data: resortUnits = [] } = useQuery({
     queryKey: ['resort-ops-units'],
