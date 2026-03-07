@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Plus, Trash2, Copy, Package, ClipboardList, Home, Pencil, Check, X, Eye, EyeOff } from 'lucide-react';
+import { Plus, Trash2, Copy, Package, ClipboardList, Home, Eye, EyeOff } from 'lucide-react';
 
 const HousekeepingConfig = () => {
   const qc = useQueryClient();
