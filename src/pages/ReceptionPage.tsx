@@ -160,6 +160,15 @@ const ReceptionPage = () => {
   // Compute balance for payment modal
   const paymentBalance = useUnitBalance(paymentUnit?.id || null);
 
+  // Room types (for base rates)
+  const { data: roomTypes = [] } = useQuery({
+    queryKey: ['room-types'],
+    queryFn: async () => {
+      const { data } = await supabase.from('room_types').select('*').order('name');
+      return (data || []) as any[];
+    },
+  });
+
   // Units
   const { data: units = [] } = useQuery({
     queryKey: ['rooms-units'],
@@ -879,7 +888,9 @@ const ReceptionPage = () => {
               {canDoEdit && (
                 <Button size="sm" variant="outline" onClick={() => {
                   setWalkInUnit(unit);
-                  setWalkInForm({ guestName: '', checkIn: today, checkOut: '', adults: '2', children: '0', platform: 'Direct', roomRate: '0', notes: '' });
+                  const rt = roomTypes.find((r: any) => r.id === unit.room_type_id);
+                  const defaultRate = rt?.base_rate ? String(rt.base_rate) : '0';
+                  setWalkInForm({ guestName: '', checkIn: today, checkOut: '', adults: '2', children: '0', platform: 'Direct', roomRate: defaultRate, notes: '' });
                   setWalkInOpen(true);
                 }} className="font-display text-xs tracking-wider min-h-[44px]">
                   <DollarSign className="w-4 h-4 mr-1" /> Sell

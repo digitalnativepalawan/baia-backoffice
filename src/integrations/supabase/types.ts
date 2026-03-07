@@ -2043,16 +2043,19 @@ export type Database = {
       }
       room_types: {
         Row: {
+          base_rate: number
           created_at: string
           id: string
           name: string
         }
         Insert: {
+          base_rate?: number
           created_at?: string
           id?: string
           name: string
         }
         Update: {
+          base_rate?: number
           created_at?: string
           id?: string
           name?: string

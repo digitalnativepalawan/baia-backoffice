@@ -65,6 +65,15 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const [noteContent, setNoteContent] = useState('');
   const [noteType, setNoteType] = useState('general');
 
+  // Room types (for base rates)
+  const { data: roomTypes = [] } = useQuery({
+    queryKey: ['room-types'],
+    queryFn: async () => {
+      const { data } = await supabase.from('room_types').select('*').order('name');
+      return (data || []) as any[];
+    },
+  });
+
   // Units
   const { data: units = [] } = useQuery({
     queryKey: ['rooms-units'],
@@ -636,7 +645,13 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                     ) : !readOnly ? (
                       <>
                         <p className="font-body text-xs text-muted-foreground">Check in a guest to enable full room management.</p>
-                        <Button size="sm" onClick={() => setShowCheckInForm(true)}
+                        <Button size="sm" onClick={() => {
+                          const rt = roomTypes.find((r: any) => r.id === selectedUnit?.room_type_id);
+                          if (rt?.base_rate) {
+                            setCheckInForm(prev => ({ ...prev, roomRate: String(rt.base_rate) }));
+                          }
+                          setShowCheckInForm(true);
+                        }}
                           className="font-display text-xs tracking-wider min-h-[44px]">
                           <LogIn className="w-4 h-4 mr-2" /> Check In Guest
                         </Button>

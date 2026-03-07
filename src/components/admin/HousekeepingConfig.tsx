@@ -274,6 +274,23 @@ const HousekeepingConfig = () => {
                   ) : (
                     <>
                       <span className="font-body text-sm text-foreground flex-1">{rt.name}</span>
+                      <div className="flex items-center gap-1">
+                        <span className="font-body text-xs text-muted-foreground">₱</span>
+                        <Input
+                          type="number"
+                          defaultValue={rt.base_rate || 0}
+                          onBlur={async (e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            if (val !== (rt.base_rate || 0)) {
+                              await supabase.from('room_types').update({ base_rate: val } as any).eq('id', rt.id);
+                              qc.invalidateQueries({ queryKey: ['room-types'] });
+                              toast.success('Rate updated');
+                            }
+                          }}
+                          className="bg-secondary border-border text-foreground font-body h-7 w-24 text-xs"
+                          placeholder="Rate/night"
+                        />
+                      </div>
                       <Button variant="outline" size="sm" className="h-7 text-xs font-display gap-1" onClick={() => { setEditingRoomTypeId(rt.id); setEditingRoomTypeName(rt.name); }}>
                         <Pencil className="w-3 h-3" /> Edit
                       </Button>
