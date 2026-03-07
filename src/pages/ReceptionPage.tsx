@@ -1401,6 +1401,25 @@ const ReceptionPage = () => {
         title="Accept Assignment"
         description="Enter your name and PIN to accept this housekeeping assignment."
       />
+      {/* ══════ ROOM DETAIL SHEET ══════ */}
+      <Sheet open={detailSheetOpen} onOpenChange={(open) => { setDetailSheetOpen(open); if (!open) setDetailUnit(null); }}>
+        <SheetContent side="bottom" className="h-[90vh] overflow-y-auto p-0">
+          <SheetHeader className="px-4 pt-4 pb-2">
+            <SheetTitle className="font-display text-lg tracking-wider">{detailUnit?.name} — Room Details</SheetTitle>
+          </SheetHeader>
+          <div className="px-4 pb-6">
+            {detailUnit && (
+              <RoomsDashboard
+                readOnly={!canDoEdit}
+                canViewDocuments={hasDocAccess}
+                initialUnit={detailUnit}
+                singleUnitMode
+                onClose={() => { setDetailSheetOpen(false); setDetailUnit(null); }}
+              />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
