@@ -35,6 +35,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
   });
   const [checkingIn, setCheckingIn] = useState(false);
   const [showCheckInForm, setShowCheckInForm] = useState(false);
+  const [guestSearchResults, setGuestSearchResults] = useState<any[]>([]);
+  const [showGuestDropdown, setShowGuestDropdown] = useState(false);
 
   // Document form state
   const [docType, setDocType] = useState('passport');
