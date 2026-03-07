@@ -94,7 +94,6 @@ const timeToPercent = (t: string): number => {
 const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => {
   const isMobile = useIsMobile();
   const qc = useQueryClient();
-  const deleteIdRef = useRef<string | null>(null);
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
   const weekDates = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
@@ -115,15 +114,6 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
   // Task editing
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editTaskForm, setEditTaskForm] = useState({ title: '', description: '', due_date: '', due_time: '', employee_id: '' });
-
-  // Keep deleteIdRef in sync
-  useEffect(() => { deleteIdRef.current = deleteId; }, [deleteId]);
-
-  // Expose setDeleteId so ShiftModal can trigger delete
-  useEffect(() => {
-    (window as any).__scheduleDeleteId = setDeleteId;
-    return () => { delete (window as any).__scheduleDeleteId; };
-  }, []);
 
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ['employees-schedule'],
@@ -316,11 +306,20 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
     qc.invalidateQueries({ queryKey: ['weekly-schedules'] });
   };
 
-  const confirmDelete = async () => {
-    const idToDelete = deleteIdRef.current;
-    if (!idToDelete) return;
+  const confirmDelete = async (scheduleId?: string) => {
+    const idToDelete = scheduleId || deleteId;
+    if (!idToDelete) {
+      toast.error('No shift selected for deletion');
+      return;
+    }
+
     setDeleteId(null);
-    await supabase.from('weekly_schedules').delete().eq('id', idToDelete);
+    const { error } = await supabase.from('weekly_schedules').delete().eq('id', idToDelete);
+    if (error) {
+      toast.error(`Failed to delete shift: ${error.message}`);
+      return;
+    }
+
     qc.invalidateQueries({ queryKey: ['weekly-schedules'] });
     toast.success('Shift deleted');
   };
@@ -849,7 +848,9 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
 
         <ShiftModal shiftModal={shiftModal} shiftForm={shiftForm} setShiftForm={setShiftForm}
           employees={employees} saveShift={saveShift} addBrokenShift={addBrokenShift}
-          onClose={() => setShiftModal(null)} onDuplicate={shiftModal?.mode === 'edit' && shiftModal.schedule ? () => { duplicateShift(shiftModal.schedule!); setShiftModal(null); } : undefined} />
+          onClose={() => setShiftModal(null)}
+          onDelete={shiftModal?.mode === 'edit' && shiftModal.schedule ? () => { setShiftModal(null); setDeleteId(shiftModal.schedule!.id); } : undefined}
+          onDuplicate={shiftModal?.mode === 'edit' && shiftModal.schedule ? () => { duplicateShift(shiftModal.schedule!); setShiftModal(null); } : undefined} />
 
         <DeleteConfirm deleteId={deleteId} setDeleteId={setDeleteId} onConfirm={confirmDelete} />
 
@@ -978,7 +979,9 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
 
       <ShiftModal shiftModal={shiftModal} shiftForm={shiftForm} setShiftForm={setShiftForm}
         employees={employees} saveShift={saveShift} addBrokenShift={addBrokenShift}
-        onClose={() => setShiftModal(null)} onDuplicate={shiftModal?.mode === 'edit' && shiftModal.schedule ? () => { duplicateShift(shiftModal.schedule!); setShiftModal(null); } : undefined} />
+        onClose={() => setShiftModal(null)}
+        onDelete={shiftModal?.mode === 'edit' && shiftModal.schedule ? () => { setShiftModal(null); setDeleteId(shiftModal.schedule!.id); } : undefined}
+        onDuplicate={shiftModal?.mode === 'edit' && shiftModal.schedule ? () => { duplicateShift(shiftModal.schedule!); setShiftModal(null); } : undefined} />
 
       <DeleteConfirm deleteId={deleteId} setDeleteId={setDeleteId} onConfirm={confirmDelete} />
 
@@ -1025,9 +1028,9 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
 };
 
 // Shift Add/Edit Modal
-const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, saveShift, addBrokenShift, onClose, onDuplicate }: {
+const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, saveShift, addBrokenShift, onClose, onDelete, onDuplicate }: {
   shiftModal: any; shiftForm: any; setShiftForm: any; employees: Employee[];
-  saveShift: () => void; addBrokenShift: () => void; onClose: () => void; onDuplicate?: () => void;
+  saveShift: () => void; addBrokenShift: () => void; onClose: () => void; onDelete?: () => void; onDuplicate?: () => void;
 }) => (
   <Dialog open={!!shiftModal} onOpenChange={() => onClose()}>
     <DialogContent className="bg-card border-border max-w-sm">
@@ -1073,9 +1076,8 @@ const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, saveShift,
           </div>
         </div>
       </div>
-      {shiftModal?.mode === 'edit' && (
-        <Button variant="destructive" className="w-full font-display text-xs min-h-[44px]"
-          onClick={() => { if (shiftModal.schedule) { onClose(); setTimeout(() => (window as any).__scheduleDeleteId?.(shiftModal.schedule.id), 50); } }}>
+      {shiftModal?.mode === 'edit' && onDelete && (
+        <Button variant="destructive" className="w-full font-display text-xs min-h-[44px]" onClick={onDelete}>
           <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete This Shift
         </Button>
       )}
@@ -1096,7 +1098,7 @@ const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, saveShift,
 );
 
 // Delete Confirmation
-const DeleteConfirm = ({ deleteId, setDeleteId, onConfirm }: { deleteId: string | null; setDeleteId: (v: string | null) => void; onConfirm: () => void }) => (
+const DeleteConfirm = ({ deleteId, setDeleteId, onConfirm }: { deleteId: string | null; setDeleteId: (v: string | null) => void; onConfirm: (id: string) => void }) => (
   <AlertDialog open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(null); }}>
     <AlertDialogContent className="bg-card border-border">
       <AlertDialogHeader>
@@ -1107,7 +1109,7 @@ const DeleteConfirm = ({ deleteId, setDeleteId, onConfirm }: { deleteId: string 
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel className="font-display text-xs">Cancel</AlertDialogCancel>
-        <AlertDialogAction onClick={onConfirm} className="font-display text-xs bg-destructive text-destructive-foreground">
+        <AlertDialogAction onClick={() => { if (deleteId) onConfirm(deleteId); }} className="font-display text-xs bg-destructive text-destructive-foreground">
           Delete
         </AlertDialogAction>
       </AlertDialogFooter>
