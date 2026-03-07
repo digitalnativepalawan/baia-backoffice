@@ -9,12 +9,62 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter } from '
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Minus, Plus, Trash2, Send, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import { Minus, Plus, Trash2, Send, CheckCircle2, AlertTriangle, Clock, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { Separator } from '@/components/ui/separator';
 import { checkStock, type Shortage } from '@/lib/stockCheck';
 import { useBillingConfig } from '@/hooks/useBillingConfig';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
+
+// Tab picker sub-component
+const TabPicker = ({ tabMode, setTabMode, selectedTabId, setSelectedTabId }: {
+  tabMode: 'new' | 'existing'; setTabMode: (v: 'new' | 'existing') => void;
+  selectedTabId: string; setSelectedTabId: (v: string) => void;
+}) => {
+  const { data: openTabs = [] } = useQuery({
+    queryKey: ['open-tabs-picker'],
+    queryFn: async () => {
+      const { data } = await supabase.from('tabs').select('*').eq('status', 'Open').order('created_at', { ascending: false });
+      return data || [];
+    },
+  });
+
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex gap-2">
+        <button onClick={() => setTabMode('new')}
+          className={`flex-1 min-h-[36px] py-1.5 border font-display text-xs tracking-wider rounded transition-colors ${
+            tabMode === 'new' ? 'border-accent text-accent bg-accent/10' : 'border-border text-muted-foreground'
+          }`}>
+          New Tab
+        </button>
+        <button onClick={() => setTabMode('existing')}
+          className={`flex-1 min-h-[36px] py-1.5 border font-display text-xs tracking-wider rounded transition-colors ${
+            tabMode === 'existing' ? 'border-accent text-accent bg-accent/10' : 'border-border text-muted-foreground'
+          }`}>
+          Existing Tab ({openTabs.length})
+        </button>
+      </div>
+      {tabMode === 'existing' && openTabs.length > 0 && (
+        <Select value={selectedTabId} onValueChange={setSelectedTabId}>
+          <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs">
+            <SelectValue placeholder="Select open tab" />
+          </SelectTrigger>
+          <SelectContent className="bg-card border-border">
+            {openTabs.map((t: any) => (
+              <SelectItem key={t.id} value={t.id} className="text-foreground font-body text-xs">
+                {t.location_type} · {t.location_detail} — ₱{Number(t.running_total || 0).toLocaleString()}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      {tabMode === 'existing' && openTabs.length === 0 && (
+        <p className="font-body text-xs text-muted-foreground text-center py-2">No open tabs found — a new tab will be created.</p>
+      )}
+    </div>
+  );
+};
 
 interface CartDrawerProps {
   open: boolean;
@@ -35,6 +85,8 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
   const [stockWarning, setStockWarning] = useState<Shortage[]>([]);
   const [overrideStock, setOverrideStock] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<'asap' | 'scheduled'>('asap');
+  const [tabMode, setTabMode] = useState<'new' | 'existing'>('new');
+  const [selectedTabId, setSelectedTabId] = useState('');
   const [scheduledDay, setScheduledDay] = useState<'today' | 'tomorrow'>('today');
   const [scheduledHour, setScheduledHour] = useState('7');
   const [scheduledMinute, setScheduledMinute] = useState('00');
@@ -466,7 +518,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
                   {isStaff && selectedOrderType !== 'WalkIn' && selectedOrderType !== 'DineIn' && (
                     <div className="mt-4 pt-3 border-t border-border">
                       <p className="font-display text-sm text-foreground tracking-wider mb-2">Payment Type</p>
-                      <Select onValueChange={setPaymentType} value={paymentType}>
+                      <Select onValueChange={(v) => { setPaymentType(v); if (v !== 'Tab') { setTabMode('new'); setSelectedTabId(''); } }} value={paymentType}>
                         <SelectTrigger className="bg-secondary border-border text-foreground font-body">
                           <SelectValue placeholder="Select payment type" />
                         </SelectTrigger>
@@ -474,8 +526,14 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
                           {activePaymentMethods.map(m => (
                             <SelectItem key={m.id} value={m.name} className="text-foreground font-body">{m.name}</SelectItem>
                           ))}
+                          <SelectItem value="Tab" className="text-foreground font-body">📋 Open Tab</SelectItem>
                         </SelectContent>
                       </Select>
+
+                      {/* Tab picker when "Tab" is selected */}
+                      {paymentType === 'Tab' && (
+                        <TabPicker tabMode={tabMode} setTabMode={setTabMode} selectedTabId={selectedTabId} setSelectedTabId={setSelectedTabId} />
+                      )}
                     </div>
                   )}
 

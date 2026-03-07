@@ -2086,6 +2086,27 @@ export type Database = {
         }
         Relationships: []
       }
+      staff_roles: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          permissions: string[]
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          permissions?: string[]
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          permissions?: string[]
+        }
+        Relationships: []
+      }
       tabs: {
         Row: {
           closed_at: string | null

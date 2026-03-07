@@ -35,6 +35,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
   });
   const [checkingIn, setCheckingIn] = useState(false);
   const [showCheckInForm, setShowCheckInForm] = useState(false);
+  const [guestSearchResults, setGuestSearchResults] = useState<any[]>([]);
+  const [showGuestDropdown, setShowGuestDropdown] = useState(false);
 
   // Document form state
   const [docType, setDocType] = useState('passport');
@@ -61,6 +63,15 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
     queryFn: async () => {
       const { data } = await supabase.from('units').select('*').eq('active', true).order('unit_name');
       return (data || []).map((u: any) => ({ ...u, name: u.unit_name, type: '', capacity: 0 }));
+    },
+  });
+
+  // All guests for combo search
+  const { data: allGuests = [] } = useQuery({
+    queryKey: ['all-guests'],
+    queryFn: async () => {
+      const { data } = await from('resort_ops_guests').select('*').order('full_name');
+      return (data || []) as any[];
     },
   });
 
@@ -629,9 +640,54 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
                 ) : (
                   <div className="border border-border rounded-lg p-4 space-y-3">
                     <p className="font-display text-xs tracking-wider text-foreground uppercase">Check In Guest</p>
-                    <Input value={checkInForm.guestName}
-                      onChange={e => setCheckInForm(p => ({ ...p, guestName: e.target.value }))}
-                      placeholder="Guest full name *" className="bg-secondary border-border text-foreground font-body text-sm" />
+                    <div className="relative">
+                      <Input value={checkInForm.guestName}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setCheckInForm(p => ({ ...p, guestName: val }));
+                          if (val.length >= 2) {
+                            const filtered = allGuests.filter((g: any) => g.full_name.toLowerCase().includes(val.toLowerCase())).slice(0, 5);
+                            setGuestSearchResults(filtered);
+                            setShowGuestDropdown(true);
+                          } else {
+                            setShowGuestDropdown(false);
+                          }
+                        }}
+                        onFocus={() => {
+                          if (checkInForm.guestName.length >= 2) setShowGuestDropdown(true);
+                        }}
+                        onBlur={() => setTimeout(() => setShowGuestDropdown(false), 200)}
+                        placeholder="Guest full name *" className="bg-secondary border-border text-foreground font-body text-sm" />
+                      {showGuestDropdown && guestSearchResults.length > 0 && (
+                        <div className="absolute z-50 w-full mt-1 border border-border rounded-lg bg-card shadow-lg max-h-40 overflow-y-auto">
+                          {guestSearchResults.map((g: any) => (
+                            <button key={g.id} type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                setCheckInForm(p => ({
+                                  ...p,
+                                  guestName: g.full_name,
+                                  phone: g.phone || p.phone,
+                                  email: g.email || p.email,
+                                }));
+                                setShowGuestDropdown(false);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-secondary transition-colors">
+                              <p className="font-body text-sm text-foreground">{g.full_name}</p>
+                              {(g.phone || g.email) && (
+                                <p className="font-body text-[10px] text-muted-foreground">{g.phone} {g.email}</p>
+                              )}
+                            </button>
+                          ))}
+                          <button type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => setShowGuestDropdown(false)}
+                            className="w-full px-3 py-2 text-left hover:bg-secondary transition-colors border-t border-border">
+                            <p className="font-body text-xs text-accent">+ Add "{checkInForm.guestName}" as new guest</p>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       <Input value={checkInForm.phone}
                         onChange={e => setCheckInForm(p => ({ ...p, phone: e.target.value }))}
@@ -1000,7 +1056,12 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
 
   return (
     <div className="space-y-4">
-      <h3 className="font-display text-sm tracking-wider text-foreground">Room Status Board</h3>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-display text-sm tracking-wider text-foreground">Today's Room Status</h3>
+          <p className="font-body text-[10px] text-muted-foreground">Present management — check-ins, check-outs & housekeeping</p>
+        </div>
+      </div>
 
       {/* Status summary */}
       <div className="grid grid-cols-3 gap-2">
