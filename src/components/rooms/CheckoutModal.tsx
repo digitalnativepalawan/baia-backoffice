@@ -122,6 +122,18 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
         openWhatsApp(hkEmployee.whatsapp_number, msg);
       }
 
+      // Cancel any pending guest requests & tours for this booking
+      if (bookingId) {
+        await (supabase.from('guest_requests' as any) as any)
+          .update({ status: 'cancelled' })
+          .eq('booking_id', bookingId)
+          .eq('status', 'pending');
+        await (supabase.from('guest_tours' as any) as any)
+          .update({ status: 'cancelled' })
+          .eq('booking_id', bookingId)
+          .eq('status', 'pending');
+      }
+
       await logAudit('updated', 'units', unitId, `Checkout completed for ${guestName || 'Guest'} in ${unitName}${hkEmployee ? ` — assigned to ${hkEmployee.display_name || hkEmployee.name}` : ''}`);
 
       qc.invalidateQueries({ queryKey: ['room-transactions', unitId] });
@@ -129,6 +141,12 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
       qc.invalidateQueries({ queryKey: ['rooms-units'] });
       qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
       qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
+      qc.invalidateQueries({ queryKey: ['all-requests-experiences'] });
+      qc.invalidateQueries({ queryKey: ['all-tours-experiences'] });
+      qc.invalidateQueries({ queryKey: ['tour-bookings-experiences'] });
+      qc.invalidateQueries({ queryKey: ['reception-guest-requests'] });
+      qc.invalidateQueries({ queryKey: ['reception-tour-bookings'] });
+      qc.invalidateQueries({ queryKey: ['reception-tours-today'] });
       toast.success(`Checkout complete${hkEmployee ? ` — ${hkEmployee.display_name || hkEmployee.name} notified` : ''}`);
       onOpenChange(false);
     } catch {

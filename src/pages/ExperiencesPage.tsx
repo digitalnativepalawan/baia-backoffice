@@ -4,8 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, MapPin, CheckCircle, Palmtree, Car, Bike } from 'lucide-react';
-import { format } from 'date-fns';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
+import { ArrowLeft, MapPin, CheckCircle, Palmtree, Car, Bike, ChevronDown, History } from 'lucide-react';
+import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import { canEdit } from '@/lib/permissions';
 
@@ -32,36 +33,70 @@ const ExperiencesPage = () => {
   const canDoEdit = isAdmin || canEdit(perms, 'experiences') || canEdit(perms, 'reception');
   const staffName = session?.name || 'Staff';
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
+  const sevenDaysAgo = subDays(today, 7).toISOString();
+  const oneDayAgo = subDays(today, 1).toISOString();
 
-  // Admin-created tours (guest_tours)
+  // Admin-created tours (guest_tours) — only actionable (booked/confirmed)
   const { data: tours = [] } = useQuery({
     queryKey: ['all-tours-experiences'],
     queryFn: async () => {
-      const { data } = await from('guest_tours').select('*').gte('tour_date', todayStr).order('tour_date').order('pickup_time');
+      const { data } = await from('guest_tours').select('*')
+        .gte('tour_date', todayStr)
+        .in('status', ['booked', 'confirmed'])
+        .order('tour_date').order('pickup_time');
       return (data || []) as any[];
     },
   });
 
-  // Guest portal tour bookings (tour_bookings)
+  // Guest portal tour bookings (tour_bookings) — only pending/confirmed
   const { data: tourBookings = [] } = useQuery({
     queryKey: ['tour-bookings-experiences'],
     queryFn: async () => {
       const { data } = await (supabase.from('tour_bookings') as any)
         .select('*')
-        .neq('status', 'cancelled')
+        .in('status', ['pending', 'confirmed'])
+        .gte('created_at', sevenDaysAgo)
         .order('created_at', { ascending: false })
         .limit(50);
       return (data || []) as any[];
     },
   });
 
-  // Guest requests (transport, rentals)
+  // Guest requests (transport, rentals) — only pending/confirmed
   const { data: requests = [] } = useQuery({
     queryKey: ['all-requests-experiences'],
     queryFn: async () => {
-      const { data } = await from('guest_requests').select('*').neq('status', 'cancelled').order('created_at', { ascending: false }).limit(50);
+      const { data } = await from('guest_requests').select('*')
+        .in('status', ['pending', 'confirmed'])
+        .gte('created_at', sevenDaysAgo)
+        .order('created_at', { ascending: false }).limit(50);
+      return (data || []) as any[];
+    },
+  });
+
+  // Recent history — completed items from last 24h
+  const { data: recentRequests = [] } = useQuery({
+    queryKey: ['recent-requests-history'],
+    queryFn: async () => {
+      const { data } = await from('guest_requests').select('*')
+        .in('status', ['completed', 'cancelled'])
+        .gte('updated_at', oneDayAgo)
+        .order('updated_at', { ascending: false }).limit(20);
+      return (data || []) as any[];
+    },
+  });
+
+  const { data: recentTours = [] } = useQuery({
+    queryKey: ['recent-tours-history'],
+    queryFn: async () => {
+      const { data } = await from('guest_tours').select('*')
+        .in('status', ['completed', 'cancelled'])
+        .gte('created_at', oneDayAgo)
+        .order('created_at', { ascending: false }).limit(20);
       return (data || []) as any[];
     },
   });
@@ -378,6 +413,46 @@ const ExperiencesPage = () => {
             </div>
           ))}
         </div>
+      )}
+
+      {/* ── Recent History (last 24h) ── */}
+      {(recentRequests.length > 0 || recentTours.length > 0) && (
+        <Collapsible open={historyOpen} onOpenChange={setHistoryOpen} className="mt-6">
+          <CollapsibleTrigger className="flex items-center gap-2 w-full">
+            <History className="w-3.5 h-3.5 text-muted-foreground" />
+            <h2 className="font-display text-xs tracking-wider text-muted-foreground uppercase">
+              Recent History ({recentRequests.length + recentTours.length})
+            </h2>
+            <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground ml-auto transition-transform ${historyOpen ? 'rotate-180' : ''}`} />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-2 mt-2">
+            {recentTours.map((tour: any) => (
+              <div key={tour.id} className="border border-border rounded-lg p-3 opacity-60">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-display text-sm text-foreground tracking-wider">{tour.tour_name}</p>
+                    <p className="font-body text-xs text-muted-foreground">{tour.unit_name} · {tour.pax} pax</p>
+                  </div>
+                  <Badge className={`font-body text-xs ${statusColor(tour.status)}`}>{tour.status}</Badge>
+                </div>
+              </div>
+            ))}
+            {recentRequests.map((req: any) => (
+              <div key={req.id} className="border border-border rounded-lg p-3 opacity-60">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      {getRequestIcon(req.request_type)}
+                      <p className="font-display text-sm text-foreground tracking-wider">{req.request_type}</p>
+                    </div>
+                    <p className="font-body text-xs text-muted-foreground">{req.guest_name} · {req.details}</p>
+                  </div>
+                  <Badge className={`font-body text-xs ${statusColor(req.status)}`}>{req.status}</Badge>
+                </div>
+              </div>
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
       )}
     </div>
   );
