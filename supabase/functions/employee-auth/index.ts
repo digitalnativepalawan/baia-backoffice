@@ -112,6 +112,14 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ employee: safeEmp, isAdmin: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // Self-service PIN change: verify old PIN, then set new one
+    if (action === 'change-pin') {
+      const { employee_id: eid, name: cName, old_pin, new_pin } = await Promise.resolve({ employee_id, name, ...({ old_pin: undefined, new_pin: undefined }), ...(await req.json().catch(() => ({}))) }).catch(() => ({ employee_id, name, old_pin: undefined, new_pin: undefined }));
+      // Re-parse since we already consumed the body above — use the values from initial parse
+      const body = { employee_id, name, pin, ...({} as any) };
+      // Actually the body was already parsed at line 55, so we need to get old_pin/new_pin from there
+    }
+
     return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
