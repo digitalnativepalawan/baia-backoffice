@@ -94,7 +94,6 @@ const timeToPercent = (t: string): number => {
 const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => {
   const isMobile = useIsMobile();
   const qc = useQueryClient();
-  const deleteIdRef = useRef<string | null>(null);
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
   const weekDates = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
@@ -115,15 +114,6 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
   // Task editing
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editTaskForm, setEditTaskForm] = useState({ title: '', description: '', due_date: '', due_time: '', employee_id: '' });
-
-  // Keep deleteIdRef in sync
-  useEffect(() => { deleteIdRef.current = deleteId; }, [deleteId]);
-
-  // Expose setDeleteId so ShiftModal can trigger delete
-  useEffect(() => {
-    (window as any).__scheduleDeleteId = setDeleteId;
-    return () => { delete (window as any).__scheduleDeleteId; };
-  }, []);
 
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ['employees-schedule'],
