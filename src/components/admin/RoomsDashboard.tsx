@@ -18,9 +18,17 @@ const from = (table: string) => supabase.from(table as any);
 
 type DetailTab = 'info' | 'orders' | 'documents' | 'notes' | 'tours' | 'vibe' | 'billing';
 
-const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnly?: boolean; canViewDocuments?: boolean }) => {
+interface RoomsDashboardProps {
+  readOnly?: boolean;
+  canViewDocuments?: boolean;
+  initialUnit?: any;
+  singleUnitMode?: boolean;
+  onClose?: () => void;
+}
+
+const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit, singleUnitMode = false, onClose }: RoomsDashboardProps) => {
   const qc = useQueryClient();
-  const [selectedUnit, setSelectedUnit] = useState<any>(null);
+  const [selectedUnit, setSelectedUnit] = useState<any>(initialUnit || null);
   const [detailTab, setDetailTab] = useState<DetailTab>('info');
   const [vibeMode, setVibeMode] = useState<'list' | 'form' | 'detail'>('list');
   const [editingVibeRecord, setEditingVibeRecord] = useState<any>(null);
@@ -488,7 +496,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true }: { readOnl
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <Button size="sm" variant="ghost" onClick={() => { setSelectedUnit(null); setShowCheckInForm(false); }}>
+          <Button size="sm" variant="ghost" onClick={() => { if (singleUnitMode && onClose) { onClose(); } else { setSelectedUnit(null); setShowCheckInForm(false); } }}>
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <h3 className="font-display text-lg tracking-wider text-foreground">{selectedUnit.name}</h3>
