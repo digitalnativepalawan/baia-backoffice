@@ -169,7 +169,7 @@ const ReceptionPage = () => {
       const { data } = await from('housekeeping_orders').select('*').order('created_at', { ascending: false });
       return (data || []) as any[];
     },
-    refetchInterval: 15000,
+    refetchInterval: 5000,
   });
 
   // Derive latest active order per unit
@@ -584,6 +584,26 @@ const ReceptionPage = () => {
   };
 
   // ── CHECK-OUT ──
+  const [checkOutHousekeeper, setCheckOutHousekeeper] = useState('');
+
+  // Fetch housekeeping employees for checkout picker
+  const { data: hkEmployeesForCheckout = [] } = useQuery({
+    queryKey: ['housekeeping-employees'],
+    queryFn: async () => {
+      const { data: perms } = await supabase.from('employee_permissions')
+        .select('employee_id')
+        .like('permission', 'housekeeping%');
+      const hkIds = new Set((perms || []).map((p: any) => p.employee_id));
+      const { data: emps } = await supabase.from('employees')
+        .select('id, name, display_name, whatsapp_number')
+        .eq('active', true)
+        .order('name');
+      const all = (emps || []) as any[];
+      const filtered = all.filter(e => hkIds.has(e.id));
+      return filtered.length > 0 ? filtered : all;
+    },
+  });
+
   const handleCheckOut = async () => {
     if (!checkOutBooking || !checkOutUnit) return;
     setCheckingOut(true);
@@ -610,25 +630,48 @@ const ReceptionPage = () => {
       await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', checkOutUnit.id);
 
       const existing = activeHkOrders.find((o: any) => o.unit_name === checkOutUnit.name);
+      const hkEmp = hkEmployeesForCheckout.find((e: any) => e.id === checkOutHousekeeper);
+
       if (!existing) {
         await from('housekeeping_orders').insert({
           unit_name: checkOutUnit.name,
           room_type_id: (checkOutUnit as any).room_type_id || null,
           status: 'pending_inspection',
+          assigned_to: checkOutHousekeeper || null,
+          accepted_by: checkOutHousekeeper || null,
+          accepted_by_name: hkEmp ? (hkEmp.display_name || hkEmp.name) : '',
+          accepted_at: checkOutHousekeeper ? new Date().toISOString() : null,
         });
+      } else if (checkOutHousekeeper) {
+        await from('housekeeping_orders').update({
+          assigned_to: checkOutHousekeeper,
+          accepted_by: checkOutHousekeeper,
+          accepted_by_name: hkEmp ? (hkEmp.display_name || hkEmp.name) : '',
+          accepted_at: new Date().toISOString(),
+        }).eq('id', existing.id);
       }
 
-      await logAudit('updated', 'units', checkOutUnit.id, `Checkout: ${checkOutBooking.resort_ops_guests?.full_name} from ${checkOutUnit.name}`);
+      // Send WhatsApp notification
+      if (hkEmp && hkEmp.whatsapp_number) {
+        const { openWhatsApp } = await import('@/lib/messenger');
+        const gName = checkOutBooking.resort_ops_guests?.full_name || 'Guest';
+        const msg = `🧹 *Room ${checkOutUnit.name} needs cleaning*\n\nGuest "${gName}" has checked out.\nAssigned to you by ${staffName}.\n\nPlease start when ready.`;
+        openWhatsApp(hkEmp.whatsapp_number, msg);
+      }
+
+      await logAudit('updated', 'units', checkOutUnit.id, `Checkout: ${checkOutBooking.resort_ops_guests?.full_name} from ${checkOutUnit.name}${hkEmp ? ` — assigned to ${hkEmp.display_name || hkEmp.name}` : ''}`);
 
       qc.invalidateQueries({ queryKey: ['room-transactions', checkOutUnit.id] });
       qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
       qc.invalidateQueries({ queryKey: ['rooms-units'] });
       qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
 
       setCheckOutOpen(false);
       setCheckOutBooking(null);
       setCheckOutUnit(null);
-      toast.success('Checkout complete — housekeeping order created');
+      setCheckOutHousekeeper('');
+      toast.success(`Checkout complete${hkEmp ? ` — ${hkEmp.display_name || hkEmp.name} notified` : ''}`);
     } catch {
       toast.error('Checkout failed');
     } finally {
