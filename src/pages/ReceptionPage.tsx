@@ -10,7 +10,9 @@ import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
-import { ArrowLeft, LogIn, LogOut, DollarSign, BedDouble, MapPin, Car, Bike, Palmtree, UtensilsCrossed, ClipboardList, Sparkles, Receipt, ChevronDown, ChevronUp, CheckCircle, Clock, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, LogIn, LogOut, DollarSign, BedDouble, MapPin, Car, Bike, Palmtree, UtensilsCrossed, ClipboardList, Sparkles, Receipt, ChevronDown, ChevronUp, CheckCircle, Clock, ShieldCheck, Eye } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import RoomsDashboard from '@/components/admin/RoomsDashboard';
 import AddPaymentModal from '@/components/rooms/AddPaymentModal';
 import HousekeeperPickerModal from '@/components/rooms/HousekeeperPickerModal';
 import PasswordConfirmModal from '@/components/housekeeping/PasswordConfirmModal';
@@ -130,6 +132,10 @@ const ReceptionPage = () => {
   const [acceptingHkOrderId, setAcceptingHkOrderId] = useState<string | null>(null);
   const [forcingReady, setForcingReady] = useState<string | null>(null);
 
+  // Room detail sheet state
+  const [detailUnit, setDetailUnit] = useState<any>(null);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const hasDocAccess = isAdmin || hasAccess(perms, 'documents');
   const { data: paymentMethods = [] } = usePaymentMethods();
 
   // Fetch housekeeping employees for checkout picker
@@ -810,15 +816,19 @@ const ReceptionPage = () => {
                     className="font-display text-[10px] tracking-wider min-h-[32px]">
                     <Receipt className="w-3 h-3 mr-0.5" /> Bill {billUnitId === unit.id ? <ChevronUp className="w-3 h-3 ml-0.5" /> : <ChevronDown className="w-3 h-3 ml-0.5" />}
                   </Button>
-                  {canDoEdit && (
-                    <Button size="sm" variant="outline" onClick={() => handleSendToCleanWithPicker(unit)}
-                      disabled={sendingClean === unit.id}
-                      className="font-display text-[10px] tracking-wider min-h-[32px]">
-                      <Sparkles className="w-3 h-3 mr-0.5" /> {sendingClean === unit.id ? '...' : 'Clean'}
-                    </Button>
-                  )}
-                </div>
-                {billUnitId === unit.id && <InlineBill unitId={unit.id} />}
+                   {canDoEdit && (
+                     <Button size="sm" variant="outline" onClick={() => handleSendToCleanWithPicker(unit)}
+                       disabled={sendingClean === unit.id}
+                       className="font-display text-[10px] tracking-wider min-h-[32px]">
+                       <Sparkles className="w-3 h-3 mr-0.5" /> {sendingClean === unit.id ? '...' : 'Clean'}
+                     </Button>
+                   )}
+                   <Button size="sm" variant="outline" onClick={() => { setDetailUnit(unit); setDetailSheetOpen(true); }}
+                     className="font-display text-[10px] tracking-wider min-h-[32px]">
+                     <Eye className="w-3 h-3 mr-0.5" /> Details
+                   </Button>
+                 </div>
+                 {billUnitId === unit.id && <InlineBill unitId={unit.id} />}
               </div>
             );
           })}
@@ -1391,6 +1401,25 @@ const ReceptionPage = () => {
         title="Accept Assignment"
         description="Enter your name and PIN to accept this housekeeping assignment."
       />
+      {/* ══════ ROOM DETAIL SHEET ══════ */}
+      <Sheet open={detailSheetOpen} onOpenChange={(open) => { setDetailSheetOpen(open); if (!open) setDetailUnit(null); }}>
+        <SheetContent side="bottom" className="h-[90vh] overflow-y-auto p-0">
+          <SheetHeader className="px-4 pt-4 pb-2">
+            <SheetTitle className="font-display text-lg tracking-wider">{detailUnit?.name} — Room Details</SheetTitle>
+          </SheetHeader>
+          <div className="px-4 pb-6">
+            {detailUnit && (
+              <RoomsDashboard
+                readOnly={!canDoEdit}
+                canViewDocuments={hasDocAccess}
+                initialUnit={detailUnit}
+                singleUnitMode
+                onClose={() => { setDetailSheetOpen(false); setDetailUnit(null); }}
+              />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
