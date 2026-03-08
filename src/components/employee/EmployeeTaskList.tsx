@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Plus, Check, Pencil, Trash2, X, MessageCircle, Phone, Users } from 'lucide-react';
+import { Plus, Check, CheckCircle2, Pencil, Trash2, X, MessageCircle, Phone, Users, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { sendMessengerMessage, openWhatsApp } from '@/lib/messenger';
 import { useResortProfile } from '@/hooks/useResortProfile';
+import TaskCompletionPanel from './TaskCompletionPanel';
+import TaskDetailsModal from './TaskDetailsModal';
 
 interface Props {
   employeeId?: string;
@@ -33,6 +35,8 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
   const [editDesc, setEditDesc] = useState('');
   const [editDue, setEditDue] = useState('');
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+  const [detailTask, setDetailTask] = useState<any>(null);
 
   const activeEmployees = employees.filter(e => e.active !== false);
 
@@ -52,6 +56,13 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
     return true;
   });
 
+  // Sort: pending first, completed last
+  const sorted = [...filtered].sort((a, b) => {
+    if (a.status === 'completed' && b.status !== 'completed') return 1;
+    if (a.status !== 'completed' && b.status === 'completed') return -1;
+    return 0;
+  });
+
   const toggleAssignee = (id: string) => {
     setAssignees(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     setSelectAll(false);
@@ -60,6 +71,14 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
   const handleSelectAll = (checked: boolean) => {
     setSelectAll(checked);
     setAssignees(checked ? activeEmployees.map(e => e.id) : []);
+  };
+
+  const getStaffName = () => {
+    if (employeeId) {
+      const emp = employees.find(e => e.id === employeeId);
+      return emp?.display_name || emp?.name || 'Staff';
+    }
+    return createdBy === 'employee' ? 'Staff' : 'Admin';
   };
 
   const bulkSendMessages = (targetIds: string[], taskTitle: string, taskDesc: string, taskDue: string, method: 'whatsapp' | 'messenger' | 'none') => {
@@ -76,7 +95,6 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
       const msg = `Hi ${displayName},\n\nTask: ${taskTitle}${taskDesc ? '\n' + taskDesc : ''}${due}\n\n— ${resortProfile?.resort_name || 'Resort'} Admin`;
 
       if (method === 'whatsapp' && emp.whatsapp_number) {
-        // Stagger opens to avoid popup blocking
         setTimeout(() => openWhatsApp(emp.whatsapp_number!, msg), idx * 800);
         sent++;
       } else if (method === 'messenger' && emp.messenger_link) {
@@ -122,13 +140,36 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
     bulkSendMessages(targetIds, savedTitle, savedDesc, savedDue, sendVia);
   };
 
-  const toggleComplete = async (task: any) => {
-    const newStatus = task.status === 'completed' ? 'pending' : 'completed';
+  const handleCompleteConfirm = async (task: any, comment: string, imageUrl: string) => {
+    const completionMeta = {
+      completed_by: getStaffName(),
+      comment: comment.trim() || null,
+      image_url: imageUrl || null,
+    };
     await (supabase.from('employee_tasks' as any) as any).update({
-      status: newStatus,
-      completed_at: newStatus === 'completed' ? new Date().toISOString() : null,
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      completion_meta: completionMeta,
     }).eq('id', task.id);
+    setCompletingTaskId(null);
     qc.invalidateQueries({ queryKey: ['employee-tasks'] });
+    toast.success('Task completed ✔');
+  };
+
+  const toggleComplete = async (task: any) => {
+    if (task.status === 'completed') {
+      // Uncomplete
+      await (supabase.from('employee_tasks' as any) as any).update({
+        status: 'pending',
+        completed_at: null,
+        completion_meta: {},
+      }).eq('id', task.id);
+      qc.invalidateQueries({ queryKey: ['employee-tasks'] });
+      toast.success('Task reopened');
+    } else {
+      // Open completion panel
+      setCompletingTaskId(task.id);
+    }
   };
 
   const saveEdit = async () => {
@@ -149,7 +190,10 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
     toast.success('Task deleted');
   };
 
-  const getEmployeeName = (id: string) => employees.find(e => e.id === id)?.name || '';
+  const getEmployeeName = (id: string) => {
+    const emp = employees.find(e => e.id === id);
+    return emp?.display_name || emp?.name || '';
+  };
 
   return (
     <div className="space-y-3">
@@ -175,7 +219,6 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
               <label className="font-body text-xs text-muted-foreground flex items-center gap-1">
                 <Users className="w-3 h-3" /> Assign to
               </label>
-              {/* Selected badges */}
               {assignees.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {selectAll ? (
@@ -190,7 +233,6 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
                   )}
                 </div>
               )}
-              {/* Checkbox list */}
               <div className="border border-border rounded-md p-2 max-h-36 overflow-y-auto space-y-1.5 bg-secondary">
                 <label className="flex items-center gap-2 cursor-pointer font-body text-sm font-semibold text-foreground">
                   <Checkbox checked={selectAll} onCheckedChange={(c) => handleSelectAll(!!c)} />
@@ -204,8 +246,8 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
                       onCheckedChange={() => toggleAssignee(emp.id)}
                     />
                     {emp.display_name || emp.name}
-                    {emp.whatsapp_number && <span className="text-green-500 text-xs">📱</span>}
-                    {emp.messenger_link && <span className="text-blue-500 text-xs">💬</span>}
+                    {emp.whatsapp_number && <span className="text-xs">📱</span>}
+                    {emp.messenger_link && <span className="text-xs">💬</span>}
                   </label>
                 ))}
               </div>
@@ -244,90 +286,155 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
         </div>
       )}
 
-      {filtered.length === 0 && <p className="font-body text-xs text-muted-foreground text-center py-4">No tasks</p>}
+      {sorted.length === 0 && <p className="font-body text-xs text-muted-foreground text-center py-4">No tasks</p>}
 
-      {filtered.map(task => (
-        <div key={task.id} className={`border rounded-lg p-3 space-y-1 ${task.status === 'completed' ? 'border-border/50 opacity-60' : 'border-border'}`}>
-          {editId === task.id ? (
-            <div className="space-y-2">
-              <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="bg-secondary border-border text-foreground font-body text-sm" />
-              <Input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="Description" className="bg-secondary border-border text-foreground font-body text-sm" />
-              <Input type="datetime-local" value={editDue} onChange={e => setEditDue(e.target.value)} className="bg-secondary border-border text-foreground font-body text-sm" />
-              <div className="flex gap-2">
-                <Button size="sm" onClick={saveEdit} className="font-display text-xs tracking-wider flex-1">Save</Button>
-                <Button size="sm" variant="outline" onClick={() => setEditId(null)} className="font-display text-xs tracking-wider flex-1">Cancel</Button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  {!employeeId && <p className="font-body text-xs text-primary">{getEmployeeName(task.employee_id)}</p>}
-                  <p className={`font-body text-sm text-foreground ${task.status === 'completed' ? 'line-through' : ''}`}>{task.title}</p>
-                  {task.description && <p className="font-body text-xs text-muted-foreground">{task.description}</p>}
+      {sorted.map(task => {
+        const isCompleted = task.status === 'completed';
+        const meta = task.completion_meta || {};
+        const isCompleting = completingTaskId === task.id;
+
+        return (
+          <div key={task.id} className={`border rounded-lg p-3 space-y-2 transition-all ${isCompleted ? 'border-green-500/30 bg-green-500/5' : 'border-border'}`}>
+            {editId === task.id ? (
+              <div className="space-y-2">
+                <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="bg-secondary border-border text-foreground font-body text-sm" />
+                <Input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="Description" className="bg-secondary border-border text-foreground font-body text-sm" />
+                <Input type="datetime-local" value={editDue} onChange={e => setEditDue(e.target.value)} className="bg-secondary border-border text-foreground font-body text-sm" />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={saveEdit} className="font-display text-xs tracking-wider flex-1">Save</Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditId(null)} className="font-display text-xs tracking-wider flex-1">Cancel</Button>
                 </div>
-                <div className="flex items-center gap-0.5">
-                   {!readOnly && (
-                     <Button size="icon" variant="ghost" className="h-10 w-10" onClick={() => toggleComplete(task)}>
-                       <Check className={`${task.status === 'completed' ? 'w-7 h-7 text-green-500 stroke-[4]' : 'w-5 h-5 text-muted-foreground'}`} />
-                     </Button>
-                   )}
-                   {readOnly && task.status === 'completed' && (
-                     <Check className="w-7 h-7 text-green-500 stroke-[4] mr-1" />
-                   )}
-                   {!readOnly && (
-                     <>
-                       <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground" onClick={() => {
-                         setEditId(task.id); setEditTitle(task.title); setEditDesc(task.description || '');
-                         setEditDue(task.due_date ? format(new Date(task.due_date), "yyyy-MM-dd'T'HH:mm") : '');
-                       }}><Pencil className="w-5 h-5" /></Button>
-                       <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive"
-                         onClick={() => deleteTask(task.id)}><Trash2 className="w-5 h-5" /></Button>
-                       <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground"
-                         title="Send via Messenger"
-                         disabled={(() => { const emp = employees.find(e => e.id === task.employee_id); return !emp?.messenger_link || emp?.active === false; })()}
-                         onClick={() => {
-                           const emp = employees.find(e => e.id === task.employee_id);
-                           if (emp) sendMessengerMessage(
-                             { name: emp.name, display_name: emp.display_name, messenger_link: emp.messenger_link || '', active: emp.active !== false },
-                             `Task: ${task.title}${task.description ? '\n' + task.description : ''}`,
-                             resortProfile?.resort_name || 'Resort'
-                           );
-                         }}>
-                         <MessageCircle className="w-5 h-5" />
-                       </Button>
-                       <Button size="icon" variant="ghost" className="h-10 w-10 text-green-600"
-                         title="Send via WhatsApp"
-                         disabled={(() => { const emp = employees.find(e => e.id === task.employee_id); return !emp?.whatsapp_number || emp?.active === false; })()}
-                         onClick={() => {
-                           const emp = employees.find(e => e.id === task.employee_id);
-                           if (emp?.whatsapp_number) {
-                             const displayName = emp.display_name || emp.name;
-                             const due = task.due_date ? `\nDue: ${format(new Date(task.due_date), 'MMM d, h:mm a')}` : '';
-                             const msg = `Hi ${displayName},\n\nTask: ${task.title}${task.description ? '\n' + task.description : ''}${due}\n\n— ${resortProfile?.resort_name || 'Resort'} Admin`;
-                             openWhatsApp(emp.whatsapp_number, msg);
-                           }
-                         }}>
-                         <Phone className="w-5 h-5" />
-                       </Button>
-                     </>
-                   )}
-                 </div>
               </div>
-              <div className="flex gap-2 items-center">
-                {task.due_date && (
-                  <span className="font-body text-xs text-muted-foreground">
-                    Due: {format(new Date(task.due_date), 'MMM d, h:mm a')}
-                  </span>
+            ) : isCompleting ? (
+              <TaskCompletionPanel
+                taskTitle={task.title}
+                onConfirm={(comment, imageUrl) => handleCompleteConfirm(task, comment, imageUrl)}
+                onCancel={() => setCompletingTaskId(null)}
+              />
+            ) : (
+              <>
+                <div className="flex justify-between items-start">
+                  <div className="flex-1 min-w-0">
+                    {!employeeId && <p className="font-body text-xs text-primary">{getEmployeeName(task.employee_id)}</p>}
+
+                    {isCompleted && (
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+                        <span className="font-display text-xs tracking-wider text-green-600">Completed</span>
+                      </div>
+                    )}
+
+                    <p className={`font-body text-sm text-foreground ${isCompleted ? 'line-through opacity-60' : ''}`}>{task.title}</p>
+                    {task.description && <p className="font-body text-xs text-muted-foreground">{task.description}</p>}
+
+                    {/* Completion details inline */}
+                    {isCompleted && (
+                      <div className="mt-1.5 space-y-0.5">
+                        {meta.completed_by && (
+                          <p className="font-body text-xs text-muted-foreground">
+                            By: <span className="text-foreground font-medium">{meta.completed_by}</span>
+                          </p>
+                        )}
+                        {task.completed_at && (
+                          <p className="font-body text-xs text-muted-foreground">
+                            {format(new Date(task.completed_at), 'h:mm a — MMM d')}
+                          </p>
+                        )}
+                        {meta.comment && (
+                          <p className="font-body text-xs text-muted-foreground italic">"{meta.comment}"</p>
+                        )}
+                        {meta.image_url && (
+                          <a href={meta.image_url} target="_blank" rel="noopener noreferrer">
+                            <img src={meta.image_url} alt="proof" className="h-12 w-12 rounded object-cover border border-border mt-1" />
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    {!readOnly && (
+                      <Button size="icon" variant="ghost" className="h-10 w-10" onClick={() => toggleComplete(task)}>
+                        {isCompleted ? (
+                          <CheckCircle2 className="w-7 h-7 text-green-500" />
+                        ) : (
+                          <Check className="w-5 h-5 text-muted-foreground" />
+                        )}
+                      </Button>
+                    )}
+                    {readOnly && isCompleted && (
+                      <CheckCircle2 className="w-7 h-7 text-green-500 mr-1" />
+                    )}
+                    {/* Details button for completed tasks */}
+                    {isCompleted && (
+                      <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground"
+                        onClick={() => setDetailTask(task)} title="View details">
+                        <Eye className="w-5 h-5" />
+                      </Button>
+                    )}
+                    {!readOnly && (
+                      <>
+                        <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground" onClick={() => {
+                          setEditId(task.id); setEditTitle(task.title); setEditDesc(task.description || '');
+                          setEditDue(task.due_date ? format(new Date(task.due_date), "yyyy-MM-dd'T'HH:mm") : '');
+                        }}><Pencil className="w-5 h-5" /></Button>
+                        <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteTask(task.id)}><Trash2 className="w-5 h-5" /></Button>
+                        <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground"
+                          title="Send via Messenger"
+                          disabled={(() => { const emp = employees.find(e => e.id === task.employee_id); return !emp?.messenger_link || emp?.active === false; })()}
+                          onClick={() => {
+                            const emp = employees.find(e => e.id === task.employee_id);
+                            if (emp) sendMessengerMessage(
+                              { name: emp.name, display_name: emp.display_name, messenger_link: emp.messenger_link || '', active: emp.active !== false },
+                              `Task: ${task.title}${task.description ? '\n' + task.description : ''}`,
+                              resortProfile?.resort_name || 'Resort'
+                            );
+                          }}>
+                          <MessageCircle className="w-5 h-5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-10 w-10 text-green-600"
+                          title="Send via WhatsApp"
+                          disabled={(() => { const emp = employees.find(e => e.id === task.employee_id); return !emp?.whatsapp_number || emp?.active === false; })()}
+                          onClick={() => {
+                            const emp = employees.find(e => e.id === task.employee_id);
+                            if (emp?.whatsapp_number) {
+                              const displayName = emp.display_name || emp.name;
+                              const due = task.due_date ? `\nDue: ${format(new Date(task.due_date), 'MMM d, h:mm a')}` : '';
+                              const msg = `Hi ${displayName},\n\nTask: ${task.title}${task.description ? '\n' + task.description : ''}${due}\n\n— ${resortProfile?.resort_name || 'Resort'} Admin`;
+                              openWhatsApp(emp.whatsapp_number, msg);
+                            }
+                          }}>
+                          <Phone className="w-5 h-5" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {!isCompleted && (
+                  <div className="flex gap-2 items-center">
+                    {task.due_date && (
+                      <span className="font-body text-xs text-muted-foreground">
+                        Due: {format(new Date(task.due_date), 'MMM d, h:mm a')}
+                      </span>
+                    )}
+                    <Badge variant={task.status === 'in_progress' ? 'secondary' : 'outline'}
+                      className="font-body text-xs capitalize">{task.status}</Badge>
+                    <Badge variant="outline" className="font-body text-xs">{task.created_by}</Badge>
+                  </div>
                 )}
-                <Badge variant={task.status === 'completed' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}
-                  className="font-body text-xs capitalize">{task.status}</Badge>
-                <Badge variant="outline" className="font-body text-xs">{task.created_by}</Badge>
-              </div>
-            </>
-          )}
-        </div>
-      ))}
+              </>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Task Details Modal */}
+      <TaskDetailsModal
+        open={!!detailTask}
+        onOpenChange={(open) => { if (!open) setDetailTask(null); }}
+        task={detailTask}
+        employeeName={detailTask ? getEmployeeName(detailTask.employee_id) : undefined}
+      />
     </div>
   );
 };
