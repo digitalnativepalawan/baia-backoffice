@@ -1,77 +1,37 @@
 
-## What needs to happen
 
-The `ActionRequiredPanel` component was never actually built — only planned. The home screen wrappers (`ReceptionHome`, `KitchenHome`, `BarHome`, `HousekeepingHome`, `ExperiencesHome`, `StaffOrderHome`) are bare single-component wrappers with no layout of their own.
+## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
 
-The cleanest approach: create the `ActionRequiredPanel`, then inject it at the **top of the StaffShell** before each role-specific home — this avoids touching 6 individual home files and keeps it DRY.
+### Issues Found
 
----
+1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
 
-## Files to change
+2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
 
-**1. Create `src/components/staff/ActionRequiredPanel.tsx`**
+### Changes
 
-- Reads `emp_id` from `localStorage` and `permissions` from session storage
-- Queries `employee_tasks` where `status != 'completed'` AND `archived_at IS NULL`
-- Filtering:
-  - Admin → all tasks
-  - Staff → only tasks where `employee_id = emp_id`
-- Sorts: overdue first → then high priority (tasks without due date but urgent) → then due today
-- Limits to 5 results
-- Each card shows:
-  - Left colored bar: red = overdue, amber = due today, blue = default
-  - Bold title
-  - Assigned employee name (fetched from employees list joined via `employee_id`)
-  - Due date label ("Overdue", "Due today", "Due MMM d")
-  - Attachment badge if `completion_meta` has `image_url` (as proxy for attachments)
-  - Comment count (using `description` length as a proxy — no separate comments table)
-  - Action button: `status === 'in_progress'` → **Continue**, `status === 'pending'` → **Start Task**
-  - Button click navigates to `/employee-portal` with the task pre-highlighted (or opens `TaskCompletionPanel` inline via a state callback)
-- "View All Tasks" button → navigates to `/employee-portal`
-- If 0 tasks: shows a clean "All clear" empty state (green checkmark, no card)
+**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
+- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
+- Increase touch target size for edit/delete buttons on shift blocks
+- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
 
-**2. Edit `src/pages/StaffShell.tsx`**
+**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
+- Add an "Assign Task" button alongside "Add Shift" 
+- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
+- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
+- For other tasks: creates an `employee_tasks` entry with due date and description
+- Tasks appear as colored pills on the timeline (already partially implemented)
 
-- Import `ActionRequiredPanel`
-- Render it between the role switcher tabs and the role-specific home screen:
+**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
+- In the task detail dialog, show who completed the task and when (`completed_at`)
+- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
+- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
 
-```text
-[Header]
-[Role Switcher Tabs]
-<ActionRequiredPanel />          ← NEW: always visible above role content
-[ReceptionHome / KitchenHome / ...]
-```
+**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
+- Add edit capability: change title, description, due date, reassign to different employee
+- Add delete capability for tasks
+- Show completion audit trail
 
-No other files need to change. The existing home screens keep all their operational content below.
+### Files to Edit
+- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
 
----
-
-## Visual design
-
-```text
-┌─────────────────────────────────────┐
-│ ACTION REQUIRED          View All > │
-├─────────────────────────────────────┤
-│ ▌ Fix leaking pipe in Cabin 3       │  ← red bar = overdue
-│   Maintenance · Overdue · 📎        │
-│                    [Start Task →]   │
-├─────────────────────────────────────┤
-│ ▌ Deep clean Room 5                 │  ← amber bar = due today
-│   Housekeeping · Due today          │
-│                    [Continue →]     │
-└─────────────────────────────────────┘
-```
-
-Priority color key:
-- Red left border → overdue
-- Amber left border → due today
-- Blue left border → in progress
-- Gray → pending, no due date
-
----
-
-## No database changes needed
-
-`employee_tasks` already has: `id`, `title`, `description`, `status`, `due_date`, `employee_id`, `archived_at`, `completion_meta`
-
-The query is a simple SELECT with filters — no migration required.

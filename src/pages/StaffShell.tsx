@@ -9,6 +9,7 @@ import KitchenHome from '@/components/staff/KitchenHome';
 import BarHome from '@/components/staff/BarHome';
 import ExperiencesHome from '@/components/staff/ExperiencesHome';
 import StaffOrderHome from '@/components/staff/StaffOrderHome';
+import ActionRequiredPanel from '@/components/staff/ActionRequiredPanel';
 
 const SESSION_KEY = 'staff_home_session';
 
@@ -105,6 +106,9 @@ const StaffShell = () => {
             ))}
           </div>
         )}
+
+        {/* Action Required — always visible, sorted by urgency */}
+        <ActionRequiredPanel />
 
         {/* Role-specific home screen */}
         {activeRole === 'reception' && <ReceptionHome />}
