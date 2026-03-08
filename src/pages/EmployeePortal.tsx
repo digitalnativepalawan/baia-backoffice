@@ -276,7 +276,7 @@ const EmployeePortal = () => {
             <Button key={key} size="sm" variant={tab === key ? 'default' : 'outline'}
               onClick={() => {
                 if (key === 'dashboard') {
-                  navigate(empPermissions.includes('admin') ? '/admin' : '/manager');
+                  navigate('/admin');
                   return;
                 }
                 setTab(key);
