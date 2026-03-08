@@ -52,9 +52,9 @@ const urgencyConfig: Record<UrgencyLevel, { bar: string; label: string; labelCla
     icon: <AlertTriangle className="w-3 h-3" />,
   },
   today: {
-    bar: 'bg-yellow-500',
+    bar: 'bg-warning',
     label: 'Due today',
-    labelClass: 'text-yellow-500',
+    labelClass: 'text-warning',
     icon: <Clock className="w-3 h-3" />,
   },
   inprogress: {
