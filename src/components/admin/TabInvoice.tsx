@@ -578,6 +578,26 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
           )}
         </div>
       )}
+
+      {/* Admin: Delete entire tab */}
+      {isAdmin && (
+        <div className="pt-2">
+          {confirmDeleteTab ? (
+            <div className="flex gap-2">
+              <Button variant="destructive" className="flex-1 font-display text-xs tracking-wider min-h-[44px] animate-pulse" onClick={deleteEntireTab}>
+                <Trash2 className="w-4 h-4 mr-1" /> Confirm Delete Tab
+              </Button>
+              <Button variant="outline" className="font-body text-xs min-h-[44px]" onClick={() => setConfirmDeleteTab(false)}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" className="w-full font-body text-xs gap-1.5 min-h-[44px] border-destructive/30 text-destructive hover:bg-destructive/10" onClick={() => setConfirmDeleteTab(true)}>
+              <Trash2 className="w-4 h-4" /> Delete Entire Tab
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 };
