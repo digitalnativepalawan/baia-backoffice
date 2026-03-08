@@ -1111,24 +1111,28 @@ const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, saveShift,
 );
 
 // Delete Confirmation
-const DeleteConfirm = ({ deleteId, setDeleteId, onConfirm }: { deleteId: string | null; setDeleteId: (v: string | null) => void; onConfirm: (id: string) => void }) => (
-  <AlertDialog open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(null); }}>
-    <AlertDialogContent className="bg-card border-border">
-      <AlertDialogHeader>
-        <AlertDialogTitle className="font-display text-foreground">Delete Shift?</AlertDialogTitle>
-        <AlertDialogDescription className="font-body text-muted-foreground">
-          This action cannot be undone.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel className="font-display text-xs">Cancel</AlertDialogCancel>
-        <AlertDialogAction onClick={() => { if (deleteId) onConfirm(deleteId); }} className="font-display text-xs bg-destructive text-destructive-foreground">
-          Delete
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
-);
+const DeleteConfirm = ({ deleteId, setDeleteId, onConfirm }: { deleteId: string | null; setDeleteId: (v: string | null) => void; onConfirm: (id: string) => void }) => {
+  const idRef = useRef<string | null>(null);
+  useEffect(() => { if (deleteId) idRef.current = deleteId; }, [deleteId]);
+  return (
+    <AlertDialog open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(null); }}>
+      <AlertDialogContent className="bg-card border-border">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="font-display text-foreground">Delete Shift?</AlertDialogTitle>
+          <AlertDialogDescription className="font-body text-muted-foreground">
+            This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel className="font-display text-xs">Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => { if (idRef.current) onConfirm(idRef.current); }} className="font-display text-xs bg-destructive text-destructive-foreground">
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+};
 
 // Task Assignment Modal
 const TaskAssignModal = ({ open, onClose, form, setForm, employees, units, onSave }: {
