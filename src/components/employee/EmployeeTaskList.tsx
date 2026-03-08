@@ -190,10 +190,16 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
     toast.success('Task updated');
   };
 
-  const deleteTask = async (id: string) => {
-    await (supabase.from('employee_tasks' as any) as any).delete().eq('id', id);
+  const archiveTask = async (id: string) => {
+    await (supabase.from('employee_tasks' as any) as any).update({ archived_at: new Date().toISOString() }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['employee-tasks'] });
-    toast.success('Task deleted');
+    toast.success('Task archived');
+  };
+
+  const restoreTask = async (id: string) => {
+    await (supabase.from('employee_tasks' as any) as any).update({ archived_at: null }).eq('id', id);
+    qc.invalidateQueries({ queryKey: ['employee-tasks'] });
+    toast.success('Task restored');
   };
 
   const getEmployeeName = (id: string) => {
