@@ -467,40 +467,40 @@ const AdminPage = () => {
             {opsTabs.length > 0 && (
               <div>
                 <SectionLabel label="Operations" />
-                <div className="flex flex-wrap gap-1 mt-1">
+                <TabsList className="flex flex-wrap gap-1 mt-1 h-auto bg-transparent p-0">
                   {opsTabs.map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="font-display text-xs tracking-wider min-h-[44px] px-3 py-1.5 rounded-md border border-border data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary bg-secondary text-muted-foreground">
                       {t.label}
                     </TabsTrigger>
                   ))}
-                </div>
+                </TabsList>
               </div>
             )}
             {peopleTabs.length > 0 && (
               <div>
                 <SectionLabel label="People" />
-                <div className="flex flex-wrap gap-1 mt-1">
+                <TabsList className="flex flex-wrap gap-1 mt-1 h-auto bg-transparent p-0">
                   {peopleTabs.map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="font-display text-xs tracking-wider min-h-[44px] px-3 py-1.5 rounded-md border border-border data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary bg-secondary text-muted-foreground">
                       {t.label}
                     </TabsTrigger>
                   ))}
-                </div>
+                </TabsList>
               </div>
             )}
             {cfgTabs.length > 0 && (
               <div>
                 <SectionLabel label="Config" />
-                <div className="flex flex-wrap gap-1 mt-1">
+                <TabsList className="flex flex-wrap gap-1 mt-1 h-auto bg-transparent p-0">
                   {cfgTabs.map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="font-display text-xs tracking-wider min-h-[44px] px-3 py-1.5 rounded-md border border-border data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary bg-secondary text-muted-foreground">
                       {t.label}
                     </TabsTrigger>
                   ))}
-                </div>
+                </TabsList>
               </div>
             )}
           </div>
