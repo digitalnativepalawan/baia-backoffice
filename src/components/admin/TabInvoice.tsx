@@ -206,7 +206,49 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
     }
   };
 
-  // Build a combined order for PDF/WhatsApp (all items across all orders)
+  const deleteOrderFromTab = async (orderId: string) => {
+    try {
+      await supabase.from('orders').delete().eq('id', orderId);
+      qc.invalidateQueries({ queryKey: ['tab-orders', tabId] });
+      qc.invalidateQueries({ queryKey: ['orders-admin'] });
+      setConfirmDeleteOrder(null);
+      toast.success('Order removed from tab');
+    } catch {
+      toast.error('Failed to delete order');
+    }
+  };
+
+  const deleteEntireTab = async () => {
+    try {
+      // Delete all orders in the tab first
+      const orderIds = orders.map(o => o.id);
+      if (orderIds.length > 0) {
+        await supabase.from('orders').delete().in('id', orderIds);
+      }
+      await supabase.from('tabs').delete().eq('id', tabId);
+      qc.invalidateQueries({ queryKey: ['tabs-admin'] });
+      qc.invalidateQueries({ queryKey: ['orders-admin'] });
+      toast.success('Tab deleted');
+      onClose();
+    } catch {
+      toast.error('Failed to delete tab');
+    }
+  };
+
+  const updateOrderItems = async (orderId: string, updatedItems: OrderItem[]) => {
+    const newTotal = updatedItems.reduce((s, i) => s + i.price * i.qty, 0);
+    const newSc = Math.round(newTotal * (scPct / 100));
+    await supabase.from('orders').update({
+      items: updatedItems as any,
+      total: newTotal,
+      service_charge: newSc,
+    }).eq('id', orderId);
+    qc.invalidateQueries({ queryKey: ['tab-orders', tabId] });
+    qc.invalidateQueries({ queryKey: ['orders-admin'] });
+    setEditingOrder(null);
+    toast.success('Order updated');
+  };
+
   const combinedOrder = {
     id: tabId,
     order_type: tab.location_type,
