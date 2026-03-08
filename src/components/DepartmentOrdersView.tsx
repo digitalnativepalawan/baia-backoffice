@@ -13,6 +13,7 @@ import { canEdit } from '@/lib/permissions';
 
 interface DepartmentOrdersViewProps {
   department: 'kitchen' | 'bar';
+  embedded?: boolean;
 }
 
 type DeptStatus = 'pending' | 'preparing' | 'ready';
