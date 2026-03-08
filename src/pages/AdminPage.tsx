@@ -569,7 +569,7 @@ const AdminPage = () => {
                   </div>
                 </>
               ) : selectedTabId ? (
-                <TabInvoice tabId={selectedTabId} onClose={() => setSelectedTabId(null)} />
+                <TabInvoice tabId={selectedTabId} onClose={() => setSelectedTabId(null)} isAdmin={isAdmin} />
               ) : (
                 <div className="space-y-3">
                   {(() => {
