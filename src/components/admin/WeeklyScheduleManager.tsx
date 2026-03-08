@@ -277,23 +277,32 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
   }, [schedules]);
 
   const saveShift = async () => {
-    if (!shiftForm.employee_id || !shiftForm.schedule_date) return;
-    const excludeId = shiftModal?.mode === 'edit' ? shiftModal.schedule?.id : undefined;
-    if (checkOverlap(shiftForm.employee_id, shiftForm.schedule_date, shiftForm.time_in, shiftForm.time_out, excludeId)) {
-      toast.warning('This shift overlaps with an existing shift for this employee');
-    }
+    if (!shiftForm.employee_id) return;
     if (shiftModal?.mode === 'edit' && shiftModal.schedule) {
+      // Single edit
+      if (checkOverlap(shiftForm.employee_id, shiftForm.schedule_date, shiftForm.time_in, shiftForm.time_out, shiftModal.schedule.id)) {
+        toast.warning('This shift overlaps with an existing shift for this employee');
+      }
       await supabase.from('weekly_schedules').update({
         employee_id: shiftForm.employee_id, schedule_date: shiftForm.schedule_date,
         time_in: shiftForm.time_in, time_out: shiftForm.time_out,
       }).eq('id', shiftModal.schedule.id);
       toast.success('Shift updated');
     } else {
-      await supabase.from('weekly_schedules').insert({
-        employee_id: shiftForm.employee_id, schedule_date: shiftForm.schedule_date,
-        time_in: shiftForm.time_in, time_out: shiftForm.time_out,
+      // Multi-day insert
+      const days = shiftForm.selected_days.length > 0 ? shiftForm.selected_days : [shiftForm.schedule_date];
+      if (days.length === 0) { toast.error('Select at least one day'); return; }
+      let overlapCount = 0;
+      days.forEach(d => {
+        if (checkOverlap(shiftForm.employee_id, d, shiftForm.time_in, shiftForm.time_out)) overlapCount++;
       });
-      toast.success('Shift added');
+      if (overlapCount > 0) toast.warning(`${overlapCount} shift(s) overlap with existing shifts`);
+      const rows = days.map(d => ({
+        employee_id: shiftForm.employee_id, schedule_date: d,
+        time_in: shiftForm.time_in, time_out: shiftForm.time_out,
+      }));
+      await supabase.from('weekly_schedules').insert(rows);
+      toast.success(`${rows.length} shift(s) added`);
     }
     setShiftModal(null);
     qc.invalidateQueries({ queryKey: ['weekly-schedules'] });
