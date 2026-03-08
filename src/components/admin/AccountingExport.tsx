@@ -287,7 +287,7 @@ const AccountingExport = () => {
       </div>
 
       <p className="font-body text-[11px] text-muted-foreground">
-        Exports a ZIP file with: bookings, orders, tabs, experiences, guest requests, housekeeping, tasks, and a revenue summary.
+        Exports a ZIP file with: bookings, orders, tabs, experiences, guest requests, housekeeping, tasks, expenses, and a revenue/expense summary.
       </p>
     </section>
   );
