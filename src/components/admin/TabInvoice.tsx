@@ -52,6 +52,9 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
   const [addingItems, setAddingItems] = useState(false);
   const [cart, setCart] = useState<CartEntry[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmDeleteOrder, setConfirmDeleteOrder] = useState<string | null>(null);
+  const [confirmDeleteTab, setConfirmDeleteTab] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<string | null>(null);
 
   const { data: tab } = useQuery({
     queryKey: ['tab', tabId],
