@@ -245,9 +245,17 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
                       checked={assignees.includes(emp.id)}
                       onCheckedChange={() => toggleAssignee(emp.id)}
                     />
-                    {emp.display_name || emp.name}
-                    {emp.whatsapp_number && <span className="text-xs">📱</span>}
-                    {emp.messenger_link && <span className="text-xs">💬</span>}
+                    <span className="flex-1">{emp.display_name || emp.name}</span>
+                    {emp.whatsapp_number && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-green-500 bg-green-500/10 rounded px-1 py-0.5">
+                        <Phone className="w-2.5 h-2.5" /> WA
+                      </span>
+                    )}
+                    {emp.messenger_link && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-blue-500 bg-blue-500/10 rounded px-1 py-0.5">
+                        <MessageCircle className="w-2.5 h-2.5" /> MSG
+                      </span>
+                    )}
                   </label>
                 ))}
               </div>
