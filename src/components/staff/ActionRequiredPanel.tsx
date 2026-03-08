@@ -142,7 +142,7 @@ const ActionRequiredPanel = () => {
   if (tasks.length === 0) {
     return (
       <div className="mb-4 rounded-lg border border-border bg-card px-4 py-3 flex items-center gap-3">
-        <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
+        <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
         <div>
           <p className="font-display text-xs tracking-wider text-foreground">All clear</p>
           <p className="font-body text-xs text-muted-foreground">No tasks require your attention</p>
