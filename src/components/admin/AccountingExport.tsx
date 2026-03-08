@@ -11,10 +11,10 @@ import JSZip from 'jszip';
 
 type DateRange = 'week' | 'month' | 'custom';
 
-const toCsvRow = (vals: (string | number | null | undefined)[]) =>
+const toCsvRow = (vals: (string | number | boolean | null | undefined)[]) =>
   vals.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
 
-const arrayToCsv = (headers: string[], rows: (string | number | null | undefined)[][]) =>
+const arrayToCsv = (headers: string[], rows: (string | number | boolean | null | undefined)[][]) =>
   [headers.join(','), ...rows.map(toCsvRow)].join('\n');
 
 const AccountingExport = () => {
