@@ -357,6 +357,7 @@ const MenuPage = () => {
         mode={mode}
         orderType={isGuestOrder && guestSession ? 'Room' : orderType}
         locationDetail={isGuestOrder && guestSession ? guestSession.room_name : location}
+        initialGuestName={isGuestOrder && guestSession ? guestSession.guest_name : initialGuestName}
       />
 
       {/* Bottom nav bar - staff only */}
