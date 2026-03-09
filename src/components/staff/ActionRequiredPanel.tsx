@@ -221,6 +221,12 @@ const ActionRequiredPanel = () => {
                         <Paperclip className="w-3 h-3" />
                       </span>
                     )}
+                    {commentCounts[task.id] > 0 && (
+                      <span className="text-muted-foreground flex items-center gap-0.5">
+                        <MessageCircle className="w-3 h-3" />
+                        <span className="font-body text-[10px]">{commentCounts[task.id]}</span>
+                      </span>
+                    )}
                   </div>
                 </div>
 
