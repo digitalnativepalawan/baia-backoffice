@@ -602,13 +602,33 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
           room_type_id: (unit as any).room_type_id || null,
           status: 'pending_inspection',
           assigned_to: assignedTo || null,
+          accepted_by: assignedTo || null,
+          accepted_by_name: assignedName || '',
+          accepted_at: assignedTo ? new Date().toISOString() : null,
         });
       } else if (assignedTo) {
-        await from('housekeeping_orders').update({ assigned_to: assignedTo }).eq('id', existing.id);
+        await from('housekeeping_orders').update({
+          assigned_to: assignedTo,
+          accepted_by: assignedTo,
+          accepted_by_name: assignedName || '',
+          accepted_at: new Date().toISOString(),
+        }).eq('id', existing.id);
       }
+
+      // Send WhatsApp notification to assigned housekeeper
+      if (assignedTo) {
+        const hkEmp = hkEmployeesForCheckout.find((e: any) => e.id === assignedTo);
+        if (hkEmp?.whatsapp_number) {
+          const { openWhatsApp } = await import('@/lib/messenger');
+          const msg = `🧹 *Room ${unit.name} needs cleaning*\n\nAssigned to you by ${staffName}.\n\nPlease start when ready.`;
+          openWhatsApp(hkEmp.whatsapp_number, msg);
+        }
+      }
+
       await logAudit('updated', 'units', unit.id, `Sent ${unit.name} to clean${assignedName ? ` (assigned: ${assignedName})` : ''}`);
       qc.invalidateQueries({ queryKey: ['rooms-units'] });
       qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
       toast.success(`${unit.name} assigned to ${assignedName || 'housekeeping'}`);
     } catch {
       toast.error('Failed to send to clean');
