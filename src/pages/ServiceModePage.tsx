@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemo } from 'react';
 import { getStaffSession } from '@/lib/session';
+import { getHomeRoute } from '@/lib/getHomeRoute';
 
 const departments = [
   {
