@@ -295,7 +295,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
         tab_id: tabId,
         kitchen_status: hasKitchen ? 'pending' : 'ready',
         bar_status: hasBar ? 'pending' : 'ready',
-        guest_name: guestName || '',
+        guest_name: resolvedGuestName,
         room_id: roomUnit?.id || null,
         tax_details: taxDetails,
         staff_name: staffName,
