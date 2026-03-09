@@ -650,33 +650,17 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', checkOutUnit.id);
 
       const existing = activeHkOrders.find((o: any) => o.unit_name === checkOutUnit.name);
-      const hkEmp = hkEmployeesForCheckout.find((e: any) => e.id === checkOutHousekeeper);
 
       if (!existing) {
         await from('housekeeping_orders').insert({
           unit_name: checkOutUnit.name,
           room_type_id: (checkOutUnit as any).room_type_id || null,
           status: 'pending_inspection',
-          assigned_to: checkOutHousekeeper || null,
-          accepted_by: checkOutHousekeeper || null,
-          accepted_by_name: hkEmp ? (hkEmp.display_name || hkEmp.name) : '',
-          accepted_at: checkOutHousekeeper ? new Date().toISOString() : null,
+          assigned_to: null,
+          accepted_by: null,
+          accepted_by_name: '',
+          accepted_at: null,
         });
-      } else if (checkOutHousekeeper) {
-        await from('housekeeping_orders').update({
-          assigned_to: checkOutHousekeeper,
-          accepted_by: checkOutHousekeeper,
-          accepted_by_name: hkEmp ? (hkEmp.display_name || hkEmp.name) : '',
-          accepted_at: new Date().toISOString(),
-        }).eq('id', existing.id);
-      }
-
-      // Send WhatsApp notification
-      if (hkEmp && hkEmp.whatsapp_number) {
-        const { openWhatsApp } = await import('@/lib/messenger');
-        const gName = checkOutBooking.resort_ops_guests?.full_name || 'Guest';
-        const msg = `🧹 *Room ${checkOutUnit.name} needs cleaning*\n\nGuest "${gName}" has checked out.\nAssigned to you by ${staffName}.\n\nPlease start when ready.`;
-        openWhatsApp(hkEmp.whatsapp_number, msg);
       }
 
       // Cancel any pending guest requests & tours for this booking
