@@ -742,12 +742,22 @@ const OrdersView = ({ session }: { session: GuestPortalSession }) => {
         table: 'orders',
         filter: `room_id=eq.${session.room_id}`,
       }, () => {
-        qc.invalidateQueries({ queryKey: ['guest-orders', session.room_id] });
+        qc.invalidateQueries({ queryKey: ['guest-orders', session.room_id, session.room_name] });
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'orders',
+      }, (payload: any) => {
+        // Also catch orders matching by location_detail (no room_id set)
+        if (payload.new?.location_detail === session.room_name && !payload.new?.room_id) {
+          qc.invalidateQueries({ queryKey: ['guest-orders', session.room_id, session.room_name] });
+        }
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [session.room_id, qc]);
+  }, [session.room_id, session.room_name, qc]);
 
   return (
     <div className="space-y-4">
