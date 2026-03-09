@@ -1,12 +1,12 @@
 import { useNavigate } from 'react-router-dom';
-import { LogOut, ChefHat, Wine, ConciergeBell, ArrowLeft } from 'lucide-react';
+import { LogOut, Flame, GlassWater, BellRing, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { useMemo } from 'react';
 
-const DEPT_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  kitchen: { label: 'Kitchen', icon: <ChefHat className="w-5 h-5" />, color: 'bg-[hsl(25,85%,55%)]' },
-  bar: { label: 'Bar', icon: <Wine className="w-5 h-5" />, color: 'bg-[hsl(270,60%,55%)]' },
-  reception: { label: 'Reception', icon: <ConciergeBell className="w-5 h-5" />, color: 'bg-[hsl(210,70%,50%)]' },
+const DEPT_CONFIG: Record<string, { label: string; icon: React.ReactNode; gradient: string }> = {
+  kitchen: { label: 'Kitchen', icon: <Flame className="w-4 h-4" />, gradient: 'from-[hsl(25,85%,55%)] to-[hsl(15,80%,45%)]' },
+  bar: { label: 'Bar', icon: <GlassWater className="w-4 h-4" />, gradient: 'from-[hsl(270,60%,55%)] to-[hsl(280,55%,42%)]' },
+  reception: { label: 'Reception', icon: <BellRing className="w-4 h-4" />, gradient: 'from-[hsl(210,70%,50%)] to-[hsl(220,65%,40%)]' },
 };
 
 interface ServiceHeaderProps {
@@ -16,6 +16,14 @@ interface ServiceHeaderProps {
 const ServiceHeader = ({ department }: ServiceHeaderProps) => {
   const navigate = useNavigate();
   const config = DEPT_CONFIG[department];
+
+  const staffName = useMemo(() => {
+    try {
+      const raw = sessionStorage.getItem('staff_home_session');
+      if (raw) return JSON.parse(raw).name || '';
+    } catch {}
+    return '';
+  }, []);
 
   const handleBack = () => navigate('/service');
 
@@ -27,25 +35,29 @@ const ServiceHeader = ({ department }: ServiceHeaderProps) => {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border flex-shrink-0">
+    <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border/50 flex-shrink-0">
       <div className="px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={handleBack} className="w-10 h-10">
+        <div className="flex items-center gap-2.5">
+          <Button variant="ghost" size="icon" onClick={handleBack} className="w-9 h-9 text-muted-foreground hover:text-foreground">
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <Badge className={`${config.color} text-white font-display text-xs tracking-widest uppercase px-3 py-1 border-0 gap-1.5`}>
+          <div className={`flex items-center gap-1.5 bg-gradient-to-r ${config.gradient} text-white rounded-lg px-3 py-1.5`}>
             {config.icon}
-            {config.label} Service
-          </Badge>
+            <span className="font-display text-xs tracking-[0.15em] uppercase">{config.label}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="font-body text-xs text-muted-foreground hidden sm:inline">Service Mode</span>
-          <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1 text-muted-foreground hover:text-foreground">
+        <div className="flex items-center gap-3">
+          {staffName && (
+            <span className="font-body text-xs text-muted-foreground hidden sm:inline truncate max-w-[140px]">{staffName}</span>
+          )}
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1.5 text-muted-foreground hover:text-foreground h-9">
             <LogOut className="w-4 h-4" />
-            <span className="hidden sm:inline font-display text-xs tracking-wider">Exit</span>
+            <span className="hidden sm:inline font-body text-xs">Exit</span>
           </Button>
         </div>
       </div>
+      {/* Gradient accent line */}
+      <div className={`h-[2px] bg-gradient-to-r ${config.gradient} opacity-60`} />
     </header>
   );
 };

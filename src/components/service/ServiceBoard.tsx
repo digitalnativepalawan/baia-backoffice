@@ -201,6 +201,11 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
       }
     } else if (action === 'mark-served') {
       updateData.status = 'Served';
+      // Auto-complete to Paid for Room/Tab orders (no manual payment needed)
+      if (order.payment_type === 'Charge to Room' || order.tab_id) {
+        updateData.status = 'Paid';
+        updateData.closed_at = new Date().toISOString();
+      }
     } else if (action === 'mark-paid') {
       updateData.status = 'Paid';
       updateData.closed_at = new Date().toISOString();

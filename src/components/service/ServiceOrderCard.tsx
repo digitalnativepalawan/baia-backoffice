@@ -1,9 +1,16 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
-import { ChefHat, Truck, CreditCard, Clock, Wine, CheckCircle2 } from 'lucide-react';
+import { Flame, GlassWater, Truck, CreditCard, Clock, CheckCircle2, Home, Receipt } from 'lucide-react';
 import { useState } from 'react';
 import { canEdit } from '@/lib/permissions';
+
+const STATUS_BORDER: Record<string, string> = {
+  New: 'border-l-gold',
+  Preparing: 'border-l-orange-400',
+  Ready: 'border-l-emerald-400',
+  Served: 'border-l-[hsl(210,70%,50%)]',
+};
 
 const STATUS_DOT: Record<string, string> = {
   pending: 'bg-muted-foreground',
@@ -29,11 +36,14 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
   const foodItems = items.filter((i: any) => { const d = i.department || 'kitchen'; return d === 'kitchen' || d === 'both'; });
   const barItems = items.filter((i: any) => i.department === 'bar' || i.department === 'both');
 
-  // Filter items by department context for display
   const deptItems = department === 'reception' ? items : items.filter((i: any) => {
     const d = i.department || 'kitchen';
     return d === department || d === 'both';
   });
+
+  const isRoomCharge = order.payment_type === 'Charge to Room';
+  const isTab = !!order.tab_id;
+  const isAutoPayable = isRoomCharge || isTab;
 
   const handleAction = async (e: React.MouseEvent, action: string) => {
     e.stopPropagation();
@@ -42,120 +52,138 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
     try { await onAction(order.id, action); } finally { setBusy(false); }
   };
 
-  // Compute primary action for the current department view
+  // Primary action for current department
   let primaryAction: { label: string; action: string; icon: React.ReactNode } | null = null;
 
   if (department === 'kitchen' && canEdit(permissions, 'kitchen')) {
-    if (order.kitchen_status === 'pending' && foodItems.length > 0) primaryAction = { label: 'Start Preparing', action: 'kitchen-start', icon: <ChefHat className="w-5 h-5" /> };
+    if (order.kitchen_status === 'pending' && foodItems.length > 0) primaryAction = { label: 'Start Preparing', action: 'kitchen-start', icon: <Flame className="w-5 h-5" /> };
     else if (order.kitchen_status === 'preparing') primaryAction = { label: 'Mark Ready', action: 'kitchen-ready', icon: <CheckCircle2 className="w-5 h-5" /> };
   } else if (department === 'bar' && canEdit(permissions, 'bar')) {
-    if (order.bar_status === 'pending' && barItems.length > 0) primaryAction = { label: 'Start Mixing', action: 'bar-start', icon: <Wine className="w-5 h-5" /> };
+    if (order.bar_status === 'pending' && barItems.length > 0) primaryAction = { label: 'Start Mixing', action: 'bar-start', icon: <GlassWater className="w-5 h-5" /> };
     else if (order.bar_status === 'preparing') primaryAction = { label: 'Mark Ready', action: 'bar-ready', icon: <CheckCircle2 className="w-5 h-5" /> };
   } else if (department === 'reception' && canEdit(permissions, 'reception')) {
     const allReady = (foodItems.length === 0 || order.kitchen_status === 'ready') && (barItems.length === 0 || order.bar_status === 'ready');
     if (allReady && order.status !== 'Served' && order.status !== 'Paid') {
-      primaryAction = { label: 'Mark Served', action: 'mark-served', icon: <Truck className="w-5 h-5" /> };
-    } else if (order.status === 'Served') {
+      primaryAction = { label: isAutoPayable ? 'Serve & Close' : 'Mark Served', action: 'mark-served', icon: <Truck className="w-5 h-5" /> };
+    } else if (order.status === 'Served' && !isAutoPayable) {
       primaryAction = { label: 'Mark Paid', action: 'mark-paid', icon: <CreditCard className="w-5 h-5" /> };
     }
   }
 
-  // Compute secondary cross-dept actions (shown as small buttons)
+  // Secondary cross-dept actions
   const secondaryActions: { label: string; action: string; icon: React.ReactNode }[] = [];
 
   if (department !== 'kitchen' && canEdit(permissions, 'kitchen') && foodItems.length > 0) {
-    if (order.kitchen_status === 'pending') secondaryActions.push({ label: '🍳 Start', action: 'kitchen-start', icon: <ChefHat className="w-4 h-4" /> });
-    else if (order.kitchen_status === 'preparing') secondaryActions.push({ label: '🍳 Ready', action: 'kitchen-ready', icon: <CheckCircle2 className="w-4 h-4" /> });
+    if (order.kitchen_status === 'pending') secondaryActions.push({ label: 'Start', action: 'kitchen-start', icon: <Flame className="w-4 h-4" /> });
+    else if (order.kitchen_status === 'preparing') secondaryActions.push({ label: 'Ready', action: 'kitchen-ready', icon: <CheckCircle2 className="w-4 h-4" /> });
   }
   if (department !== 'bar' && canEdit(permissions, 'bar') && barItems.length > 0) {
-    if (order.bar_status === 'pending') secondaryActions.push({ label: '🍹 Start', action: 'bar-start', icon: <Wine className="w-4 h-4" /> });
-    else if (order.bar_status === 'preparing') secondaryActions.push({ label: '🍹 Ready', action: 'bar-ready', icon: <CheckCircle2 className="w-4 h-4" /> });
+    if (order.bar_status === 'pending') secondaryActions.push({ label: 'Start', action: 'bar-start', icon: <GlassWater className="w-4 h-4" /> });
+    else if (order.bar_status === 'preparing') secondaryActions.push({ label: 'Ready', action: 'bar-ready', icon: <CheckCircle2 className="w-4 h-4" /> });
   }
   if (department !== 'reception' && canEdit(permissions, 'reception')) {
     const allReady = (foodItems.length === 0 || order.kitchen_status === 'ready') && (barItems.length === 0 || order.bar_status === 'ready');
     if (allReady && order.status !== 'Served' && order.status !== 'Paid') {
-      secondaryActions.push({ label: 'Served', action: 'mark-served', icon: <Truck className="w-4 h-4" /> });
-    } else if (order.status === 'Served') {
+      secondaryActions.push({ label: isAutoPayable ? 'Serve & Close' : 'Served', action: 'mark-served', icon: <Truck className="w-4 h-4" /> });
+    } else if (order.status === 'Served' && !isAutoPayable) {
       secondaryActions.push({ label: 'Paid', action: 'mark-paid', icon: <CreditCard className="w-4 h-4" /> });
     }
   }
 
   if (deptItems.length === 0 && department !== 'reception') return null;
 
+  const statusKey = department === 'kitchen' ? order.kitchen_status :
+                    department === 'bar' ? order.bar_status : order.status;
+  const borderClass = STATUS_BORDER[order.status] || 'border-l-border';
+
   return (
     <div
       onClick={() => onOpenDetail?.(order)}
-      className={`rounded-xl border-2 transition-all cursor-pointer active:scale-[0.98] ${
-        isNew ? 'border-gold new-order-card bg-gold/5' : 'border-border bg-card'
+      className={`rounded-xl border border-border/60 border-l-4 ${borderClass} transition-all cursor-pointer active:scale-[0.98] bg-card/90 backdrop-blur-sm ${
+        isNew ? 'new-order-card' : ''
       } ${compact ? 'p-3' : 'p-4'}`}
     >
-      {/* Header */}
+      {/* Header row */}
       <div className="flex items-start justify-between mb-2">
-        <div>
-          <p className="font-display text-base text-foreground tracking-wider">
-            {order.order_type === 'Room' ? `🏠 ${order.location_detail}` :
-             order.order_type === 'DineIn' ? `🍽️ ${order.location_detail}` :
-             `📋 ${order.location_detail || order.order_type}`}
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-base text-foreground tracking-wider truncate">
+            {order.order_type === 'Room' ? `${order.location_detail}` :
+             order.order_type === 'DineIn' ? `${order.location_detail}` :
+             `${order.location_detail || order.order_type}`}
           </p>
           {order.guest_name && (
-            <p className="font-body text-sm text-muted-foreground">{order.guest_name}</p>
+            <p className="font-body text-xs text-muted-foreground mt-0.5 truncate">{order.guest_name}</p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="flex items-center gap-1 text-muted-foreground">
-            <Clock className="w-3.5 h-3.5" />
-            <span className="font-body text-xs">{elapsed}</span>
-          </div>
+        <div className="flex items-center gap-1.5 text-muted-foreground flex-shrink-0 ml-2">
+          <Clock className="w-3 h-3" />
+          <span className="font-body text-[11px] tabular-nums">{elapsed}</span>
         </div>
       </div>
 
-      {/* Department status dots — always visible */}
-      <div className="flex gap-2 mb-2">
+      {/* Status dots + payment badge row */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
         {foodItems.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <div className={`w-2.5 h-2.5 rounded-full ${STATUS_DOT[order.kitchen_status] || 'bg-muted-foreground'}`} />
-            <span className="font-body text-xs text-muted-foreground">🍳 {foodItems.length}</span>
+          <div className="flex items-center gap-1">
+            <div className={`w-2 h-2 rounded-full ${STATUS_DOT[order.kitchen_status] || 'bg-muted-foreground'}`} />
+            <Flame className="w-3 h-3 text-muted-foreground" />
+            <span className="font-body text-[11px] text-muted-foreground">{foodItems.length}</span>
           </div>
         )}
         {barItems.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <div className={`w-2.5 h-2.5 rounded-full ${STATUS_DOT[order.bar_status] || 'bg-muted-foreground'}`} />
-            <span className="font-body text-xs text-muted-foreground">🍹 {barItems.length}</span>
+          <div className="flex items-center gap-1">
+            <div className={`w-2 h-2 rounded-full ${STATUS_DOT[order.bar_status] || 'bg-muted-foreground'}`} />
+            <GlassWater className="w-3 h-3 text-muted-foreground" />
+            <span className="font-body text-[11px] text-muted-foreground">{barItems.length}</span>
           </div>
         )}
-        {order.tab_id && (
-          <Badge variant="outline" className="font-body text-[10px] h-5 bg-purple-500/20 text-purple-400 border-purple-400/40">Tab</Badge>
+        {/* Payment type badge */}
+        {isRoomCharge && (
+          <Badge variant="outline" className="font-body text-[10px] h-5 gap-1 bg-[hsl(210,70%,50%,0.15)] text-[hsl(210,70%,65%)] border-[hsl(210,70%,50%,0.3)]">
+            <Home className="w-3 h-3" /> Room
+          </Badge>
+        )}
+        {isTab && !isRoomCharge && (
+          <Badge variant="outline" className="font-body text-[10px] h-5 gap-1 bg-[hsl(270,60%,55%,0.15)] text-[hsl(270,60%,70%)] border-[hsl(270,60%,55%,0.3)]">
+            <Receipt className="w-3 h-3" /> Tab
+          </Badge>
         )}
       </div>
 
-      {/* Items */}
-      <div className="space-y-1 mb-3">
-        {(department === 'reception' ? items : deptItems).slice(0, compact ? 4 : 8).map((item: any, idx: number) => (
+      {/* Items list */}
+      <div className="space-y-0.5 mb-3">
+        {(department === 'reception' ? items : deptItems).slice(0, compact ? 3 : 6).map((item: any, idx: number) => (
           <div key={idx} className="flex justify-between font-body">
-            <span className="text-foreground text-sm">{item.qty}× {item.name}</span>
-            <span className="text-muted-foreground text-sm">₱{(item.price * item.qty).toLocaleString()}</span>
+            <span className="text-foreground text-sm truncate mr-2">{item.qty}× {item.name}</span>
+            <span className="text-muted-foreground text-sm tabular-nums flex-shrink-0">₱{(item.price * item.qty).toLocaleString()}</span>
           </div>
         ))}
-        {(department === 'reception' ? items : deptItems).length > (compact ? 4 : 8) && (
-          <p className="font-body text-xs text-muted-foreground">+{(department === 'reception' ? items : deptItems).length - (compact ? 4 : 8)} more…</p>
+        {(department === 'reception' ? items : deptItems).length > (compact ? 3 : 6) && (
+          <p className="font-body text-[11px] text-muted-foreground">+{(department === 'reception' ? items : deptItems).length - (compact ? 3 : 6)} more…</p>
         )}
       </div>
 
       {/* Total + Actions */}
-      <div className="pt-3 border-t border-border space-y-2">
+      <div className="pt-2.5 border-t border-border/50 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="font-display text-lg text-gold">₱{order.total.toLocaleString()}</span>
+          <span className="font-display text-lg text-gold tabular-nums">₱{order.total.toLocaleString()}</span>
           {primaryAction && onAction && (
             <Button
               onClick={(e) => handleAction(e, primaryAction!.action)}
               disabled={busy}
               size="lg"
-              className={`font-display tracking-wider gap-2 text-sm min-h-[52px] px-6 ${
+              className={`font-display tracking-wider gap-2 text-sm min-h-[48px] px-5 rounded-xl ${
                 isNew ? 'bg-gold text-primary-foreground hover:bg-gold/90 new-order-btn' : ''
               }`}
             >
               {busy ? 'Updating…' : <>{primaryAction.icon} {primaryAction.label}</>}
             </Button>
+          )}
+          {/* Auto-payable indicator when served */}
+          {!primaryAction && isAutoPayable && order.status === 'Served' && (
+            <span className="font-body text-xs text-muted-foreground italic">
+              {isRoomCharge ? 'Charged to room' : 'On tab'}
+            </span>
           )}
         </div>
 
@@ -169,7 +197,7 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
                 size="sm"
                 onClick={(e) => handleAction(e, a.action)}
                 disabled={busy}
-                className="font-body text-xs gap-1 min-h-[36px]"
+                className="font-body text-xs gap-1 min-h-[36px] rounded-lg border-border/60"
               >
                 {a.icon} {a.label}
               </Button>
