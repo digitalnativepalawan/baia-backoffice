@@ -675,7 +675,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
           .eq('status', 'pending');
       }
 
-      await logAudit('updated', 'units', checkOutUnit.id, `Checkout: ${checkOutBooking.resort_ops_guests?.full_name} from ${checkOutUnit.name}${hkEmp ? ` — assigned to ${hkEmp.display_name || hkEmp.name}` : ''}`);
+      await logAudit('updated', 'units', checkOutUnit.id, `Checkout: ${checkOutBooking.resort_ops_guests?.full_name} from ${checkOutUnit.name} — housekeeping broadcast`);
 
       qc.invalidateQueries({ queryKey: ['room-transactions', checkOutUnit.id] });
       qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
