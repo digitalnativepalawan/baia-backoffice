@@ -1,45 +1,37 @@
 
 
-## Collapsible Completed Section + Unpaid Order Alerts
+## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
 
-### What You Get
-1. **Service Boards**: Collapsible "Completed" section at the bottom showing Served/Paid orders, decluttering active Kanban columns
-2. **Guest Portal**: Bill view shows unpaid F&B orders with clear "Pending Payment" status
-3. **Reception/Checkout**: Warning banner when guest has unpaid orders — prevents checkout until settled
-4. **Admin visibility**: Dashboard indicator for rooms with outstanding order balances
+### Issues Found
 
-### Implementation
+1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
 
-**1. ServiceBoard.tsx — Collapsible Completed Section**
-- Remove "Served" from main Kanban columns
-- Add collapsible section at bottom: "Completed Today (X)" showing Served + Paid orders
-- Uses Radix Collapsible component — collapsed by default
-- Kitchen/Bar/Reception all use the same pattern
+2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
 
-**2. GuestPortal.tsx — Unpaid Orders in Bill View**
-- Query orders where `status NOT IN ('Paid', 'Cancelled')` AND `payment_type != 'Charge to Room'`
-- Display these as "Pending Payment" items in the Bill tab
-- For Room Charge orders: already show in room_transactions, no extra action
+### Changes
 
-**3. CheckoutModal.tsx — Unpaid Order Guard**
-- Fetch orders for this `room_id` where status = Served and `payment_type` is NOT Room Charge
-- If unpaid orders exist, show warning banner: "⚠️ X unpaid orders totaling ₱Y"
-- List them inline with quick "Mark Paid" action
-- Block checkout button until all orders settled OR user acknowledges
+**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
+- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
+- Increase touch target size for edit/delete buttons on shift blocks
+- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
 
-**4. RoomsDashboard (optional enhancement)**
-- Badge on room cards when unpaid orders exist for that room
-- Quick visual cue for reception staff
+**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
+- Add an "Assign Task" button alongside "Add Shift" 
+- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
+- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
+- For other tasks: creates an `employee_tasks` entry with due date and description
+- Tasks appear as colored pills on the timeline (already partially implemented)
 
-### Files Changed
-```
-EDIT  src/components/service/ServiceBoard.tsx     — Add collapsible completed section
-EDIT  src/pages/GuestPortal.tsx                   — Show unpaid orders in Bill view
-EDIT  src/components/rooms/CheckoutModal.tsx      — Unpaid order warning + guard
-```
+**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
+- In the task detail dialog, show who completed the task and when (`completed_at`)
+- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
+- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
 
-### Technical Details
-- Collapsible uses `@radix-ui/react-collapsible` (already installed)
-- Unpaid orders query: `status = 'Served' AND payment_type NOT IN ('Charge to Room')`
-- Room Charge orders auto-transition to Paid, so they won't block checkout
+**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
+- Add edit capability: change title, description, due date, reassign to different employee
+- Add delete capability for tasks
+- Show completion audit trail
+
+### Files to Edit
+- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
 

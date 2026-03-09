@@ -959,6 +959,20 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
     },
   });
 
+  // Unpaid F&B orders (not charged to room, status = Served)
+  const { data: unpaidOrders = [] } = useQuery({
+    queryKey: ['guest-bill-unpaid-orders', session.room_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('orders')
+        .select('id, total, guest_name, status, payment_type, created_at')
+        .eq('room_id', session.room_id)
+        .eq('status', 'Served')
+        .neq('payment_type', 'Charge to Room');
+      return data || [];
+    },
+  });
+
   // Pending tours
   const { data: pendingTours = [] } = useQuery({
     queryKey: ['guest-bill-pending-tours', session.booking_id],
@@ -994,6 +1008,12 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
         qc.invalidateQueries({ queryKey: ['guest-bill', session.booking_id] });
       })
       .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'orders',
+        filter: `room_id=eq.${session.room_id}`,
+      }, () => {
+        qc.invalidateQueries({ queryKey: ['guest-bill-unpaid-orders', session.room_id] });
+      })
+      .on('postgres_changes', {
         event: '*', schema: 'public', table: 'guest_tours',
         filter: `booking_id=eq.${session.booking_id}`,
       }, () => {
@@ -1007,13 +1027,14 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [session.booking_id, qc]);
+  }, [session.booking_id, session.room_id, qc]);
 
   const charges = transactions.filter((t: any) => (t.total_amount || 0) > 0);
   const payments = transactions.filter((t: any) => (t.total_amount || 0) < 0);
   const totalCharges = charges.reduce((s: number, t: any) => s + (t.total_amount || 0), 0);
   const totalPayments = Math.abs(payments.reduce((s: number, t: any) => s + (t.total_amount || 0), 0));
-  const balance = totalCharges - totalPayments;
+  const unpaidOrdersTotal = unpaidOrders.reduce((s: number, o: any) => s + (o.total || 0), 0);
+  const balance = totalCharges - totalPayments + unpaidOrdersTotal;
   const hasPending = pendingTours.length > 0 || pendingRequests.length > 0;
 
   return (
@@ -1026,6 +1047,12 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
           <span className="font-body text-sm text-muted-foreground">Total Charges</span>
           <span className="font-body text-sm text-foreground">₱{totalCharges.toLocaleString()}</span>
         </div>
+        {unpaidOrdersTotal > 0 && (
+          <div className="flex justify-between mb-2">
+            <span className="font-body text-sm text-muted-foreground">Unpaid Orders</span>
+            <span className="font-body text-sm text-amber-400">₱{unpaidOrdersTotal.toLocaleString()}</span>
+          </div>
+        )}
         <div className="flex justify-between mb-2">
           <span className="font-body text-sm text-muted-foreground">Total Payments</span>
           <span className="font-body text-sm text-green-400">₱{totalPayments.toLocaleString()}</span>
@@ -1035,6 +1062,32 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
           <span className={`font-body text-sm font-medium ${balance > 0 ? 'text-amber-400' : 'text-green-400'}`}>₱{balance.toLocaleString()}</span>
         </div>
       </div>
+
+      {/* Unpaid F&B orders */}
+      {unpaidOrders.length > 0 && (
+        <div className="space-y-2">
+          <p className="font-display text-xs tracking-wider text-amber-400 uppercase flex items-center gap-1">
+            ⚠️ Pending Payment
+          </p>
+          {unpaidOrders.map((o: any) => (
+            <div key={o.id} className="bg-amber-500/10 border border-amber-500/30 p-3 rounded flex justify-between items-start">
+              <div className="flex items-start gap-2">
+                <Utensils className="w-4 h-4 text-amber-400 mt-0.5" />
+                <div>
+                  <p className="font-body text-sm text-foreground">Food & Drink Order</p>
+                  <p className="font-body text-xs text-muted-foreground">
+                    {new Date(o.created_at).toLocaleString()} · {o.payment_type || 'Cash'}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="font-body text-sm text-amber-400 font-medium">₱{(o.total || 0).toLocaleString()}</span>
+                <Badge variant="outline" className="ml-2 text-[10px] border-amber-500/50 text-amber-400">Pay at Counter</Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Pending items */}
       {hasPending && (
@@ -1094,10 +1147,9 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
             </span>
           </div>
         ))}
-        {transactions.length === 0 && !hasPending && <p className="font-body text-sm text-muted-foreground text-center">No transactions yet.</p>}
+        {transactions.length === 0 && !hasPending && unpaidOrders.length === 0 && <p className="font-body text-sm text-muted-foreground text-center">No transactions yet.</p>}
       </div>
     </div>
   );
 };
-
 export default GuestPortal;

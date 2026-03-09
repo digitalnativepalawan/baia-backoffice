@@ -5,16 +5,17 @@ import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 import { getStaffSession } from '@/lib/session';
 import { toast } from 'sonner';
 import { useResortProfile } from '@/hooks/useResortProfile';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import ServiceOrderCard from './ServiceOrderCard';
 import ServiceOrderDetail from './ServiceOrderDetail';
 
-const KANBAN_COLS = ['New', 'Preparing', 'Ready', 'Served'] as const;
+const KANBAN_COLS = ['New', 'Preparing', 'Ready'] as const;
 
 const COL_COLORS: Record<string, string> = {
   New: 'border-t-gold',
   Preparing: 'border-t-orange-400',
   Ready: 'border-t-emerald-400',
-  Served: 'border-t-[hsl(210,70%,50%)]',
 };
 
 interface ServiceBoardProps {
@@ -27,6 +28,7 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [detailOrder, setDetailOrder] = useState<any | null>(null);
+  const [completedOpen, setCompletedOpen] = useState(false);
 
   // Read staff permissions from session
   const permissions = useMemo(() => {
@@ -109,15 +111,15 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
 
   // Bucket into columns
   const columns = useMemo(() => {
-    const cols: Record<string, any[]> = { New: [], Preparing: [], Ready: [], Served: [] };
+    const cols: Record<string, any[]> = { New: [], Preparing: [], Ready: [], Completed: [] };
 
     if (department === 'kitchen' || department === 'bar') {
       const field = department === 'kitchen' ? 'kitchen_status' : 'bar_status';
       relevantOrders.forEach(o => {
         const deptStatus = o[field] as string;
-        if (deptStatus === 'pending' && (o.status === 'New' || o.status === 'Preparing')) cols.New.push(o);
+        if (o.status === 'Served' || o.status === 'Paid') cols.Completed.push(o);
+        else if (deptStatus === 'pending' && (o.status === 'New' || o.status === 'Preparing')) cols.New.push(o);
         else if (deptStatus === 'preparing') cols.Preparing.push(o);
-        else if (o.status === 'Served' || o.status === 'Paid') cols.Served.push(o);
         else if (deptStatus === 'ready' || o.status === 'Ready') cols.Ready.push(o);
       });
     } else {
@@ -126,7 +128,7 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
         if (o.status === 'New') cols.New.push(o);
         else if (o.status === 'Preparing') cols.Preparing.push(o);
         else if (o.status === 'Ready') cols.Ready.push(o);
-        else if (o.status === 'Served' || o.status === 'Paid') cols.Served.push(o);
+        else if (o.status === 'Served' || o.status === 'Paid') cols.Completed.push(o);
       });
     }
     return cols;
@@ -224,7 +226,7 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
       {/* Kanban columns — horizontal on tablet, vertical on phone */}
       <div className="flex-1 overflow-auto">
         {/* Tablet/Desktop: horizontal kanban */}
-        <div className="hidden md:grid md:grid-cols-4 gap-3 p-4 h-full">
+        <div className="hidden md:grid md:grid-cols-3 gap-3 p-4">
           {KANBAN_COLS.map(col => (
             <div key={col} className={`flex flex-col border-t-4 ${COL_COLORS[col]} rounded-t-lg bg-secondary/30`}>
               <div className="px-3 py-2 flex items-center justify-between">
@@ -233,7 +235,7 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
                   {columns[col].length}
                 </span>
               </div>
-              <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-2">
+              <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-2 max-h-[60vh]">
                 {columns[col].map(order => (
                     <ServiceOrderCard
                     key={order.id}
@@ -253,6 +255,36 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
             </div>
           ))}
         </div>
+
+        {/* Collapsible Completed Section — Tablet/Desktop */}
+        {columns.Completed.length > 0 && (
+          <div className="hidden md:block px-4 pb-4">
+            <Collapsible open={completedOpen} onOpenChange={setCompletedOpen}>
+              <CollapsibleTrigger className="w-full flex items-center justify-between bg-secondary/50 border border-border rounded-lg px-4 py-3 hover:bg-secondary transition-colors">
+                <span className="font-display text-sm tracking-wider text-muted-foreground">
+                  ✓ Completed Today ({columns.Completed.length})
+                </span>
+                {completedOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-3">
+                <div className="grid grid-cols-3 gap-3 max-h-[40vh] overflow-y-auto">
+                  {columns.Completed.map(order => (
+                    <ServiceOrderCard
+                      key={order.id}
+                      order={order}
+                      department={department}
+                      permissions={permissions}
+                      onAction={handleAction}
+                      onOpenDetail={setDetailOrder}
+                      resortProfile={resortProfile}
+                      compact
+                    />
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        )}
 
         {/* Mobile: tabbed view */}
         <MobileTabView columns={columns} department={department} permissions={permissions} onAction={handleAction} onOpenDetail={setDetailOrder} resortProfile={resortProfile} />
@@ -281,11 +313,14 @@ const MobileTabView = ({ columns, department, permissions, onAction, onOpenDetai
   resortProfile?: any;
 }) => {
   const [tab, setTab] = useState<string>('New');
+  const [completedOpen, setCompletedOpen] = useState(false);
+
+  const MOBILE_TABS = ['New', 'Preparing', 'Ready'] as const;
 
   return (
     <div className="md:hidden flex flex-col h-full">
       <div className="flex gap-1 px-3 py-2 overflow-x-auto scrollbar-hide flex-shrink-0">
-        {KANBAN_COLS.map(col => (
+        {MOBILE_TABS.map(col => (
           <button
             key={col}
             onClick={() => setTab(col)}
@@ -322,6 +357,33 @@ const MobileTabView = ({ columns, department, permissions, onAction, onOpenDetai
           />
         ))}
       </div>
+
+      {/* Collapsible Completed Section — Mobile */}
+      {columns.Completed.length > 0 && (
+        <div className="px-3 pb-4 flex-shrink-0">
+          <Collapsible open={completedOpen} onOpenChange={setCompletedOpen}>
+            <CollapsibleTrigger className="w-full flex items-center justify-between bg-secondary/50 border border-border rounded-lg px-4 py-3">
+              <span className="font-display text-xs tracking-wider text-muted-foreground">
+                ✓ Completed ({columns.Completed.length})
+              </span>
+              {completedOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3 space-y-3 max-h-[40vh] overflow-y-auto">
+              {columns.Completed.map(order => (
+                <ServiceOrderCard
+                  key={order.id}
+                  order={order}
+                  department={department}
+                  permissions={permissions}
+                  onAction={onAction}
+                  onOpenDetail={onOpenDetail}
+                  resortProfile={resortProfile}
+                />
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
     </div>
   );
 };

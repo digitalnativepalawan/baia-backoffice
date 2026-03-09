@@ -33,6 +33,23 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
   const [submitting, setSubmitting] = useState(false);
   const [selectedHousekeeper, setSelectedHousekeeper] = useState('');
 
+  // Fetch unpaid orders for this room (Served status, not charged to room)
+  const { data: unpaidOrders = [], refetch: refetchUnpaid } = useQuery({
+    queryKey: ['checkout-unpaid-orders', unitId],
+    enabled: open && !!unitId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('orders')
+        .select('id, total, guest_name, status, payment_type, created_at')
+        .eq('room_id', unitId)
+        .eq('status', 'Served')
+        .neq('payment_type', 'Charge to Room');
+      return data || [];
+    },
+  });
+
+  const unpaidTotal = unpaidOrders.reduce((s, o: any) => s + (o.total || 0), 0);
+
   // Fetch housekeeping employees
   const { data: hkEmployees = [] } = useQuery({
     queryKey: ['housekeeping-employees'],
@@ -59,6 +76,13 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
 
   const nights = booking ? Math.max(1, Math.ceil((new Date(booking.check_out).getTime() - new Date(booking.check_in).getTime()) / 86400000)) : 0;
   const roomRate = booking ? Number(booking.room_rate) : 0;
+
+  const markOrderPaid = async (orderId: string) => {
+    await supabase.from('orders').update({ status: 'Paid', closed_at: new Date().toISOString() }).eq('id', orderId);
+    refetchUnpaid();
+    qc.invalidateQueries({ queryKey: ['service-orders'] });
+    toast.success('Order marked as paid');
+  };
 
   const handleCheckout = async () => {
     setSubmitting(true);
@@ -155,7 +179,6 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
       setSubmitting(false);
     }
   };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-card border-border max-w-lg max-h-[85vh] overflow-y-auto">
@@ -163,6 +186,27 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
           <DialogTitle className="font-display tracking-wider">Checkout — {unitName}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {/* Unpaid F&B Orders Warning */}
+          {unpaidOrders.length > 0 && (
+            <div className="border border-destructive/50 bg-destructive/10 rounded-lg p-3 space-y-2">
+              <p className="font-display text-xs tracking-wider text-destructive uppercase flex items-center gap-1">
+                ⚠️ {unpaidOrders.length} Unpaid Order{unpaidOrders.length > 1 ? 's' : ''} — ₱{unpaidTotal.toLocaleString()}
+              </p>
+              <p className="font-body text-xs text-muted-foreground">These orders must be paid before checkout.</p>
+              {unpaidOrders.map((o: any) => (
+                <div key={o.id} className="flex justify-between items-center bg-secondary/50 rounded p-2">
+                  <div>
+                    <p className="font-body text-xs text-foreground">F&B Order — ₱{(o.total || 0).toLocaleString()}</p>
+                    <p className="font-body text-[10px] text-muted-foreground">{new Date(o.created_at).toLocaleString()}</p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => markOrderPaid(o.id)} className="font-display text-[10px] tracking-wider h-7 px-2">
+                    Mark Paid
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Guest info */}
           <div className="border border-border rounded-lg p-3 bg-secondary space-y-1">
             <p className="font-display text-sm text-foreground">{guestName || 'Guest'}</p>
@@ -196,12 +240,12 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
             {payments.map(t => (
               <div key={t.id} className="flex justify-between font-body text-sm">
                 <span className="text-muted-foreground truncate flex-1">{t.payment_method} — {t.staff_name}</span>
-                <span className="text-green-400">₱{Math.abs(t.total_amount).toLocaleString()}</span>
+                <span className="text-emerald-400">₱{Math.abs(t.total_amount).toLocaleString()}</span>
               </div>
             ))}
             <div className="flex justify-between font-display text-sm">
               <span className="text-foreground">Total Paid</span>
-              <span className="text-green-400">₱{totalPayments.toLocaleString()}</span>
+              <span className="text-emerald-400">₱{totalPayments.toLocaleString()}</span>
             </div>
           </div>
 
@@ -209,7 +253,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
 
           <div className="flex justify-between font-display text-lg tracking-wider">
             <span className="text-foreground">Remaining Balance</span>
-            <span className={balance > 0 ? 'text-destructive' : 'text-green-400'}>
+            <span className={balance > 0 ? 'text-destructive' : 'text-emerald-400'}>
               ₱{Math.abs(balance).toLocaleString()}
             </span>
           </div>
@@ -234,8 +278,8 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
           )}
 
           {/* Assign Housekeeper */}
-          <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3 space-y-2">
-            <p className="font-display text-xs tracking-wider text-amber-400 uppercase">🧹 Assign Housekeeper</p>
+          <div className="border border-accent/30 bg-accent/5 rounded-lg p-3 space-y-2">
+            <p className="font-display text-xs tracking-wider text-accent uppercase">🧹 Assign Housekeeper</p>
             <Select onValueChange={setSelectedHousekeeper} value={selectedHousekeeper}>
               <SelectTrigger className="bg-secondary border-border text-foreground font-body">
                 <SelectValue placeholder="Select housekeeper (optional)" />
@@ -261,8 +305,13 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} className="font-display text-xs tracking-wider">Cancel</Button>
-          <Button onClick={handleCheckout} disabled={submitting} variant="destructive" className="font-display text-xs tracking-wider">
-            {submitting ? 'Processing...' : 'Confirm Checkout'}
+          <Button 
+            onClick={handleCheckout} 
+            disabled={submitting || unpaidOrders.length > 0} 
+            variant="destructive" 
+            className="font-display text-xs tracking-wider"
+          >
+            {submitting ? 'Processing...' : unpaidOrders.length > 0 ? 'Settle Orders First' : 'Confirm Checkout'}
           </Button>
         </DialogFooter>
       </DialogContent>
