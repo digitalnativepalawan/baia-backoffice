@@ -12,6 +12,7 @@ import EmployeeTaskList from '@/components/employee/EmployeeTaskList';
 import EmployeeScheduleView from '@/components/employee/EmployeeScheduleView';
 import { hasAccess, canEdit } from '@/lib/permissions';
 import StaffNavBar from '@/components/StaffNavBar';
+import { getStaffSession } from '@/lib/session';
 
 type Tab = 'clock' | 'schedule' | 'tasks' | 'pay' | 'settings' | 'dashboard';
 
