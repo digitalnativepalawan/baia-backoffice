@@ -1,37 +1,93 @@
 
 
-## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
+## Problem Analysis
 
-### Issues Found
+The app uses a PIN-based auth system (not Supabase Auth), storing sessions in `sessionStorage` under `staff_home_session`. Three issues exist:
 
-1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
+1. **Home button bug**: StaffShell's Home button navigates to `/` which is the login page — triggers re-auth even when session is active. AdminPage does the same for admins.
+2. **No persistent navigation**: Each page has its own ad-hoc header with inconsistent nav options.
+3. **No role-aware home routing**: After login, staff always land on `/staff` regardless of their primary role.
 
-2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
+## Plan
 
-### Changes
+### New file: `src/components/StaffNavBar.tsx`
 
-**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
-- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
-- Increase touch target size for edit/delete buttons on shift blocks
-- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
+A persistent top navigation bar used by all authenticated pages (StaffShell, AdminPage, EmployeePortal, and all legacy direct routes).
 
-**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
-- Add an "Assign Task" button alongside "Add Shift" 
-- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
-- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
-- For other tasks: creates an `employee_tasks` entry with due date and description
-- Tasks appear as colored pills on the timeline (already partially implemented)
+**Desktop layout** (horizontal bar):
+```
+[Home] [My Work] [Dashboard]                    [Staff Name] [Logout]
+```
 
-**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
-- In the task detail dialog, show who completed the task and when (`completed_at`)
-- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
-- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
+**Mobile layout** (compact):
+```
+[Home] [My Work]              [☰ hamburger → Dashboard, Logout]
+```
 
-**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
-- Add edit capability: change title, description, due date, reassign to different employee
-- Add delete capability for tasks
-- Show completion audit trail
+**Logic:**
+- Reads `staff_home_session` from sessionStorage to get name, permissions
+- **Home** → calls `getHomeRoute(perms)` helper (see below)
+- **My Work** → navigates to `/employee-portal` (which has tasks, schedule, clock)
+- **Dashboard** → navigates to `/admin` (visible only if user has dashboard-level permissions)
+- **Logout** → clears `sessionStorage.removeItem('staff_home_session')`, `localStorage.removeItem('emp_id')`, `localStorage.removeItem('emp_name')`, navigates to `/`
 
-### Files to Edit
-- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
+### New file: `src/lib/getHomeRoute.ts`
+
+Helper function that determines the correct home route based on permissions:
+
+```ts
+export function getHomeRoute(perms: string[]): string {
+  if (perms.includes('admin')) return '/admin';
+  // Primary role = first matching permission
+  if (hasAccess(perms, 'reception')) return '/staff'; // reception tab auto-selected
+  if (hasAccess(perms, 'kitchen')) return '/staff';
+  if (hasAccess(perms, 'bar')) return '/staff';
+  if (hasAccess(perms, 'housekeeping')) return '/staff';
+  return '/staff';
+}
+```
+
+Staff all route to `/staff` since the StaffShell already auto-selects their first available role tab. The key fix is that Home never goes to `/` for authenticated users.
+
+### Modified files
+
+**`src/pages/StaffShell.tsx`**
+- Replace the ad-hoc header with `<StaffNavBar />`
+- Remove the Home button that navigates to `/`
+- Remove the inline Logout button (now in nav bar)
+- Keep the role switcher tabs and content as-is
+
+**`src/pages/AdminPage.tsx`** (lines ~453-462)
+- Replace the ad-hoc header (Home icon + "Dashboard" title) with `<StaffNavBar />`
+- Remove the Home button that navigates to `/`
+
+**`src/pages/EmployeePortal.tsx`**
+- Add `<StaffNavBar />` at the top
+- Remove any duplicate Home/Logout buttons
+
+**`src/components/RequireAuth.tsx`**
+- No changes needed — it already redirects to `/` when session is missing, which is correct
+
+**`src/pages/Index.tsx`**
+- Already has auto-redirect for existing sessions (lines 39-49) — no changes needed
+
+### What this fixes
+
+- **Home button bug**: Home navigates to `/staff` or `/admin` instead of `/`
+- **Logout visibility**: Always visible in the nav bar across all pages
+- **Consistent navigation**: Same nav bar on every authenticated page
+- **Mobile friendly**: Hamburger menu on small screens
+- **Staff landing**: Already works — staff land on `/staff` which auto-selects their first role tab. The StaffShell role switcher handles the "landing on their department" requirement.
+
+### Files summary
+
+```
+NEW:  src/components/StaffNavBar.tsx
+NEW:  src/lib/getHomeRoute.ts
+EDIT: src/pages/StaffShell.tsx     — replace header with StaffNavBar
+EDIT: src/pages/AdminPage.tsx      — replace header with StaffNavBar
+EDIT: src/pages/EmployeePortal.tsx — add StaffNavBar
+```
+
+No database changes needed. No existing functionality removed.
 
