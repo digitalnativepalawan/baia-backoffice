@@ -15,6 +15,7 @@ interface ServiceOrderDetailProps {
   onOpenChange: (open: boolean) => void;
   permissions: string[];
   onAction: (orderId: string, action: string) => Promise<void>;
+  resortProfile?: ResortProfile | null;
 }
 
 const STATUS_DOT: Record<string, string> = {
