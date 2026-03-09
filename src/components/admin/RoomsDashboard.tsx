@@ -419,6 +419,15 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     return housekeepingOrders.find((o: any) => o.unit_name === unitName);
   };
 
+  // Upcoming booking for Ready rooms (next 7 days)
+  const getUpcomingBooking = (unit: any) => {
+    const today = new Date().toISOString().split('T')[0];
+    const weekEnd = addDays(new Date(), 6).toISOString().split('T')[0];
+    const resortUnit = resolveResortUnit(unit.name);
+    if (!resortUnit) return null;
+    return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in > today && b.check_in <= weekEnd) || null;
+  };
+
   // --- CHECK-IN ---
   const handleCheckIn = async () => {
     if (readOnly) { toast.error('View-only access'); return; }
