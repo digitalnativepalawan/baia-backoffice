@@ -95,8 +95,12 @@ Deno.serve(async (req) => {
       if (!name || !pin) {
         return new Response(JSON.stringify({ error: 'name and pin required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
-      const { data: emp, error } = await supabase.from('employees').select('*').eq('name', name).eq('active', true).single();
-      if (error || !emp) {
+      const adminNameLower = name.toLowerCase();
+      const { data: allActiveAdmin } = await supabase.from('employees').select('*').eq('active', true);
+      const emp = (allActiveAdmin || []).find((e: any) =>
+        e.name?.toLowerCase() === adminNameLower || e.display_name?.toLowerCase() === adminNameLower
+      );
+      if (!emp) {
         return new Response(JSON.stringify({ error: 'Employee not found' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
       if (!emp.password_hash) {
