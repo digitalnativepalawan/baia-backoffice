@@ -336,19 +336,23 @@ const AdminPage = () => {
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
   const deleteAllOrders = async () => {
-    // Delete all orders (use gte on created_at to avoid UUID type mismatch)
-    const { error: ordErr } = await supabase.from('orders').delete().gte('created_at', '1970-01-01');
-    // Delete all tabs
-    const { error: tabErr } = await supabase.from('tabs').delete().gte('created_at', '1970-01-01');
-    if (ordErr && tabErr) { toast.error('Failed to delete orders & tabs'); return; }
-    if (ordErr) { toast.error('Orders failed but tabs deleted'); }
-    if (tabErr) { toast.error('Tabs failed but orders deleted'); }
-    qc.invalidateQueries({ queryKey: ['orders-admin'] });
-    qc.invalidateQueries({ queryKey: ['tabs-admin'] });
-    setConfirmDeleteAll(false);
-    if (!ordErr && !tabErr) toast.success('All orders & tabs deleted');
-    const { logAudit } = await import('@/lib/auditLog');
-    logAudit('deleted', 'orders', 'ALL', 'Bulk delete all orders and tabs');
+    try {
+      // Delete in FK order: room_transactions → inventory_logs → orders → tabs
+      await supabase.from('room_transactions' as any).delete().gte('created_at', '1970-01-01');
+      await supabase.from('inventory_logs').delete().gte('created_at', '1970-01-01');
+      const { error: ordErr } = await supabase.from('orders').delete().gte('created_at', '1970-01-01');
+      if (ordErr) { toast.error(`Orders: ${ordErr.message}`); return; }
+      const { error: tabErr } = await supabase.from('tabs').delete().gte('created_at', '1970-01-01');
+      if (tabErr) { toast.error(`Tabs: ${tabErr.message}`); return; }
+      qc.invalidateQueries({ queryKey: ['orders-admin'] });
+      qc.invalidateQueries({ queryKey: ['tabs-admin'] });
+      setConfirmDeleteAll(false);
+      toast.success('All orders & tabs deleted');
+      const { logAudit } = await import('@/lib/auditLog');
+      logAudit('deleted', 'orders', 'ALL', 'Bulk delete all orders and tabs');
+    } catch (e: any) {
+      toast.error(e.message || 'Delete failed');
+    }
   };
   const filteredOrders = useMemo(() => {
     let filtered = orders;
