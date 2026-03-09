@@ -341,7 +341,7 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
                           </div>
                           <p className="font-body text-xs text-muted-foreground">Units: {row.units} · {row.guestCount} guests</p>
                           <p className="font-body text-xs text-muted-foreground">{row.checkIn} → {row.checkOut}</p>
-                          <p className="font-body text-xs text-muted-foreground">Projected: ₱{row.totalProjected} · Paid: ₱{row.paidRealized}</p>
+                          <p className="font-body text-xs text-muted-foreground">₱{row.pricePerNight}/night · Paid: ₱{row.paidRealized}</p>
                           {row.notes && <p className="font-body text-xs text-muted-foreground italic">{row.notes}</p>}
                           {row.errors.map((e, i) => (
                             <p key={i} className="font-body text-xs text-destructive">{e}</p>
