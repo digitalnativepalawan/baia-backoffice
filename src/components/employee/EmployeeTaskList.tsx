@@ -402,13 +402,11 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
                     {readOnly && isCompleted && (
                       <CheckCircle2 className="w-7 h-7 text-green-500 mr-1" />
                     )}
-                    {/* Details button for completed tasks */}
-                    {isCompleted && (
-                      <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground"
-                        onClick={() => setDetailTask(task)} title="View details">
-                        <Eye className="w-5 h-5" />
-                      </Button>
-                    )}
+                    {/* Details button for all tasks */}
+                    <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground"
+                      onClick={() => setDetailTask(task)} title="View details">
+                      <Eye className="w-5 h-5" />
+                    </Button>
                     {!readOnly && (
                       <>
                         <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground" onClick={() => {
