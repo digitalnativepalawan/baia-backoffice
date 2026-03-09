@@ -77,6 +77,7 @@ const ActionRequiredPanel = () => {
   const [employees, setEmployees] = useState<Record<string, Employee>>({});
   const [loading, setLoading] = useState(true);
   const [currentEmpId, setCurrentEmpId] = useState<string | null>(null);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const fetchTasks = async () => {
