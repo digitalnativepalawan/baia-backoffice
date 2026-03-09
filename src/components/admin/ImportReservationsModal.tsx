@@ -201,9 +201,8 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
         }
 
         const unitNames = row.units.split(',').map(u => u.trim()).filter(Boolean);
-        const totalProjected = parseFloat(row.totalProjected) || 0;
+        const nightlyRate = parseFloat(row.pricePerNight) || 0;
         const totalPaid = parseFloat(row.paidRealized) || 0;
-        const splitRate = unitNames.length > 0 ? totalProjected / unitNames.length : totalProjected;
         const splitPaid = unitNames.length > 0 ? totalPaid / unitNames.length : totalPaid;
 
         for (const uName of unitNames) {
