@@ -55,6 +55,8 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
     try { await onAction(order.id, action); } finally { setBusy(false); }
   };
 
+  const canServe = canEdit(permissions, 'reception') || canEdit(permissions, 'kitchen') || canEdit(permissions, 'bar');
+
   // Primary action for current department
   let primaryAction: { label: string; action: string; icon: React.ReactNode } | null = null;
 
@@ -64,7 +66,10 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
   } else if (department === 'bar' && canEdit(permissions, 'bar')) {
     if (order.bar_status === 'pending' && barItems.length > 0) primaryAction = { label: 'Start Mixing', action: 'bar-start', icon: <GlassWater className="w-5 h-5" /> };
     else if (order.bar_status === 'preparing') primaryAction = { label: 'Mark Ready', action: 'bar-ready', icon: <CheckCircle2 className="w-5 h-5" /> };
-  } else if (department === 'reception' && canEdit(permissions, 'reception')) {
+  }
+
+  // Serve/Pay actions — any department staff can do this
+  if (!primaryAction && canServe) {
     const allReady = (foodItems.length === 0 || order.kitchen_status === 'ready') && (barItems.length === 0 || order.bar_status === 'ready');
     if (allReady && order.status !== 'Served' && order.status !== 'Paid') {
       primaryAction = { label: isAutoPayable ? 'Serve & Close' : 'Mark Served', action: 'mark-served', icon: <Truck className="w-5 h-5" /> };
