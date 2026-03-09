@@ -225,7 +225,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
 
           {/* Charges summary */}
           <div className="space-y-1.5">
-            <p className="font-display text-xs tracking-wider text-muted-foreground uppercase">Charges</p>
+            <p className="font-display text-xs tracking-wider text-muted-foreground uppercase">Room Charges</p>
             {charges.map(t => (
               <div key={t.id} className="flex justify-between font-body text-sm">
                 <span className="text-muted-foreground truncate flex-1">{t.notes || t.transaction_type}</span>
@@ -233,12 +233,20 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
               </div>
             ))}
             <div className="flex justify-between font-display text-sm">
-              <span className="text-foreground">Total Charges</span>
+              <span className="text-foreground">Subtotal (Room)</span>
               <span className="text-foreground">₱{totalCharges.toLocaleString()}</span>
             </div>
           </div>
 
-          <Separator />
+          {unpaidTotal > 0 && (
+            <>
+              <Separator />
+              <div className="flex justify-between font-display text-sm">
+                <span className="text-amber-400">Unsettled F&B</span>
+                <span className="text-amber-400">₱{unpaidTotal.toLocaleString()}</span>
+              </div>
+            </>
+          )}
 
           {/* Payments received */}
           <div className="space-y-1.5">
