@@ -24,7 +24,7 @@ const STATUS_DOT: Record<string, string> = {
   ready: 'bg-emerald-400',
 };
 
-const ServiceOrderDetail = ({ order, open, onOpenChange, permissions, onAction }: ServiceOrderDetailProps) => {
+const ServiceOrderDetail = ({ order, open, onOpenChange, permissions, onAction, resortProfile }: ServiceOrderDetailProps) => {
   const [busy, setBusy] = useState<string | null>(null);
 
   if (!order) return null;
