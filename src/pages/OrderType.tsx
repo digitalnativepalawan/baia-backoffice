@@ -102,12 +102,20 @@ const OrderType = () => {
           )}
 
           {activeOrderType && activeOrderType.input_mode === 'text' && (
-            <Input
-              placeholder={activeOrderType.placeholder || 'Enter details'}
-              value={locationDetail}
-              onChange={(e) => setLocationDetail(e.target.value)}
-              className="bg-secondary border-border text-foreground font-body"
-            />
+            <div className="space-y-3">
+              <Input
+                placeholder={activeOrderType.placeholder || 'Table # or location'}
+                value={locationDetail}
+                onChange={(e) => setLocationDetail(e.target.value)}
+                className="bg-secondary border-border text-foreground font-body"
+              />
+              <Input
+                placeholder="Guest name (optional)"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                className="bg-secondary border-border text-foreground font-body"
+              />
+            </div>
           )}
 
           <Button
