@@ -17,6 +17,10 @@ const STATUSES = ['New', 'Preparing', 'Served', 'Paid'];
 const StaffOrdersView = () => {
   const qc = useQueryClient();
   const { data: resortProfile } = useResortProfile();
+  const session = getStaffSession();
+  const perms = session?.permissions || [];
+  const isAdmin = !!session?.isAdmin;
+  const canPipeline = isAdmin || canManage(perms, 'orders') || canEdit(perms, 'kitchen') || canEdit(perms, 'bar');
   const audioCtxRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
