@@ -70,8 +70,7 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
 
   // Serve/Pay actions — any department staff can do this
   if (!primaryAction && canServe) {
-    const allReady = (foodItems.length === 0 || order.kitchen_status === 'ready') && (barItems.length === 0 || order.bar_status === 'ready');
-    if (allReady && order.status !== 'Served' && order.status !== 'Paid') {
+    if (order.status === 'Ready') {
       primaryAction = { label: isAutoPayable ? 'Serve & Close' : 'Mark Served', action: 'mark-served', icon: <Truck className="w-5 h-5" /> };
     } else if (order.status === 'Served' && !isAutoPayable) {
       primaryAction = { label: 'Mark Paid', action: 'mark-paid', icon: <CreditCard className="w-5 h-5" /> };

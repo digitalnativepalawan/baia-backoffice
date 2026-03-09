@@ -86,7 +86,7 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
       const { data } = await supabase
         .from('orders')
         .select('*')
-        .in('status', ['New', 'Preparing', 'Served', 'Paid'])
+        .in('status', ['New', 'Preparing', 'Ready', 'Served', 'Paid'])
         .gte('created_at', start.toISOString())
         .order('created_at', { ascending: true })
         .limit(300);
@@ -118,28 +118,15 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
         if (deptStatus === 'pending' && (o.status === 'New' || o.status === 'Preparing')) cols.New.push(o);
         else if (deptStatus === 'preparing') cols.Preparing.push(o);
         else if (o.status === 'Served' || o.status === 'Paid') cols.Served.push(o);
-        else if (deptStatus === 'ready') cols.Ready.push(o);
+        else if (deptStatus === 'ready' || o.status === 'Ready') cols.Ready.push(o);
       });
     } else {
+      // Reception: use overall order.status directly
       relevantOrders.forEach(o => {
         if (o.status === 'New') cols.New.push(o);
         else if (o.status === 'Preparing') cols.Preparing.push(o);
-        else if (o.status === 'Served') {
-          const allReady = o.kitchen_status === 'ready' && o.bar_status === 'ready';
-          if (allReady) cols.Ready.push(o);
-          else cols.Preparing.push(o);
-        }
-      });
-      relevantOrders.forEach(o => {
-        if (o.status === 'Preparing' && o.kitchen_status === 'ready' && o.bar_status === 'ready') {
-          cols.Preparing = cols.Preparing.filter(x => x.id !== o.id);
-          cols.Ready.push(o);
-        }
-      });
-      relevantOrders.forEach(o => {
-        if (o.status === 'Served' && !cols.Ready.some(x => x.id === o.id)) {
-          cols.Served.push(o);
-        }
+        else if (o.status === 'Ready') cols.Ready.push(o);
+        else if (o.status === 'Served' || o.status === 'Paid') cols.Served.push(o);
       });
     }
     return cols;
@@ -177,7 +164,7 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
       updateData.kitchen_status = 'ready';
       const barItems = ((order.items as any[]) || []).some((i: any) => i.department === 'bar' || i.department === 'both');
       if (!barItems || order.bar_status === 'ready') {
-        updateData.status = 'Served';
+        updateData.status = 'Ready';
       }
     } else if (action === 'bar-start') {
       updateData.bar_status = 'preparing';
@@ -194,7 +181,7 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
         return d === 'kitchen' || d === 'both';
       });
       if (!kitchenItems || order.kitchen_status === 'ready') {
-        updateData.status = 'Served';
+        updateData.status = 'Ready';
       }
     } else if (action === 'mark-served') {
       updateData.status = 'Served';
