@@ -941,13 +941,21 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
           <div className="flex justify-between items-center">
             <h2 className="font-display text-xs tracking-wider text-foreground uppercase">Walk-In / Sell Room</h2>
           </div>
-          {readyUnits.map((unit: any) => (
+          {readyUnits.map((unit: any) => {
+            const upcoming = getUpcomingBooking(unit);
+            const upGuest = (upcoming as any)?.resort_ops_guests;
+            return (
             <div key={unit.id} className="border border-emerald-500/30 rounded-lg p-3 flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <BedDouble className="w-4 h-4 text-emerald-400" />
                 <div>
                   <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
                   <Badge className="font-body text-xs bg-emerald-500/20 text-emerald-400 border-emerald-500/40">Ready</Badge>
+                  {upcoming && (
+                    <p className="font-body text-[10px] text-blue-400 mt-0.5">
+                      📅 {upGuest?.full_name || 'Guest'} · {format(new Date(upcoming.check_in + 'T00:00:00'), 'MMM d')}
+                    </p>
+                  )}
                 </div>
               </div>
               {canDoEdit && (
@@ -962,7 +970,8 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                 </Button>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
