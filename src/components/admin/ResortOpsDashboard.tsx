@@ -772,10 +772,39 @@ const ResortOpsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
                   return (
                     <div key={b.id} className="p-3 rounded border border-primary/50 space-y-2">
                       <div className="grid grid-cols-2 gap-2">
-                        <Select value={editingBooking.guest_id} onValueChange={v => setEditingBooking((p: any) => ({...p, guest_id: v}))}>
-                          <SelectTrigger className={inputCls}><SelectValue placeholder="Guest" /></SelectTrigger>
-                          <SelectContent>{guests.map((g: any) => <SelectItem key={g.id} value={g.id}>{g.full_name}</SelectItem>)}</SelectContent>
-                        </Select>
+                        <div className="relative">
+                          <Input
+                            value={editGuestSearch || (editingBooking.guest_id ? (guestMap.get(editingBooking.guest_id) || '') : '')}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setEditGuestSearch(val);
+                              setEditingBooking((p: any) => ({ ...p, guest_id: '' }));
+                              setShowEditGuestDropdown(val.length >= 1);
+                            }}
+                            onFocus={() => { if ((editGuestSearch || guestMap.get(editingBooking.guest_id) || '').length >= 1) setShowEditGuestDropdown(true); }}
+                            onBlur={() => setTimeout(() => setShowEditGuestDropdown(false), 200)}
+                            placeholder="Guest name *"
+                            className={inputCls}
+                          />
+                          {showEditGuestDropdown && (
+                            <div className="absolute z-50 w-full mt-1 border border-border rounded-lg bg-card shadow-lg max-h-40 overflow-y-auto">
+                              {guests
+                                .filter((g: any) => g.full_name.toLowerCase().includes((editGuestSearch || '').toLowerCase()))
+                                .slice(0, 6)
+                                .map((g: any) => (
+                                  <button key={g.id} type="button" onMouseDown={e => e.preventDefault()}
+                                    onClick={() => {
+                                      setEditingBooking((p: any) => ({ ...p, guest_id: g.id }));
+                                      setEditGuestSearch(g.full_name);
+                                      setShowEditGuestDropdown(false);
+                                    }}
+                                    className="w-full px-3 py-2 text-left hover:bg-secondary transition-colors">
+                                    <p className="font-body text-sm text-foreground">{g.full_name}</p>
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+                        </div>
                         <Select value={editingBooking.unit_id} onValueChange={v => setEditingBooking((p: any) => ({...p, unit_id: v}))}>
                           <SelectTrigger className={inputCls}><SelectValue placeholder="Unit" /></SelectTrigger>
                           <SelectContent>{units.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
