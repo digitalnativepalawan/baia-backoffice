@@ -9,12 +9,18 @@ import { Button } from '@/components/ui/button';
 import { Plus, Minus } from 'lucide-react';
 import TabInvoice from '@/components/admin/TabInvoice';
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
+import { getStaffSession } from '@/lib/session';
+import { canManage, canEdit } from '@/lib/permissions';
 
 const STATUSES = ['New', 'Preparing', 'Served', 'Paid'];
 
 const StaffOrdersView = () => {
   const qc = useQueryClient();
   const { data: resortProfile } = useResortProfile();
+  const session = getStaffSession();
+  const perms = session?.permissions || [];
+  const isAdmin = !!session?.isAdmin;
+  const canPipeline = isAdmin || canManage(perms, 'orders') || canEdit(perms, 'kitchen') || canEdit(perms, 'bar');
   const audioCtxRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -225,9 +231,9 @@ const StaffOrdersView = () => {
           <OrderCard
             key={order.id}
             order={order}
-            onAdvance={advanceOrder}
+            onAdvance={canPipeline ? advanceOrder : undefined}
             resortProfile={resortProfile}
-            onAddItems={handleOpenAddItems}
+            onAddItems={canPipeline ? handleOpenAddItems : undefined}
             onViewTab={(tabId) => setViewingTabId(tabId)}
           />
         ))}
