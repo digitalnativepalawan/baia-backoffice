@@ -32,8 +32,8 @@ interface ParsedRow {
   selected: boolean;
 }
 
-const TEMPLATE_HEADERS = 'Guest Name,Units,Guests,Platform,Check In,Check Out,Total Amount Projected,Paid So Far Realized,Notes';
-const TEMPLATE_EXAMPLE = 'John Doe,"Unit1,Unit2",2,Airbnb,01/15/2025,01/18/2025,5000,2500,First time guest';
+const TEMPLATE_HEADERS = 'Guest Name,Units,Guests,Platform,Check In,Check Out,Price Per Night,Paid So Far Realized,Notes';
+const TEMPLATE_EXAMPLE = 'John Doe,"Unit1,Unit2",2,Airbnb,01/15/2026,01/18/2026,1500,2500,First time guest';
 
 // Unit validation is now dynamic — derived from the `units` prop
 
