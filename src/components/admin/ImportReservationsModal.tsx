@@ -94,7 +94,7 @@ function validateRow(row: ParsedRow, validUnits: string[]): string[] {
     const invalid = unitNames.filter(u => !validUnits.some(v => v.toLowerCase() === u.toLowerCase()));
     if (invalid.length > 0) errs.push(`Invalid unit(s): ${invalid.join(', ')} (valid: ${validUnits.join(', ')})`);
   }
-  if (row.totalProjected && isNaN(parseFloat(row.totalProjected))) errs.push('Total Amount must be a number');
+  if (row.pricePerNight && isNaN(parseFloat(row.pricePerNight))) errs.push('Price Per Night must be a number');
   if (row.paidRealized && isNaN(parseFloat(row.paidRealized))) errs.push('Paid must be a number');
   return errs;
 }
