@@ -692,8 +692,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       setCheckOutOpen(false);
       setCheckOutBooking(null);
       setCheckOutUnit(null);
-      setCheckOutHousekeeper('');
-      toast.success(`Checkout complete${hkEmp ? ` — ${hkEmp.display_name || hkEmp.name} notified` : ''}`);
+      toast.success('Checkout complete — housekeepers notified');
     } catch {
       toast.error('Checkout failed');
     } finally {
