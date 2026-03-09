@@ -1,37 +1,60 @@
 
 
-## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
+## Service Mode UI Refresh and Transparent Billing
 
-### Issues Found
+### Problems Identified
 
-1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
-
-2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
+1. **Service Mode selector page** looks basic — large blocky cards with dated icons
+2. **Service board cards** are functional but visually flat — need better hierarchy, color coding, and polish
+3. **Critical billing bug**: Kitchen/Bar boards show "Mark Paid" for Room and Tab orders. Room orders are already charged to the room bill via `room_transactions`. Tab orders collect payment at tab close. These should auto-complete to "Paid" when served, not require a manual "Mark Paid" click.
 
 ### Changes
 
-**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
-- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
-- Increase touch target size for edit/delete buttons on shift blocks
-- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
+**1. `src/pages/ServiceModePage.tsx` — Modern selector UI**
+- Replace blocky card buttons with a glassmorphism card grid (2-col on tablet, 1-col on phone)
+- Use modern Lucide icons: `Flame` (kitchen), `GlassWater` (bar), `BellRing` (reception)
+- Add subtle gradient backgrounds per department, animated hover/tap states
+- Show live order count per department (query from orders table)
+- Add current staff name from session at top
 
-**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
-- Add an "Assign Task" button alongside "Add Shift" 
-- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
-- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
-- For other tasks: creates an `employee_tasks` entry with due date and description
-- Tasks appear as colored pills on the timeline (already partially implemented)
+**2. `src/components/service/ServiceHeader.tsx` — Cleaner header**
+- Use the updated icons (`Flame`, `GlassWater`, `BellRing`)
+- Add a subtle gradient accent line under the header matching dept color
+- Show staff name from session
 
-**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
-- In the task detail dialog, show who completed the task and when (`completed_at`)
-- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
-- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
+**3. `src/components/service/ServiceOrderCard.tsx` — Modern card redesign**
+- Add a colored left border strip per order status (gold=new, orange=preparing, green=ready, blue=served)
+- Better typography hierarchy: location bold, guest name subtle, items in a clean list
+- Payment type badge: show `🏠 Room Charge` or `📋 Tab` or `💳 Cash` so staff knows at a glance
+- Replace emoji dept indicators with small colored dot + icon pairs
+- Remove "Mark Paid" button for Room and Tab orders (handled automatically)
+- For Room/Tab orders when status is "Served", show a muted "Charged to Room" or "On Tab" indicator instead of an action button
 
-**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
-- Add edit capability: change title, description, due date, reassign to different employee
-- Add delete capability for tasks
-- Show completion audit trail
+**4. `src/components/service/ServiceBoard.tsx` — Smart auto-complete for Room/Tab orders**
+- In `handleAction` for `mark-served`: If the order has `payment_type === 'Charge to Room'` or `tab_id` is set, automatically set status to `Paid` and `closed_at` in the same update (since no separate payment collection is needed)
+- This means Room/Tab orders flow: New → Preparing → Ready → Served → auto-Paid (disappears from board)
+- Walk-in/Dine-in orders still require manual "Mark Paid" at reception
 
-### Files to Edit
-- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
+**5. `src/components/service/ServiceOrderDetail.tsx` — Updated detail drawer**
+- Match the updated icon set
+- Show payment type prominently (Room Charge / Tab / Direct Payment)
+- Hide "Mark Paid" action for Room/Tab orders
+- Show "This order is charged to [Room Name]" or "This order is on [Tab Name]" as an info banner
+- Use the updated status colors
+
+**6. `src/index.css` — Add subtle gradient utilities**
+- Add dept-specific gradient classes for card accents
+
+### File Summary
+
+```
+EDIT: src/pages/ServiceModePage.tsx          — modern selector with live counts
+EDIT: src/components/service/ServiceHeader.tsx — updated icons, staff name
+EDIT: src/components/service/ServiceOrderCard.tsx — modern card design, smart billing display
+EDIT: src/components/service/ServiceBoard.tsx — auto-Paid for Room/Tab on serve
+EDIT: src/components/service/ServiceOrderDetail.tsx — billing transparency, updated UI
+EDIT: src/index.css — gradient utilities
+```
+
+No database changes. No new files. All existing functionality preserved — only visual improvements and smart billing logic added.
 
