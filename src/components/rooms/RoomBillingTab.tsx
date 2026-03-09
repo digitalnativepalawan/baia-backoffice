@@ -69,7 +69,7 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
     if (!unit) return;
     const channel = supabase.channel(`billing-orders-${unit.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        qc.invalidateQueries({ queryKey: ['billing-unpaid-orders', unit.id, unit.name, booking?.id] });
+        qc.invalidateQueries({ queryKey: ['billing-room-orders', unit.id, unit.name, booking?.id] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
