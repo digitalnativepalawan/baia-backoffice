@@ -9,7 +9,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { Home, LogOut } from 'lucide-react';
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
-import { canEdit } from '@/lib/permissions';
+import { canEdit, canManage } from '@/lib/permissions';
 import { getStaffSession, clearStaffSession } from '@/lib/session';
 
 interface DepartmentOrdersViewProps {
@@ -46,7 +46,7 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
     if (s) return { isAdmin: s.isAdmin || false, permissions: s.permissions || [] as string[] };
     return { isAdmin: false, permissions: [] as string[] };
   })();
-  const canAct = sessionPerms.isAdmin || canEdit(sessionPerms.permissions, department);
+  const canAct = sessionPerms.isAdmin || canEdit(sessionPerms.permissions, department) || canManage(sessionPerms.permissions, 'orders');
 
   const statusField = department === 'kitchen' ? 'kitchen_status' : 'bar_status';
   const otherStatusField = department === 'kitchen' ? 'bar_status' : 'kitchen_status';

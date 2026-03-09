@@ -15,9 +15,9 @@ const from = (table: string) => supabase.from(table as any);
 const BUILTIN_ROLE_TEMPLATES: Record<string, string[]> = {
   admin: ['admin'],
   gm: ['admin'],
-  receptionist: ['reception:edit', 'experiences:edit', 'rooms:edit', 'housekeeping:view', 'orders:view', 'documents:view'],
+  receptionist: ['reception:edit', 'experiences:edit', 'rooms:edit', 'housekeeping:view', 'orders:manage', 'documents:view'],
   cook: ['kitchen:edit', 'orders:view', 'inventory:view'],
-  chef: ['kitchen:edit', 'menu:edit', 'orders:edit', 'inventory:edit'],
+  chef: ['kitchen:edit', 'menu:edit', 'orders:manage', 'inventory:edit'],
   bartender: ['bar:edit', 'orders:view', 'inventory:view'],
   tours: ['experiences:edit', 'orders:view'],
   transportation: ['experiences:view', 'tasks:edit'],
@@ -58,7 +58,7 @@ const GRANULAR_PERMISSIONS = [
   { key: 'documents', label: 'Documents' },
 ] as const;
 
-const THREE_LEVEL_SECTIONS = new Set(['reception', 'experiences']);
+const THREE_LEVEL_SECTIONS = new Set(['reception', 'experiences', 'orders']);
 
 const LEVEL_LABELS: Record<PermissionLevel, string> = { off: 'Off', view: 'View', edit: 'Edit', manage: 'Manage' };
 const LEVEL_COLORS: Record<PermissionLevel, string> = {
@@ -240,7 +240,7 @@ const StaffAccessManager = () => {
         </Button>
       </div>
       <p className="font-body text-xs text-muted-foreground mb-3">
-        Tap each section badge to cycle: <span className="text-muted-foreground">Off</span> → <span className="text-blue-400">View</span> → <span className="text-emerald-400">Edit</span> → <span className="text-purple-400">Manage</span> (Reception/Experiences) → Off
+        Tap each section badge to cycle: <span className="text-muted-foreground">Off</span> → <span className="text-blue-400">View</span> → <span className="text-emerald-400">Edit</span> → <span className="text-purple-400">Manage</span> (Orders/Reception/Experiences) → Off. Orders Edit = take orders only; Manage = advance pipeline.
       </p>
 
       {/* Custom Roles Management */}
