@@ -121,17 +121,30 @@ const ActionRequiredPanel = () => {
 
       // Fetch employee names for the visible tasks
       const empIds = [...new Set(sorted.map(t => t.employee_id))];
-      if (empIds.length > 0) {
-        const { data: empData } = await supabase
-          .from('employees')
-          .select('id, name, display_name')
-          .in('id', empIds);
-        if (empData) {
-          const map: Record<string, Employee> = {};
-          empData.forEach(e => { map[e.id] = e as Employee; });
-          setEmployees(map);
-        }
+
+      // Fetch comment counts
+      const taskIds = sorted.map(t => t.id);
+      const [empResult, commentResult] = await Promise.all([
+        empIds.length > 0
+          ? supabase.from('employees').select('id, name, display_name').in('id', empIds)
+          : Promise.resolve({ data: null }),
+        taskIds.length > 0
+          ? (supabase.from('task_comments' as any) as any).select('task_id').in('task_id', taskIds)
+          : Promise.resolve({ data: null }),
+      ]);
+
+      if (empResult.data) {
+        const map: Record<string, Employee> = {};
+        empResult.data.forEach((e: any) => { map[e.id] = e as Employee; });
+        setEmployees(map);
       }
+
+      // Build comment count map
+      const ccMap: Record<string, number> = {};
+      (commentResult.data || []).forEach((c: any) => {
+        ccMap[c.task_id] = (ccMap[c.task_id] || 0) + 1;
+      });
+      setCommentCounts(ccMap);
 
       setLoading(false);
     };
