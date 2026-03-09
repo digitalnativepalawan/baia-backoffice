@@ -1,37 +1,31 @@
 
 
-## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
+## Fix: Remove Redundant Department Badge from Staff Home
 
-### Issues Found
+### Problem
 
-1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
+When a staff member (or admin) logs into `/staff`, the navbar immediately shows a "RECEPTION" badge. This is confusing because it's not indicating the user's actual role — it's simply the first item in the `ROLES` array being passed as `activeDepartment` to `StaffNavBar`.
 
-2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
+The role switcher tabs already show which department is active, making the badge redundant and misleading on the Staff Shell.
 
-### Changes
+### Fix
 
-**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
-- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
-- Increase touch target size for edit/delete buttons on shift blocks
-- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
+**`src/pages/StaffShell.tsx`** — Stop passing `activeDepartment` to `StaffNavBar` on the Staff Shell. The role switcher tabs already communicate the active department visually.
 
-**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
-- Add an "Assign Task" button alongside "Add Shift" 
-- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
-- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
-- For other tasks: creates an `employee_tasks` entry with due date and description
-- Tasks appear as colored pills on the timeline (already partially implemented)
+Change:
+```tsx
+<StaffNavBar activeDepartment={activeRole} />
+```
+To:
+```tsx
+<StaffNavBar />
+```
 
-**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
-- In the task detail dialog, show who completed the task and when (`completed_at`)
-- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
-- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
+This way the badge only appears on dedicated department pages (e.g. `/kitchen`, `/reception`) where it's contextually meaningful, not on the multi-role staff home.
 
-**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
-- Add edit capability: change title, description, due date, reassign to different employee
-- Add delete capability for tasks
-- Show completion audit trail
+### Files Changed
 
-### Files to Edit
-- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
+```
+EDIT  src/pages/StaffShell.tsx  — Remove activeDepartment prop from StaffNavBar
+```
 
