@@ -1,37 +1,59 @@
 
 
-## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
+## Plan: Fix Payment Permissions, Room Order Visibility, and Checkout Flow
 
-### Issues Found
-
-1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
-
-2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
+### Problem
+1. **Anyone can mark orders "Paid"** — kitchen/bar staff see "Mark Paid" buttons they shouldn't
+2. **Paid orders disappear** from room billing — the query only fetches orders with active statuses (New/Preparing/Ready/Served), so "Paid" orders vanish
+3. **No mid-stay vs final checkout distinction** — the checkout modal forces all unpaid orders to be settled individually before checkout instead of one final settlement
 
 ### Changes
 
-**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
-- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
-- Increase touch target size for edit/delete buttons on shift blocks
-- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
+#### 1. Restrict "Mark Paid" to reception/admin only
 
-**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
-- Add an "Assign Task" button alongside "Add Shift" 
-- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
-- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
-- For other tasks: creates an `employee_tasks` entry with due date and description
-- Tasks appear as colored pills on the timeline (already partially implemented)
+**`src/components/service/ServiceOrderDetail.tsx`** — Gate the "Mark Paid" action behind `canEdit(permissions, 'reception')` instead of the broad `canServe` check (which includes kitchen/bar).
 
-**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
-- In the task detail dialog, show who completed the task and when (`completed_at`)
-- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
-- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
+**`src/components/service/ServiceOrderCard.tsx`** — Same fix: only show "Mark Paid" primary action when user has `reception:edit` or `orders:manage` or admin permissions. Kitchen/bar staff keep their prep/ready buttons but never see payment buttons.
 
-**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
-- Add edit capability: change title, description, due date, reassign to different employee
-- Add delete capability for tasks
-- Show completion audit trail
+**`src/components/service/ServiceBoard.tsx`** — Add a permissions prop and pass it down so the board-level action handler can also gate `mark-paid`.
 
-### Files to Edit
-- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
+**`src/components/admin/OrderCard.tsx`** — Admin page already has full access, no change needed.
+
+**`src/components/DepartmentOrdersView.tsx`** — Already doesn't have "Mark Paid" buttons (only Start Preparing / Mark Ready). No change needed.
+
+#### 2. Show ALL room orders in billing (paid + unpaid)
+
+**`src/components/rooms/RoomBillingTab.tsx`**:
+- Change the unpaid orders query to also fetch orders with status `'Paid'` for this room (add `'Paid'` to the `.in('status', [...])` filter)
+- Rename the query/variable from `unpaidOrders` to `roomOrders`
+- Split display into two groups: unpaid (active) and paid (history)
+- Paid orders show with a green "Paid" badge and are non-actionable
+- Balance calculation only counts unpaid orders
+
+#### 3. Rework checkout to do final settlement
+
+**`src/components/rooms/CheckoutModal.tsx`**:
+- Remove the per-order "Mark Paid" buttons and the blocker that prevents checkout when unpaid orders exist
+- Instead show all unpaid orders as line items in the final bill summary
+- Include unpaid F&B total in the balance calculation
+- On checkout: mark ALL unpaid room orders as `'Paid'` in one batch update, then proceed with existing checkout logic (room → to_clean, housekeeping assignment, etc.)
+- The final payment amount defaults to the total remaining balance (room charges + unpaid F&B - payments already received)
+
+### Files
+```
+EDIT  src/components/service/ServiceOrderDetail.tsx  — Gate "Mark Paid" behind reception/admin permission
+EDIT  src/components/service/ServiceOrderCard.tsx     — Gate "Mark Paid" behind reception/admin permission
+EDIT  src/components/rooms/RoomBillingTab.tsx          — Fetch ALL orders (incl. Paid), split display
+EDIT  src/components/rooms/CheckoutModal.tsx            — Remove per-order pay blocker, batch-settle on checkout
+```
+
+No database migrations needed — the existing `orders.status` field already supports 'Paid' and `room_transactions` already handles payments.
+
+### Technical Detail
+
+**Permission gating** uses existing `canEdit(permissions, 'reception')` or `permissions.includes('admin')` checks. The `canManage(permissions, 'orders')` also grants payment rights (receptionist template already has `orders:manage`). Kitchen (`kitchen:edit`) and bar (`bar:edit`) permissions never include reception/orders:manage, so those staff naturally lose the Mark Paid button.
+
+**Room billing query change**: Currently filters `.in('status', ['New', 'Preparing', 'Ready', 'Served'])`. Will change to `.in('status', ['New', 'Preparing', 'Ready', 'Served', 'Paid'])` and partition results client-side.
+
+**Checkout batch settle**: After recording the final payment transaction, runs `supabase.from('orders').update({ status: 'Paid', closed_at: now }).eq('room_id', unitId).in('status', ['New', 'Preparing', 'Ready', 'Served'])` to close all remaining orders at once.
 
