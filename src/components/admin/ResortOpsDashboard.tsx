@@ -320,7 +320,11 @@ const ResortOpsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const [newPayment, setNewPayment] = useState({ source: '', amount: '', expected_date: '' });
   const [newUnit, setNewUnit] = useState({ name: '', type: '', base_price: '', capacity: '' });
   
-  const [newBooking, setNewBooking] = useState({ guest_id: '', unit_id: '', platform: '', check_in: '', check_out: '', adults: '1', room_rate: '', addons_total: '0', paid_amount: '0', commission_applied: '0' });
+  const [newBooking, setNewBooking] = useState({ guest_id: '', guest_name: '', unit_id: '', platform: '', check_in: '', check_out: '', adults: '1', room_rate: '', addons_total: '0', paid_amount: '0', commission_applied: '0' });
+  const [guestSearch, setGuestSearch] = useState('');
+  const [showGuestDropdown, setShowGuestDropdown] = useState(false);
+  const [editGuestSearch, setEditGuestSearch] = useState('');
+  const [showEditGuestDropdown, setShowEditGuestDropdown] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [expenseReportsOpen, setExpenseReportsOpen] = useState(false);
   const [expenseBulkImportOpen, setExpenseBulkImportOpen] = useState(false);
