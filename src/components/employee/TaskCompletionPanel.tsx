@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Camera, CheckCircle2, X, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { compressImage } from '@/lib/imageCompress';
 
 interface Props {
   taskTitle: string;
@@ -23,9 +23,10 @@ const TaskCompletionPanel = ({ taskTitle, onConfirm, onCancel }: Props) => {
     if (!file) return;
     setUploading(true);
     try {
-      const ext = file.name.split('.').pop();
+      const compressed = await compressImage(file, 800);
+      const ext = compressed.name.split('.').pop();
       const path = `task-proof/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from('receipts').upload(path, file);
+      const { error } = await supabase.storage.from('receipts').upload(path, compressed);
       if (error) throw error;
       const { data: pub } = supabase.storage.from('receipts').getPublicUrl(path);
       setImageUrl(pub.publicUrl);
@@ -61,7 +62,10 @@ const TaskCompletionPanel = ({ taskTitle, onConfirm, onCancel }: Props) => {
         )}
       </div>
       <div className="flex gap-2">
-        <Button size="sm" onClick={() => onConfirm(comment, imageUrl)}
+        <Button size="sm" onClick={() => {
+            if (!comment.trim()) { toast.error('Please add a completion note'); return; }
+            onConfirm(comment, imageUrl);
+          }}
           className="font-display text-xs tracking-wider flex-1 gap-1 bg-green-600 hover:bg-green-700 text-white">
           <CheckCircle2 className="w-4 h-4" /> Confirm Complete
         </Button>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { format, isToday, isPast, parseISO } from 'date-fns';
-import { CheckCircle2, ChevronRight, Paperclip, AlertTriangle, Clock, ArrowRight } from 'lucide-react';
+import { CheckCircle2, ChevronRight, Paperclip, AlertTriangle, Clock, ArrowRight, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const SESSION_KEY = 'staff_home_session';
@@ -77,6 +77,7 @@ const ActionRequiredPanel = () => {
   const [employees, setEmployees] = useState<Record<string, Employee>>({});
   const [loading, setLoading] = useState(true);
   const [currentEmpId, setCurrentEmpId] = useState<string | null>(null);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -121,17 +122,30 @@ const ActionRequiredPanel = () => {
 
       // Fetch employee names for the visible tasks
       const empIds = [...new Set(sorted.map(t => t.employee_id))];
-      if (empIds.length > 0) {
-        const { data: empData } = await supabase
-          .from('employees')
-          .select('id, name, display_name')
-          .in('id', empIds);
-        if (empData) {
-          const map: Record<string, Employee> = {};
-          empData.forEach(e => { map[e.id] = e as Employee; });
-          setEmployees(map);
-        }
+
+      // Fetch comment counts
+      const taskIds = sorted.map(t => t.id);
+      const [empResult, commentResult] = await Promise.all([
+        empIds.length > 0
+          ? supabase.from('employees').select('id, name, display_name').in('id', empIds)
+          : Promise.resolve({ data: null }),
+        taskIds.length > 0
+          ? (supabase.from('task_comments' as any) as any).select('task_id').in('task_id', taskIds)
+          : Promise.resolve({ data: null }),
+      ]);
+
+      if (empResult.data) {
+        const map: Record<string, Employee> = {};
+        empResult.data.forEach((e: any) => { map[e.id] = e as Employee; });
+        setEmployees(map);
       }
+
+      // Build comment count map
+      const ccMap: Record<string, number> = {};
+      (commentResult.data || []).forEach((c: any) => {
+        ccMap[c.task_id] = (ccMap[c.task_id] || 0) + 1;
+      });
+      setCommentCounts(ccMap);
 
       setLoading(false);
     };
@@ -205,6 +219,12 @@ const ActionRequiredPanel = () => {
                     {hasAttachment && (
                       <span className="text-muted-foreground">
                         <Paperclip className="w-3 h-3" />
+                      </span>
+                    )}
+                    {commentCounts[task.id] > 0 && (
+                      <span className="text-muted-foreground flex items-center gap-0.5">
+                        <MessageCircle className="w-3 h-3" />
+                        <span className="font-body text-[10px]">{commentCounts[task.id]}</span>
                       </span>
                     )}
                   </div>

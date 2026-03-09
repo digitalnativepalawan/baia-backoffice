@@ -2149,6 +2149,36 @@ export type Database = {
         }
         Relationships: []
       }
+      task_comments: {
+        Row: {
+          author_name: string
+          content: string
+          created_at: string
+          id: string
+          image_url: string | null
+          link_url: string | null
+          task_id: string
+        }
+        Insert: {
+          author_name?: string
+          content?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          link_url?: string | null
+          task_id: string
+        }
+        Update: {
+          author_name?: string
+          content?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          link_url?: string | null
+          task_id?: string
+        }
+        Relationships: []
+      }
       time_entries: {
         Row: {
           clock_in: string

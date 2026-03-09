@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 import { sendMessengerMessage, openWhatsApp } from '@/lib/messenger';
 import { useResortProfile } from '@/hooks/useResortProfile';
 import TaskCompletionPanel from './TaskCompletionPanel';
-import TaskDetailsModal from './TaskDetailsModal';
+import TaskDetailSheet from './TaskDetailSheet';
 
 interface Props {
   employeeId?: string;
@@ -53,6 +53,24 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
       const { data } = await q;
       return (data || []) as any[];
     },
+  });
+
+  // Fetch comment counts for all tasks
+  const taskIds = tasks.map((t: any) => t.id);
+  const { data: commentCounts = {} } = useQuery({
+    queryKey: ['task-comment-counts', taskIds.join(',')],
+    queryFn: async () => {
+      if (taskIds.length === 0) return {};
+      const { data } = await (supabase.from('task_comments' as any) as any)
+        .select('task_id')
+        .in('task_id', taskIds);
+      const counts: Record<string, number> = {};
+      (data || []).forEach((c: any) => {
+        counts[c.task_id] = (counts[c.task_id] || 0) + 1;
+      });
+      return counts;
+    },
+    enabled: taskIds.length > 0,
   });
 
   const filtered = tasks.filter(t => {
@@ -384,13 +402,11 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
                     {readOnly && isCompleted && (
                       <CheckCircle2 className="w-7 h-7 text-green-500 mr-1" />
                     )}
-                    {/* Details button for completed tasks */}
-                    {isCompleted && (
-                      <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground"
-                        onClick={() => setDetailTask(task)} title="View details">
-                        <Eye className="w-5 h-5" />
-                      </Button>
-                    )}
+                    {/* Details button for all tasks */}
+                    <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground"
+                      onClick={() => setDetailTask(task)} title="View details">
+                      <Eye className="w-5 h-5" />
+                    </Button>
                     {!readOnly && (
                       <>
                         <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground" onClick={() => {
@@ -445,6 +461,11 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
                     <Badge variant={task.status === 'in_progress' ? 'secondary' : 'outline'}
                       className="font-body text-xs capitalize">{task.status}</Badge>
                     <Badge variant="outline" className="font-body text-xs">{task.created_by}</Badge>
+                    {(commentCounts as Record<string,number>)[task.id] > 0 && (
+                      <span className="inline-flex items-center gap-0.5 font-body text-xs text-muted-foreground">
+                        <MessageCircle className="w-3 h-3" /> {(commentCounts as Record<string,number>)[task.id]}
+                      </span>
+                    )}
                   </div>
                 )}
               </>
@@ -453,12 +474,14 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
         );
       })}
 
-      {/* Task Details Modal */}
-      <TaskDetailsModal
+      {/* Task Detail Sheet */}
+      <TaskDetailSheet
         open={!!detailTask}
         onOpenChange={(open) => { if (!open) setDetailTask(null); }}
         task={detailTask}
         employeeName={detailTask ? getEmployeeName(detailTask.employee_id) : undefined}
+        authorName={getStaffName()}
+        readOnly={readOnly}
       />
     </div>
   );
