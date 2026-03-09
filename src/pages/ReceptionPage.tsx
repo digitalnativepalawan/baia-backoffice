@@ -1092,7 +1092,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                       {order.accepted_by_name ? (
                         <p className="font-body text-xs text-foreground">👤 {order.accepted_by_name}</p>
                       ) : (
-                        <p className="font-body text-xs text-amber-400">⚠ Unassigned</p>
+                        <p className="font-body text-xs text-amber-400">⏳ Waiting for acceptance</p>
                       )}
                       <p className="font-body text-[10px] text-muted-foreground flex items-center gap-1">
                         <Clock className="w-3 h-3" /> {timeSince}
