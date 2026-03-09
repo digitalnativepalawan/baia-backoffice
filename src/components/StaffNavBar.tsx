@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Briefcase, LayoutDashboard, LogOut, Menu } from 'lucide-react';
+import { Home, Briefcase, LayoutDashboard, LogOut, Menu, Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import { hasAccess } from '@/lib/permissions';
