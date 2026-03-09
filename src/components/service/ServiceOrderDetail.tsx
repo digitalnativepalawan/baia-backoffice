@@ -65,8 +65,7 @@ const ServiceOrderDetail = ({ order, open, onOpenChange, permissions, onAction, 
   }
 
   if (canServe) {
-    const allReady = (foodItems.length === 0 || order.kitchen_status === 'ready') && (barItems.length === 0 || order.bar_status === 'ready');
-    if (allReady && order.status !== 'Served' && order.status !== 'Paid') {
+    if (order.status === 'Ready') {
       actions.push({
         label: isAutoPayable ? 'Serve & Close' : 'Mark Served',
         action: 'mark-served',

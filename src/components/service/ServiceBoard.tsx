@@ -181,7 +181,7 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
         return d === 'kitchen' || d === 'both';
       });
       if (!kitchenItems || order.kitchen_status === 'ready') {
-        updateData.status = 'Served';
+        updateData.status = 'Ready';
       }
     } else if (action === 'mark-served') {
       updateData.status = 'Served';

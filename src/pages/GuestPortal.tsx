@@ -794,7 +794,7 @@ const OrdersView = ({ session }: { session: GuestPortalSession }) => {
                   const itemStatus = dept === 'bar' || dept === 'both' 
                     ? (order.bar_status === 'ready' ? 'Ready' : order.bar_status === 'preparing' ? 'Preparing' : order.status)
                     : (order.kitchen_status === 'ready' ? 'Ready' : order.kitchen_status === 'preparing' ? 'Preparing' : order.status);
-                  const finalStatus = order.status === 'Served' ? 'Served' : order.status === 'Paid' ? 'Paid' : itemStatus;
+                  const finalStatus = order.status === 'Served' ? 'Served' : order.status === 'Paid' ? 'Paid' : order.status === 'Ready' ? 'Ready' : itemStatus;
                   return (
                     <div key={idx} className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
