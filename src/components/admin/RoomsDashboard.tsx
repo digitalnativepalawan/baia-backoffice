@@ -1363,7 +1363,19 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
               ) : status === 'to_clean' ? (
                 <Badge className="font-body text-xs mt-2 bg-amber-500/20 text-amber-400 border-amber-500/40">To Clean</Badge>
               ) : (
-                <Badge className="font-body text-xs mt-2 bg-emerald-500/20 text-emerald-400 border-emerald-500/40">Ready</Badge>
+                <div className="mt-2">
+                  <Badge className="font-body text-xs bg-emerald-500/20 text-emerald-400 border-emerald-500/40">Ready</Badge>
+                  {(() => {
+                    const upcoming = getUpcomingBooking(unit);
+                    if (!upcoming) return null;
+                    const upGuest = (upcoming as any)?.resort_ops_guests;
+                    return (
+                      <p className="font-body text-[10px] text-blue-400 mt-1 truncate">
+                        📅 {upGuest?.full_name || 'Guest'} · {format(new Date(upcoming.check_in + 'T00:00:00'), 'MMM d')}
+                      </p>
+                    );
+                  })()}
+                </div>
               )}
               {isHighRisk && (
                 <Badge variant="destructive" className="font-body text-xs mt-1">⚠ High Risk</Badge>
