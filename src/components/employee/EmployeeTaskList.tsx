@@ -461,6 +461,11 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
                     <Badge variant={task.status === 'in_progress' ? 'secondary' : 'outline'}
                       className="font-body text-xs capitalize">{task.status}</Badge>
                     <Badge variant="outline" className="font-body text-xs">{task.created_by}</Badge>
+                    {(commentCounts as Record<string,number>)[task.id] > 0 && (
+                      <span className="inline-flex items-center gap-0.5 font-body text-xs text-muted-foreground">
+                        <MessageCircle className="w-3 h-3" /> {(commentCounts as Record<string,number>)[task.id]}
+                      </span>
+                    )}
                   </div>
                 )}
               </>
