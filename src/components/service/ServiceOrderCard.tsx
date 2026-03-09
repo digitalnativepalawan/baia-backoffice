@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
 import { Flame, GlassWater, Truck, CreditCard, Clock, CheckCircle2, Home, Receipt, FileText } from 'lucide-react';
 import { useState } from 'react';
-import { canEdit, canManage } from '@/lib/permissions';
+import { canEdit, canManage, canManage } from '@/lib/permissions';
 import { generateInvoicePdf, buildInvoiceWhatsAppText } from '@/lib/generateInvoicePdf';
 import type { ResortProfile } from '@/hooks/useResortProfile';
 
@@ -55,7 +55,7 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
     try { await onAction(order.id, action); } finally { setBusy(false); }
   };
 
-  const canServe = canEdit(permissions, 'reception') || canEdit(permissions, 'kitchen') || canEdit(permissions, 'bar');
+  const canServe = canEdit(permissions, 'reception') || canEdit(permissions, 'kitchen') || canEdit(permissi || canManage(permissions, 'orders')ons, 'bar');
 
   // Primary action for current department
   let primaryAction: { label: string; action: string; icon: React.ReactNode } | null = null;
