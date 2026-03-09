@@ -43,6 +43,8 @@ const ServiceOrderDetail = ({ order, open, onOpenChange, permissions, onAction, 
     try { await onAction(order.id, action); } finally { setBusy(null); }
   };
 
+  const canServe = canEdit(permissions, 'reception') || canEdit(permissions, 'kitchen') || canEdit(permissions, 'bar');
+
   // Build actions based on permissions + order state
   const actions: { label: string; action: string; icon: React.ReactNode; variant: 'default' | 'outline' }[] = [];
 
@@ -62,7 +64,7 @@ const ServiceOrderDetail = ({ order, open, onOpenChange, permissions, onAction, 
     }
   }
 
-  if (canEdit(permissions, 'reception')) {
+  if (canServe) {
     const allReady = (foodItems.length === 0 || order.kitchen_status === 'ready') && (barItems.length === 0 || order.bar_status === 'ready');
     if (allReady && order.status !== 'Served' && order.status !== 'Paid') {
       actions.push({
@@ -76,6 +78,8 @@ const ServiceOrderDetail = ({ order, open, onOpenChange, permissions, onAction, 
       actions.push({ label: 'Mark Paid', action: 'mark-paid', icon: <CreditCard className="w-5 h-5" />, variant: 'default' });
     }
   }
+
+  const showInvoice = !isAutoPayable && (order.status === 'Served' || order.status === 'Paid');
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
