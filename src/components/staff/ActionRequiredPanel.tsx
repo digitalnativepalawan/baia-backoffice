@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { format, isToday, isPast, parseISO } from 'date-fns';
-import { CheckCircle2, ChevronRight, Paperclip, AlertTriangle, Clock, ArrowRight } from 'lucide-react';
+import { CheckCircle2, ChevronRight, Paperclip, AlertTriangle, Clock, ArrowRight, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const SESSION_KEY = 'staff_home_session';
