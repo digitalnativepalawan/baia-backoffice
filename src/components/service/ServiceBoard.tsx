@@ -336,6 +336,7 @@ const MobileTabView = ({ columns, department, permissions, onAction, onOpenDetai
             permissions={permissions}
             onAction={onAction}
             onOpenDetail={onOpenDetail}
+            resortProfile={resortProfile}
           />
         ))}
       </div>
