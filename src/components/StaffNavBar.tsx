@@ -69,9 +69,7 @@ const StaffNavBar = ({ activeDepartment }: StaffNavBarProps) => {
   const hasDashboardAccess = isAdmin || MANAGER_SECTIONS.some(s => hasAccess(perms, s));
 
   const handleLogout = () => {
-    sessionStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem('emp_id');
-    localStorage.removeItem('emp_name');
+    clearStaffSession();
     navigate('/');
   };
 

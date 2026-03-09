@@ -42,10 +42,9 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
 
   // Read session permissions for edit access
   const sessionPerms = (() => {
-    try {
-      const s = JSON.parse(sessionStorage.getItem('staff_home_session') || '{}');
-      return { isAdmin: s.isAdmin || false, permissions: s.permissions || [] as string[] };
-    } catch { return { isAdmin: false, permissions: [] as string[] }; }
+    const s = getStaffSession();
+    if (s) return { isAdmin: s.isAdmin || false, permissions: s.permissions || [] as string[] };
+    return { isAdmin: false, permissions: [] as string[] };
   })();
   const canAct = sessionPerms.isAdmin || canEdit(sessionPerms.permissions, department);
 
