@@ -253,13 +253,14 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
               </div>
               <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-2">
                 {columns[col].map(order => (
-                  <ServiceOrderCard
+                    <ServiceOrderCard
                     key={order.id}
                     order={order}
                     department={department}
                     permissions={permissions}
                     onAction={handleAction}
                     onOpenDetail={setDetailOrder}
+                    resortProfile={resortProfile}
                     compact
                   />
                 ))}
