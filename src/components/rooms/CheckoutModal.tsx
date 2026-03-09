@@ -77,13 +77,6 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
   const nights = booking ? Math.max(1, Math.ceil((new Date(booking.check_out).getTime() - new Date(booking.check_in).getTime()) / 86400000)) : 0;
   const roomRate = booking ? Number(booking.room_rate) : 0;
 
-  const markOrderPaid = async (orderId: string) => {
-    await supabase.from('orders').update({ status: 'Paid', closed_at: new Date().toISOString() }).eq('id', orderId);
-    refetchUnpaid();
-    qc.invalidateQueries({ queryKey: ['service-orders'] });
-    toast.success('Order marked as paid');
-  };
-
   const handleCheckout = async () => {
     setSubmitting(true);
     try {
