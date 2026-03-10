@@ -1098,12 +1098,14 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
         filter: `booking_id=eq.${session.booking_id}`,
       }, () => {
         qc.invalidateQueries({ queryKey: ['guest-bill-pending-tours', session.booking_id] });
+        qc.invalidateQueries({ queryKey: ['guest-bill-completed-tours', session.booking_id] });
       })
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'guest_requests',
         filter: `booking_id=eq.${session.booking_id}`,
       }, () => {
         qc.invalidateQueries({ queryKey: ['guest-bill-pending-requests', session.booking_id] });
+        qc.invalidateQueries({ queryKey: ['guest-bill-completed-requests', session.booking_id] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };

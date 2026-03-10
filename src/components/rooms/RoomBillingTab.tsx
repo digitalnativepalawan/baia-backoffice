@@ -613,10 +613,16 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
           <span className="text-foreground">₱{totalCharges.toLocaleString()}</span>
         </div>
         {unpaidOrdersTotal > 0 && (
-          <div className="flex justify-between font-body text-sm">
-            <span className="text-muted-foreground">Unpaid F&B</span>
-            <span className="text-amber-400">₱{unpaidOrdersTotal.toLocaleString()}</span>
-          </div>
+          <>
+            <div className="flex justify-between font-body text-sm">
+              <span className="text-muted-foreground">Unpaid F&B (Subtotal)</span>
+              <span className="text-amber-400">₱{unpaidOrdersSubtotal.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between font-body text-sm">
+              <span className="text-muted-foreground">Service Charges (10%)</span>
+              <span className="text-amber-400">₱{unpaidOrdersSCTotal.toLocaleString()}</span>
+            </div>
+          </>
         )}
         <div className="flex justify-between font-body text-sm">
           <span className="text-muted-foreground">Total Payments</span>
