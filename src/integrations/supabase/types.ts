@@ -111,7 +111,15 @@ export type Database = {
           status?: string
           unit_name?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "bill_disputes_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "resort_ops_bookings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       billing_config: {
         Row: {
