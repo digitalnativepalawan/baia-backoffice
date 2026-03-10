@@ -23,6 +23,8 @@ import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { useRoomTransactions } from '@/hooks/useRoomTransactions';
 import { canEdit, canManage, hasAccess } from '@/lib/permissions';
 import { logAudit } from '@/lib/auditLog';
+import ReceptionCalendar from '@/components/reception/ReceptionCalendar';
+import type { BookingWithGuest, ResortUnit } from '@/components/reception/calendarUtils';
 
 /** Get current Manila date string (YYYY-MM-DD) */
 const getManilaDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
