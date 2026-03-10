@@ -88,18 +88,26 @@ const OrderType = () => {
 
           {/* Location detail */}
           {activeOrderType && activeOrderType.input_mode === 'select' && activeOrderType.source_table && (
-            <Select onValueChange={setLocationDetail} value={locationDetail}>
-              <SelectTrigger className="bg-secondary border-border text-foreground font-body">
-                <SelectValue placeholder={activeOrderType.placeholder || 'Select'} />
-              </SelectTrigger>
-              <SelectContent className="bg-card border-border">
-                {getSelectOptions(activeOrderType.source_table).map(item => (
-                  <SelectItem key={item.id} value={item.name} className="text-foreground font-body">
-                    {item.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="space-y-3">
+              <Select onValueChange={setLocationDetail} value={locationDetail}>
+                <SelectTrigger className="bg-secondary border-border text-foreground font-body">
+                  <SelectValue placeholder={activeOrderType.placeholder || 'Select'} />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  {getSelectOptions(activeOrderType.source_table).map(item => (
+                    <SelectItem key={item.id} value={item.name} className="text-foreground font-body">
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                placeholder="Guest name (optional)"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                className="bg-secondary border-border text-foreground font-body"
+              />
+            </div>
           )}
 
           {activeOrderType && activeOrderType.input_mode === 'text' && (
