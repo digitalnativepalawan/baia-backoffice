@@ -985,14 +985,19 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                     <LogOut className="w-4 h-4 mr-1" /> Check Out
                   </Button>
                 )}
-                <div className="flex flex-wrap gap-1.5">
+                 <div className="flex flex-wrap gap-1.5">
                   {canDoEdit && booking && (
                     <Button size="sm" variant="outline" onClick={() => {
-                      setPaymentUnit(unit);
-                      setPaymentBooking(booking);
-                      setPaymentOpen(true);
+                      const params = new URLSearchParams({
+                        mode: 'staff',
+                        orderType: 'Room',
+                        location: unit.name,
+                        roomName: unit.name,
+                        guestName: guest?.full_name || 'Guest',
+                      });
+                      navigate(`/menu?${params.toString()}`);
                     }} className="font-display text-[10px] tracking-wider min-h-[32px]">
-                      <DollarSign className="w-3 h-3 mr-0.5" /> Pay
+                      <UtensilsCrossed className="w-3 h-3 mr-0.5" /> Order
                     </Button>
                   )}
                   <Button size="sm" variant="ghost" onClick={() => setBillUnitId(billUnitId === unit.id ? null : unit.id)}
@@ -1011,7 +1016,9 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                      <Eye className="w-3 h-3 mr-0.5" /> Details
                    </Button>
                  </div>
-                 {billUnitId === unit.id && <InlineBill unitId={unit.id} />}
+                 {billUnitId === unit.id && (
+                   <RoomBillingTab unit={unit} booking={booking} guestName={guest?.full_name || null} />
+                 )}
               </div>
             );
           })}
