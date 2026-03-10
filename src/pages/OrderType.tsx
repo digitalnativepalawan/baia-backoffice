@@ -89,8 +89,44 @@ const OrderType = () => {
             ))}
           </div>
 
-          {/* Location detail */}
-          {activeOrderType && activeOrderType.input_mode === 'select' && activeOrderType.source_table && (
+          {/* DineIn: unit + table + guest name */}
+          {activeOrderType && isDineIn && (
+            <div className="space-y-3">
+              <Select onValueChange={setLocationDetail} value={locationDetail}>
+                <SelectTrigger className="bg-secondary border-border text-foreground font-body">
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  {(units || []).map(u => (
+                    <SelectItem key={u.id} value={u.unit_name} className="text-foreground font-body">
+                      {u.unit_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select onValueChange={setTableDetail} value={tableDetail}>
+                <SelectTrigger className="bg-secondary border-border text-foreground font-body">
+                  <SelectValue placeholder="Select table" />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  {(tables || []).map(t => (
+                    <SelectItem key={t.id} value={t.table_name} className="text-foreground font-body">
+                      {t.table_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                placeholder="Guest name (optional)"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                className="bg-secondary border-border text-foreground font-body"
+              />
+            </div>
+          )}
+
+          {/* Standard select (non-DineIn) */}
+          {activeOrderType && !isDineIn && activeOrderType.input_mode === 'select' && activeOrderType.source_table && (
             <div className="space-y-3">
               <Select onValueChange={setLocationDetail} value={locationDetail}>
                 <SelectTrigger className="bg-secondary border-border text-foreground font-body">
@@ -113,7 +149,7 @@ const OrderType = () => {
             </div>
           )}
 
-          {activeOrderType && activeOrderType.input_mode === 'text' && (
+          {activeOrderType && !isDineIn && activeOrderType.input_mode === 'text' && (
             <div className="space-y-3">
               <Input
                 placeholder={activeOrderType.placeholder || 'Table # or location'}
