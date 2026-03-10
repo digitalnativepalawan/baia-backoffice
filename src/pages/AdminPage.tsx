@@ -66,7 +66,7 @@ const OPERATIONS: TabDef[] = [
   { value: 'orders', label: 'Orders', perm: 'orders' },
   { value: 'kitchen', label: 'Kitchen', perm: 'kitchen' },
   { value: 'bar', label: 'Bar', perm: 'bar' },
-  { value: 'rooms', label: 'Rooms', perm: 'rooms' },
+  { value: 'rooms', label: 'Reception', perm: 'rooms' },
   { value: 'guest-services', label: 'Guest Services', perm: 'reception' },
   { value: 'housekeeping', label: 'Housekeeping', perm: 'housekeeping' },
 ];
