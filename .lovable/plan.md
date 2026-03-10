@@ -1,25 +1,37 @@
 
 
-## Remove Redundant "Bill" Button, Make Room Orders Expandable with Corrections
+## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
 
-### Problems
-1. **"Bill" dropdown button is redundant** — The "Details" button already opens a full `RoomsDashboard` (which includes `RoomBillingTab`) in a bottom sheet. The inline "Bill" toggle duplicates this and clutters the guest card.
-2. **Recent Room Orders are not expandable** — The orders section (lines 1357-1377) shows only room name, guest, total, and status badge. Staff cannot see what items are in the order, the 10% service charge, or take corrective action (edit, comp, mark paid, delete).
-3. **No corrective actions on orders from the reception view** — If kitchen/bar made a mistake, reception has no way to fix it from the current guest card without going into "Details."
+### Issues Found
+
+1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
+
+2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
 
 ### Changes
 
-**1. `src/pages/ReceptionPage.tsx`**
-- **Remove the "Bill" button** (lines 1076-1079) and the collapsible `RoomBillingTab` section (lines 1092-1094) from the occupied unit cards. The `billUnitId` state and `InlineBill` component can also be removed.
-- **Make Recent Room Orders expandable** — Replace the flat order cards (lines 1363-1376) with expandable cards that show:
-  - Tap to expand: itemized contents (qty × name × price per item)
-  - Service charge breakdown: Subtotal, SC 10%, Total
-  - Corrective action buttons: Edit total (✏️), Comp, Mark Paid, Delete — same actions as `RoomBillingTab` already implements
-  - Status badge with descriptive text (e.g., "Being prepared" for Preparing, "Served ✓")
-- Show **all** room orders for current guests (not just 8), grouped by unit, including total with SC
+**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
+- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
+- Increase touch target size for edit/delete buttons on shift blocks
+- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
 
-**2. `src/pages/GuestPortal.tsx`** — No changes needed, the BillView already shows itemized orders with SC breakdown and status badges correctly.
+**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
+- Add an "Assign Task" button alongside "Add Shift" 
+- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
+- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
+- For other tasks: creates an `employee_tasks` entry with due date and description
+- Tasks appear as colored pills on the timeline (already partially implemented)
+
+**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
+- In the task detail dialog, show who completed the task and when (`completed_at`)
+- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
+- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
+
+**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
+- Add edit capability: change title, description, due date, reassign to different employee
+- Add delete capability for tasks
+- Show completion audit trail
 
 ### Files to Edit
-1. `src/pages/ReceptionPage.tsx` — Remove "Bill" button/collapsible, make Recent Room Orders expandable with item details and corrective actions
+- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
 
