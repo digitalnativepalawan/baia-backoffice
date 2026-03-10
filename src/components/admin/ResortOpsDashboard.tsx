@@ -471,6 +471,17 @@ const ResortOpsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       qc.invalidateQueries({ queryKey: ['resort-ops-guests'] });
     }
     if (!guestId || !newBooking.unit_id || !newBooking.check_in || !newBooking.check_out) { toast.error('Fill in all required fields'); return; }
+    // Conflict check
+    const conflicting = (bookings as any[]).find((b: any) =>
+      b.unit_id === newBooking.unit_id &&
+      b.check_in < newBooking.check_out &&
+      b.check_out > newBooking.check_in
+    );
+    if (conflicting) {
+      const cName = (guests as any[]).find((g) => g.id === conflicting.guest_id)?.full_name || conflicting.platform || 'another guest';
+      toast.error(`Double booking! This room is booked by ${cName} (${conflicting.check_in} to ${conflicting.check_out}).`);
+      return;
+    }
     await from('resort_ops_bookings').insert({
       guest_id: guestId, unit_id: newBooking.unit_id, platform: newBooking.platform,
       check_in: newBooking.check_in, check_out: newBooking.check_out, adults: parseInt(newBooking.adults) || 1,
@@ -495,6 +506,18 @@ const ResortOpsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
 
   const saveBooking = async () => {
     if (!editingBooking) return;
+    // Conflict check on update
+    const conflicting = (bookings as any[]).find((b: any) =>
+      b.unit_id === editingBooking.unit_id &&
+      b.id !== editingBooking.id &&
+      b.check_in < editingBooking.check_out &&
+      b.check_out > editingBooking.check_in
+    );
+    if (conflicting) {
+      const cName = (guests as any[]).find((g) => g.id === conflicting.guest_id)?.full_name || conflicting.platform || 'another guest';
+      toast.error(`Double booking! This room is booked by ${cName} (${conflicting.check_in} to ${conflicting.check_out}).`);
+      return;
+    }
     await from('resort_ops_bookings').update({
       guest_id: editingBooking.guest_id, unit_id: editingBooking.unit_id, platform: editingBooking.platform,
       check_in: editingBooking.check_in, check_out: editingBooking.check_out, adults: parseInt(editingBooking.adults) || 1,
