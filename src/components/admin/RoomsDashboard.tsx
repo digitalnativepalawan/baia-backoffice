@@ -358,6 +358,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     });
     setTourName(''); setTourDate(''); setTourPax('1'); setTourPrice('');
     setTourProvider(''); setTourPickupTime(''); setTourNotes('');
+    setTourCatalogMode('catalog');
     qc.invalidateQueries({ queryKey: ['guest-tours', selectedUnit.name, currentBooking?.id] });
     toast.success('Tour added');
   };
