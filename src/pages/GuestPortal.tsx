@@ -1132,10 +1132,16 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
           <span className="font-body text-sm text-foreground">₱{totalCharges.toLocaleString()}</span>
         </div>
         {unpaidOrdersTotal > 0 && (
-          <div className="flex justify-between mb-2">
-            <span className="font-body text-sm text-muted-foreground">Unpaid Orders</span>
-            <span className="font-body text-sm text-amber-400">₱{unpaidOrdersTotal.toLocaleString()}</span>
-          </div>
+          <>
+            <div className="flex justify-between mb-1">
+              <span className="font-body text-sm text-muted-foreground">F&B Subtotal</span>
+              <span className="font-body text-sm text-amber-400">₱{unpaidOrdersSubtotal.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between mb-2">
+              <span className="font-body text-sm text-muted-foreground">Service Charge (10%)</span>
+              <span className="font-body text-sm text-amber-400">₱{unpaidOrdersSCTotal.toLocaleString()}</span>
+            </div>
+          </>
         )}
         <div className="flex justify-between mb-2">
           <span className="font-body text-sm text-muted-foreground">Total Payments</span>
