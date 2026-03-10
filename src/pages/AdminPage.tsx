@@ -44,8 +44,18 @@ import { usePermissions } from '@/hooks/usePermissions';
 
 import { formatDistanceToNow } from 'date-fns';
 import { useResortProfile } from '@/hooks/useResortProfile';
+import { useDepartmentAlerts } from '@/hooks/useDepartmentAlerts';
 
 type DateFilter = 'today' | 'yesterday' | 'all';
+
+const ALERT_KEY_MAP: Record<string, string> = {
+  rooms: 'reception',
+  orders: 'orders',
+  'guest-services': 'experiences',
+  kitchen: 'kitchen',
+  bar: 'bar',
+  housekeeping: 'housekeeping',
+};
 
 
 // ── Tab / section definitions ────────────────────────────────────
@@ -91,6 +101,9 @@ const AdminPage = () => {
   const cfgTabs = CONFIG.filter(allowed);
   const allTabs = [...opsTabs, ...peopleTabs, ...cfgTabs];
   const defaultTab = allTabs[0]?.value || 'orders';
+
+  const [activeTab, setActiveTab] = useState(defaultTab);
+  const alerts = useDepartmentAlerts();
 
   const docsAllowed = docsAllowedFn();
 
@@ -478,7 +491,7 @@ const AdminPage = () => {
 
       <div className="max-w-2xl mx-auto px-4 pb-6">
 
-        <Tabs defaultValue={defaultTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           {/* ── Grouped tab triggers ─────────────────────────── */}
           <div className="space-y-2 mb-6">
             {opsTabs.length > 0 && (
@@ -487,7 +500,9 @@ const AdminPage = () => {
                 <TabsList className="flex flex-wrap gap-1 mt-1 h-auto bg-transparent p-0">
                   {opsTabs.map(t => (
                     <TabsTrigger key={t.value} value={t.value}
-                      className="font-display text-xs tracking-wider min-h-[44px] px-3 py-1.5 rounded-md border border-border data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary bg-secondary text-muted-foreground">
+                      className={`font-display text-xs tracking-wider min-h-[44px] px-3 py-1.5 rounded-md border border-border data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary bg-secondary text-muted-foreground ${
+                        ALERT_KEY_MAP[t.value] && alerts[ALERT_KEY_MAP[t.value] as keyof typeof alerts] && activeTab !== t.value ? 'tab-pulse' : ''
+                      }`}>
                       {t.label}
                     </TabsTrigger>
                   ))}

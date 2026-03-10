@@ -10,6 +10,7 @@ import ExperiencesHome from '@/components/staff/ExperiencesHome';
 import StaffOrderHome from '@/components/staff/StaffOrderHome';
 import ActionRequiredPanel from '@/components/staff/ActionRequiredPanel';
 import StaffNavBar from '@/components/StaffNavBar';
+import { useDepartmentAlerts } from '@/hooks/useDepartmentAlerts';
 
 interface RoleDef {
   key: string;
@@ -38,6 +39,7 @@ const StaffShell = () => {
   }, [perms, isAdmin]);
 
   const [activeRole, setActiveRole] = useState(() => availableRoles[0]?.key || 'reception');
+  const alerts = useDepartmentAlerts();
 
   if (!session) {
     navigate('/');
@@ -62,7 +64,7 @@ const StaffShell = () => {
                   activeRole === r.key
                     ? 'bg-primary text-primary-foreground border-primary'
                     : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
-                }`}
+                } ${alerts[r.key as keyof typeof alerts] && activeRole !== r.key ? 'tab-pulse' : ''}`}
               >
                 {r.label}
               </button>

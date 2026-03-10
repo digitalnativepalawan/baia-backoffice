@@ -1,55 +1,37 @@
 
 
-## Flash Department Tabs When Orders Need Attention
+## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
 
-### Problem
-The role-switcher tabs in StaffShell (`/staff`) and the Operations tabs in AdminPage (`/admin`) are static — they don't indicate when a department has pending orders requiring attention.
+### Issues Found
 
-### Approach
-Add a single shared query that counts pending items per department, then apply the existing `tab-pulse` CSS class to tab buttons that have pending counts.
+1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
 
-### What counts as "needs attention" per department
-- **Reception**: Pending guest requests (`status = 'pending'`) + pending tour bookings (`status = 'booked'`) + New orders
-- **Kitchen**: Orders where `kitchen_status = 'pending'` and status is New/Preparing
-- **Bar**: Orders where `bar_status = 'pending'` and status is New/Preparing
-- **Orders**: Any orders with `status = 'New'`
-- **Housekeeping**: Housekeeping orders with `status = 'pending_inspection'` or `status = 'pending_cleaning'`
-- **Experiences**: Pending tour bookings
+2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
 
 ### Changes
 
-**1. Create a shared hook `src/hooks/useDepartmentAlerts.ts`**
-- Queries `orders` (today, active statuses), `guest_requests` (pending), `guest_tours`/`tour_bookings` (pending), `housekeeping_orders` (pending)
-- Returns a map: `{ reception: boolean, kitchen: boolean, bar: boolean, orders: boolean, housekeeping: boolean, experiences: boolean }`
-- Refetches every 10 seconds + uses existing realtime invalidation
+**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
+- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
+- Increase touch target size for edit/delete buttons on shift blocks
+- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
 
-**2. Update `src/pages/StaffShell.tsx`**
-- Import and use `useDepartmentAlerts()`
-- Add `tab-pulse` class to role-switcher buttons when `alerts[r.key]` is true and that tab is not the active one
+**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
+- Add an "Assign Task" button alongside "Add Shift" 
+- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
+- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
+- For other tasks: creates an `employee_tasks` entry with due date and description
+- Tasks appear as colored pills on the timeline (already partially implemented)
 
-**3. Update `src/pages/AdminPage.tsx`**
-- Import and use `useDepartmentAlerts()`
-- Map admin tab values to alert keys (e.g., `rooms` → `reception`, `guest-services` → `experiences`)
-- Add `tab-pulse` class to Operations TabsTrigger buttons when alerts indicate pending items and tab is not active
+**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
+- In the task detail dialog, show who completed the task and when (`completed_at`)
+- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
+- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
 
-### Technical Details
+**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
+- Add edit capability: change title, description, due date, reassign to different employee
+- Add delete capability for tasks
+- Show completion audit trail
 
-The hook will run lightweight count queries:
-```typescript
-// orders with active status from today
-const { data: orders } = useQuery({
-  queryKey: ['dept-alert-orders'],
-  queryFn: async () => { /* fetch today's active orders */ },
-  refetchInterval: 10000,
-});
-
-// guest_requests pending count
-// housekeeping_orders pending count
-// tour_bookings pending count
-```
-
-Tab button conditional class (same pattern already used in `StaffOrdersView`):
-```
-className={`... ${alerts[r.key] && activeRole !== r.key ? 'tab-pulse' : ''}`}
-```
+### Files to Edit
+- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
 
