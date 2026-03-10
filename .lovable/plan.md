@@ -1,41 +1,37 @@
 
 
-## Fix: F&B "Charge to Room" Orders Missing from Billing & Print Bill
+## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
 
-### Root Cause
-When an F&B order is placed with "Charge to Room" (either by staff or guest self-service), the CartDrawer creates a `room_transaction` record but **without a `booking_id`**. The Room Billing Tab and Print Bill query `room_transactions` filtered by `booking_id`, so the F&B charge is invisible — it exists in the database but is excluded from all views.
+### Issues Found
 
-### Fix
+1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
 
-**File: `src/components/CartDrawer.tsx`**
+2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
 
-1. After the active booking lookup (line 262-278), capture the `booking_id` from the fetched booking
-2. Include `booking_id` in the `room_transaction` insert (line 318-333)
+### Changes
 
-Specifically, change the booking lookup to also capture the booking id:
-```typescript
-let resolvedBookingId: string | null = null;
-// existing booking lookup...
-if (activeBooking) {
-  resolvedBookingId = activeBooking.id;
-  // existing guest name logic...
-}
-```
+**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
+- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
+- Increase touch target size for edit/delete buttons on shift blocks
+- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
 
-Then add to the room_transaction insert:
-```typescript
-booking_id: resolvedBookingId || (guestSession?.booking_id ?? null),
-```
+**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
+- Add an "Assign Task" button alongside "Add Shift" 
+- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
+- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
+- For other tasks: creates an `employee_tasks` entry with due date and description
+- Tasks appear as colored pills on the timeline (already partially implemented)
 
-The guest session (for guest portal orders) already has `booking_id` available. For staff orders, we get it from the active booking lookup which already runs.
+**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
+- In the task detail dialog, show who completed the task and when (`completed_at`)
+- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
+- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
 
-Also need to update the booking lookup query to select `id` in addition to `guest_id`:
-```typescript
-.select('id, guest_id, resort_ops_guests(full_name)')
-```
-
-This single fix ensures all "Charge to Room" F&B orders appear in the Room Ledger, the balance calculation, the Print Bill, and the Checkout Modal — in real-time.
+**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
+- Add edit capability: change title, description, due date, reassign to different employee
+- Add delete capability for tasks
+- Show completion audit trail
 
 ### Files to Edit
-1. `src/components/CartDrawer.tsx` — Add `booking_id` to the room_transaction insert (3 small changes in the same function)
+- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
 
