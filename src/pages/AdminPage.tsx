@@ -491,7 +491,7 @@ const AdminPage = () => {
 
       <div className="max-w-2xl mx-auto px-4 pb-6">
 
-        <Tabs defaultValue={defaultTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           {/* ── Grouped tab triggers ─────────────────────────── */}
           <div className="space-y-2 mb-6">
             {opsTabs.length > 0 && (
