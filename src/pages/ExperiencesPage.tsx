@@ -71,7 +71,7 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
     queryFn: async () => {
       const { data } = await from('guest_tours').select('*')
         .gte('tour_date', todayStr)
-        .in('status', ['booked', 'confirmed'])
+        .in('status', ['booked', 'confirmed', 'completed'])
         .order('tour_date').order('pickup_time');
       return (data || []) as any[];
     },
