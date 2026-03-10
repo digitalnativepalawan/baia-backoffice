@@ -344,7 +344,14 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
       setOrderSummary({ itemCount, grandTotal });
       cart.clearCart();
       setSubmitted(true);
-      toast.success('Order sent to kitchen!');
+      const toastLabel = (() => {
+        const hk = orderItems.some(i => i.department === 'kitchen' || i.department === 'both');
+        const hb = orderItems.some(i => i.department === 'bar' || i.department === 'both');
+        if (hk && hb) return 'Order sent to Kitchen & Bar!';
+        if (hb && !hk) return 'Order sent to Bar!';
+        return 'Order sent to Kitchen!';
+      })();
+      toast.success(toastLabel);
 
       // WhatsApp fallback: send order to kitchen number if configured
       const kitchenPhone = kitchenSettings?.kitchen_whatsapp_number;
@@ -715,7 +722,13 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
                   className="font-display tracking-wider py-6 w-full gap-2 text-base"
                 >
                   <Send className="w-4 h-4" />
-                  {submitting ? 'Sending...' : isGuestOrder ? 'Send Order' : 'Send to Kitchen'}
+                  {submitting ? 'Sending...' : isGuestOrder ? 'Send Order' : (() => {
+                    const hasKitchen = cart.items.some(i => (i.department || 'kitchen') === 'kitchen' || (i.department || 'kitchen') === 'both');
+                    const hasBar = cart.items.some(i => i.department === 'bar' || i.department === 'both');
+                    if (hasKitchen && hasBar) return 'Send to Kitchen & Bar';
+                    if (hasBar && !hasKitchen) return 'Send to Bar';
+                    return 'Send to Kitchen';
+                  })()}
                 </Button>
                 <p className="font-body text-[10px] text-cream-dim text-center mt-1">
                   {isGuestOrder ? 'Charges will be added to your room bill' : 'Order will be added to your open tab'}
