@@ -18,6 +18,7 @@ const IntegrationReadinessDashboard = () => {
 
   const { data: events = [], isLoading } = useQuery({
     queryKey: ['webhook-events'],
+    enabled: isDev,
     queryFn: async () => {
       const { data } = await supabase
         .from('webhook_events' as any)
@@ -31,6 +32,7 @@ const IntegrationReadinessDashboard = () => {
 
   const { data: schemaStatus } = useQuery({
     queryKey: ['integration-schema-status'],
+    enabled: isDev,
     queryFn: async () => {
       // Check if new columns exist by querying a booking
       try {
