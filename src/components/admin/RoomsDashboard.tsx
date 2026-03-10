@@ -92,6 +92,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const [tourProvider, setTourProvider] = useState('');
   const [tourPickupTime, setTourPickupTime] = useState('');
   const [tourNotes, setTourNotes] = useState('');
+  const [tourCatalogMode, setTourCatalogMode] = useState<'catalog' | 'other'>('catalog');
 
   // Note form
   const [noteContent, setNoteContent] = useState('');
