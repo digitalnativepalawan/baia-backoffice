@@ -1255,6 +1255,42 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
         </div>
       )}
 
+      {/* Completed Tours & Experiences */}
+      {(completedTours.length > 0 || completedRequests.length > 0) && (
+        <div className="space-y-2">
+          <p className="font-display text-xs tracking-wider text-emerald-400 uppercase flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" /> Completed Experiences
+          </p>
+          {completedTours.map((t: any) => (
+            <div key={t.id} className="bg-card border border-emerald-500/20 p-3 rounded-lg flex justify-between items-start">
+              <div className="flex items-start gap-2">
+                <Palmtree className="w-4 h-4 text-emerald-400 mt-0.5" />
+                <div>
+                  <p className="font-body text-sm text-foreground">{t.tour_name}</p>
+                  <p className="font-body text-xs text-muted-foreground">{t.tour_date} · {t.pax} pax{t.pickup_time ? ` · Pickup ${t.pickup_time}` : ''}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="font-body text-sm text-foreground">₱{(t.price || 0).toLocaleString()}</span>
+                <Badge variant="outline" className="ml-2 text-[10px] bg-emerald-500/20 text-emerald-300 border-emerald-500/30">Done</Badge>
+              </div>
+            </div>
+          ))}
+          {completedRequests.map((r: any) => (
+            <div key={r.id} className="bg-card border border-emerald-500/20 p-3 rounded-lg flex justify-between items-start">
+              <div className="flex items-start gap-2">
+                {r.request_type?.toLowerCase().includes('transport') ? <Truck className="w-4 h-4 text-blue-400 mt-0.5" /> : <Bike className="w-4 h-4 text-purple-400 mt-0.5" />}
+                <div>
+                  <p className="font-body text-sm text-foreground">{r.request_type}</p>
+                  <p className="font-body text-xs text-muted-foreground">{r.details}</p>
+                </div>
+              </div>
+              <Badge variant="outline" className="text-[10px] bg-emerald-500/20 text-emerald-300 border-emerald-500/30">Done</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Confirmed transactions — grouped by type */}
       <div className="space-y-2">
         {transactions.length > 0 && (

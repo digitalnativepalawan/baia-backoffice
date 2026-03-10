@@ -13,7 +13,7 @@ interface PrintBillProps {
   tours?: any[];
 }
 
-const PrintBill = ({ unitName, guestName, booking, transactions }: PrintBillProps) => {
+const PrintBill = ({ unitName, guestName, booking, transactions, roomOrders = [], tours = [] }: PrintBillProps) => {
   const { data: config } = useBillingConfig();
   const { data: profile } = useResortProfile();
   const { data: invoiceSettings } = useInvoiceSettings();
