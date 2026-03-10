@@ -1637,6 +1637,62 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* ══════ OVERRIDE SELL DIALOG ══════ */}
+      <Dialog open={overrideOpen} onOpenChange={setOverrideOpen}>
+        <DialogContent className="bg-card border-border max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display tracking-wider text-amber-400">⚠️ Override Reserved Room</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="font-body text-sm text-muted-foreground">
+              This room is reserved for a guest arriving today. Selling it to a walk-in requires a reason.
+            </p>
+            {overrideUnit && (() => {
+              const arrBooking = getTodayArrivalBooking(overrideUnit);
+              const arrGuest = (arrBooking as any)?.resort_ops_guests;
+              return arrGuest ? (
+                <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-2">
+                  <p className="font-body text-xs text-foreground">Reserved: <strong>{arrGuest.full_name}</strong></p>
+                  <p className="font-body text-[10px] text-muted-foreground">Expected at 2:00 PM</p>
+                </div>
+              ) : null;
+            })()}
+            <Textarea
+              value={overrideReason}
+              onChange={e => setOverrideReason(e.target.value)}
+              placeholder="Reason for override (required)"
+              className="bg-secondary border-border text-foreground font-body text-sm min-h-[60px]"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOverrideOpen(false)} className="font-display text-xs tracking-wider">Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={!overrideReason.trim()}
+              onClick={async () => {
+                if (!overrideUnit || !overrideReason.trim()) return;
+                const arrBooking = getTodayArrivalBooking(overrideUnit);
+                const arrGuest = (arrBooking as any)?.resort_ops_guests;
+                await logAudit('updated', 'units', overrideUnit.id, `Override sell: ${overrideReason} — reserved for ${arrGuest?.full_name || 'Guest'} in ${overrideUnit.name}`);
+                setOverrideOpen(false);
+                setOverrideReason('');
+                // Open walk-in modal
+                const rt = roomTypes.find((r: any) => r.id === overrideUnit.room_type_id);
+                const defaultRate = rt?.base_rate ? String(rt.base_rate) : '0';
+                setWalkInUnit(overrideUnit);
+                setWalkInForm({ guestName: '', checkIn: today, checkOut: '', adults: '2', children: '0', platform: 'Direct', roomRate: defaultRate, notes: '' });
+                setWalkInOpen(true);
+                setOverrideUnit(null);
+                toast.info('Override logged — proceed with walk-in');
+              }}
+              className="font-display text-xs tracking-wider"
+            >
+              Override & Sell
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
