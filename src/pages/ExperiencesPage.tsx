@@ -37,23 +37,31 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Unlock AudioContext on first user interaction (mobile requirement)
+  // Unlock AudioContext on user interaction — keep retrying until running
   useEffect(() => {
-    const unlock = () => {
+    const unlock = async () => {
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
       if (audioCtxRef.current.state === 'suspended') {
-        audioCtxRef.current.resume();
+        await audioCtxRef.current.resume();
+      }
+      if (audioCtxRef.current.state === 'running') {
+        document.removeEventListener('touchstart', unlock);
+        document.removeEventListener('click', unlock);
+        // If pending items exist, play chime immediately after unlock
+        if (hasPendingItems) playChime();
       }
     };
-    document.addEventListener('touchstart', unlock, { once: true });
-    document.addEventListener('click', unlock, { once: true });
+    document.addEventListener('touchstart', unlock);
+    document.addEventListener('click', unlock);
+    // Also try eagerly — works on desktop after refresh
+    unlock();
     return () => {
       document.removeEventListener('touchstart', unlock);
       document.removeEventListener('click', unlock);
     };
-  }, []);
+  }, [hasPendingItems, playChime]);
 
   // Play a two-tone chime
   const playChime = useCallback(() => {
