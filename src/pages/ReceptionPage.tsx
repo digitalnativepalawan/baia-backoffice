@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
-import { ArrowLeft, LogIn, LogOut, DollarSign, BedDouble, MapPin, Car, Bike, Palmtree, UtensilsCrossed, ClipboardList, Sparkles, Receipt, ChevronDown, ChevronUp, CheckCircle, Clock, ShieldCheck, Eye, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, LogIn, LogOut, DollarSign, BedDouble, MapPin, Car, Bike, Palmtree, UtensilsCrossed, ClipboardList, Sparkles, Receipt, ChevronDown, ChevronUp, CheckCircle, Clock, ShieldCheck, Eye, AlertTriangle, MessageSquare } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import RoomsDashboard from '@/components/admin/RoomsDashboard';
 import AddPaymentModal from '@/components/rooms/AddPaymentModal';
@@ -264,6 +264,15 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     },
   });
 
+  // Bill disputes
+  const { data: allDisputes = [] } = useQuery({
+    queryKey: ['reception-bill-disputes'],
+    queryFn: async () => {
+      const { data } = await from('bill_disputes').select('*').eq('status', 'open').order('created_at', { ascending: false });
+      return (data || []) as any[];
+    },
+  });
+
   // Room transactions for checkout
   const { data: checkOutTransactions = [] } = useRoomTransactions(checkOutUnit?.id || null);
 
@@ -343,7 +352,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   const pendingRequests = guestRequests.filter((r: any) => r.status === 'pending');
   const pendingTourBookings = tourBookings.filter((b: any) => b.status === 'pending');
-  const hasPendingAlerts = pendingRequests.length > 0 || pendingTourBookings.length > 0;
+  const hasPendingAlerts = pendingRequests.length > 0 || pendingTourBookings.length > 0 || allDisputes.length > 0;
 
   // ── AUDIO CHIME for pending requests/tours ──
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -409,6 +418,9 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tour_bookings' }, () => {
         qc.invalidateQueries({ queryKey: ['reception-tour-bookings'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bill_disputes' }, () => {
+        qc.invalidateQueries({ queryKey: ['reception-bill-disputes'] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -1013,6 +1025,11 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                     <Badge className={`font-body text-[10px] ${isDepartingToday ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-red-500/20 text-red-400 border-red-500/40'}`}>
                       {isDepartingToday ? 'Departing' : 'Occupied'}
                     </Badge>
+                    {allDisputes.some((d: any) => d.unit_name === unit.name) && (
+                      <Badge className="font-body text-[10px] bg-amber-500/20 text-amber-400 border-amber-500/40 flex items-center gap-0.5">
+                        <AlertTriangle className="w-2.5 h-2.5" /> Dispute
+                      </Badge>
+                    )}
                     {roomOrders.length > 0 && (
                       <span className="font-body text-[10px] text-muted-foreground flex items-center gap-1">
                         <UtensilsCrossed className="w-3 h-3" /> {roomOrders.length} order{roomOrders.length !== 1 ? 's' : ''}
