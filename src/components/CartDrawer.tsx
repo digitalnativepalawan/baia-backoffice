@@ -287,13 +287,28 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
         service_charge_amount: serviceCharge,
       };
 
+      // Auto-default to "Charge to Room" for room-linked order types (DineIn guest, RoomDelivery, etc.)
+      const roomLinkedTypes = ['DineIn', 'RoomDelivery', 'FriendsFamily'];
+      const resolvedPayment = (roomUnit && roomLinkedTypes.includes(selectedOrderType) && !paymentType)
+        ? 'Charge to Room'
+        : paymentType;
+
       const insertData: any = {
         order_type: selectedOrderType,
         location_detail: selectedLocation,
         items: orderItems,
         total: subtotal,
         service_charge: serviceCharge,
-        payment_type: (isStaff || isGuestOrder) ? paymentType : '',
+        payment_type: (isStaff || isGuestOrder) ? resolvedPayment : '',
+        status: 'New',
+        tab_id: tabId,
+        kitchen_status: hasKitchen ? 'pending' : 'ready',
+        bar_status: hasBar ? 'pending' : 'ready',
+        guest_name: resolvedGuestName,
+        room_id: roomUnit?.id || null,
+        tax_details: taxDetails,
+        staff_name: staffName,
+      };
         status: 'New',
         tab_id: tabId,
         kitchen_status: hasKitchen ? 'pending' : 'ready',
