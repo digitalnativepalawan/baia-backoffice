@@ -117,7 +117,7 @@ const ReceptionCalendar = ({ bookings, rooms, units, canEdit, canManage }: Recep
               <p className="text-[11px] text-muted-foreground font-body italic">No bookings</p>
             )}
             {dayBookings.map(b => {
-              const status = getBookingStatus(b);
+              const status = getBookingStatus(b, getUnitStatusForBooking(b));
               const colors = statusColors[status];
               const guestName = b.platform === 'Maintenance' ? '🔧 Maintenance' : (b.resort_ops_guests?.full_name || 'No name');
               const isCI = isSameDay(day, parseISO(b.check_in));
