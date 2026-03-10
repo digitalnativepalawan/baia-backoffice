@@ -809,9 +809,9 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
           <p className="font-display text-2xl text-foreground">{todayDepartures.length}</p>
           <p className="font-body text-xs text-muted-foreground">Departures</p>
         </div>
-        <div className="border border-border rounded-lg p-3 text-center">
-          <p className="font-display text-2xl text-foreground">{readyUnits.length}</p>
-          <p className="font-body text-xs text-muted-foreground">Available</p>
+        <div className="border border-emerald-500/30 bg-emerald-500/10 rounded-lg p-3 text-center">
+          <p className="font-display text-2xl text-emerald-400">{trulyAvailableUnits.length}</p>
+          <p className="font-body text-xs text-emerald-400/70">Available</p>
         </div>
         <div className="border border-blue-500/30 bg-blue-500/10 rounded-lg p-3 text-center">
           <p className="font-display text-2xl text-blue-400">{weekArrivals.length}</p>
