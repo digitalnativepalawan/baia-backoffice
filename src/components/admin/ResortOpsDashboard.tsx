@@ -478,7 +478,7 @@ const ResortOpsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       b.check_out > newBooking.check_in
     );
     if (conflicting) {
-      const cName = guests.find((g: any) => g.id === conflicting.guest_id)?.full_name || conflicting.platform || 'another guest';
+      const cName = (guests as any[]).find((g) => g.id === conflicting.guest_id)?.full_name || conflicting.platform || 'another guest';
       toast.error(`Double booking! This room is booked by ${cName} (${conflicting.check_in} to ${conflicting.check_out}).`);
       return;
     }
