@@ -10,7 +10,9 @@ import { format } from 'date-fns';
 import {
   DollarSign, RefreshCw, LogOut, UtensilsCrossed, MapPin, Bike, Truck,
   Trash2, Gift, FileText, CreditCard, Palmtree, CheckCircle, Pencil, Check, X,
+  AlertTriangle, MessageSquare,
 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import AddPaymentModal from './AddPaymentModal';
 import AdjustmentModal from './AdjustmentModal';
 import CheckoutModal from './CheckoutModal';
