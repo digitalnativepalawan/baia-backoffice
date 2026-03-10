@@ -1359,7 +1359,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
 
             const handleComp = async () => {
               await supabase.from('orders').update({ total: 0, service_charge: 0, status: 'Paid', payment_type: 'Complimentary' }).eq('id', order.id);
-              logAudit('orders', order.id, 'update', `Comped order (set to ₱0) from reception`, empName);
+              logAudit('updated', 'orders', order.id, `Comped order (set to ₱0) from reception`);
               qc.invalidateQueries({ queryKey: ['reception-recent-orders'] });
               toast.success('Order comped');
             };
