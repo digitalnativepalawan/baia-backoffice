@@ -52,11 +52,11 @@ type DateFilter = 'today' | 'yesterday' | 'all';
 interface TabDef { value: string; label: string; perm: string | null }
 
 const OPERATIONS: TabDef[] = [
+  { value: 'rooms', label: 'Reception', perm: 'rooms' },
   { value: 'orders', label: 'Orders', perm: 'orders' },
+  { value: 'guest-services', label: 'Guest Services', perm: 'reception' },
   { value: 'kitchen', label: 'Kitchen', perm: 'kitchen' },
   { value: 'bar', label: 'Bar', perm: 'bar' },
-  { value: 'rooms', label: 'Reception', perm: 'rooms' },
-  { value: 'guest-services', label: 'Guest Services', perm: 'reception' },
   { value: 'housekeeping', label: 'Housekeeping', perm: 'housekeeping' },
 ];
 
