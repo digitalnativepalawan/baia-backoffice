@@ -1011,21 +1011,18 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const { data: unpaidOrders = [] } = useQuery({
     queryKey: ['guest-bill-unpaid-orders', session.room_id, session.room_name],
     queryFn: async () => {
-      // By room_id
       const { data: byRoom } = await supabase
         .from('orders')
-        .select('id, total, guest_name, status, payment_type, created_at')
+        .select('id, total, guest_name, status, payment_type, created_at, items')
         .eq('room_id', session.room_id)
-        .eq('status', 'Served')
+        .in('status', ['New', 'Preparing', 'Ready', 'Served'])
         .neq('payment_type', 'Charge to Room');
-      // Fallback: by location_detail where room_id is null
       const { data: byLocation } = await supabase
         .from('orders')
-        .select('id, total, guest_name, status, payment_type, created_at')
+        .select('id, total, guest_name, status, payment_type, created_at, items')
         .is('room_id', null)
         .eq('location_detail', session.room_name)
-        .eq('status', 'Served');
-      // Merge and deduplicate
+        .in('status', ['New', 'Preparing', 'Ready', 'Served']);
       const map = new Map<string, any>();
       for (const o of [...(byRoom || []), ...(byLocation || [])]) map.set(o.id, o);
       return Array.from(map.values());
