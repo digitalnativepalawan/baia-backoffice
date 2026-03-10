@@ -120,8 +120,8 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
     queryFn: async () => {
       const { data } = await from('guest_tours').select('*')
         .in('status', ['completed', 'cancelled'])
-        .gte('created_at', oneDayAgo)
-        .order('created_at', { ascending: false }).limit(20);
+        .gte('tour_date', subDays(new Date(), 1).toISOString().split('T')[0])
+        .order('tour_date', { ascending: false }).limit(20);
       return (data || []) as any[];
     },
   });
