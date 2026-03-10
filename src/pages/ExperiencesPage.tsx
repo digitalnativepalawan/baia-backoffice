@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -34,6 +34,49 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
   const staffName = session?.name || 'Staff';
 
   const [historyOpen, setHistoryOpen] = useState(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Unlock AudioContext on first user interaction (mobile requirement)
+  useEffect(() => {
+    const unlock = () => {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume();
+      }
+    };
+    document.addEventListener('touchstart', unlock, { once: true });
+    document.addEventListener('click', unlock, { once: true });
+    return () => {
+      document.removeEventListener('touchstart', unlock);
+      document.removeEventListener('click', unlock);
+    };
+  }, []);
+
+  // Play a two-tone chime
+  const playChime = useCallback(() => {
+    const ctx = audioCtxRef.current;
+    if (!ctx || ctx.state !== 'running') return;
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(880, now);
+    osc1.connect(gain);
+    osc1.start(now);
+    osc1.stop(now + 0.2);
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1108.73, now + 0.2);
+    osc2.connect(gain);
+    osc2.start(now + 0.2);
+    osc2.stop(now + 0.5);
+  }, []);
 
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
@@ -101,6 +144,27 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
     },
   });
 
+  // Realtime subscriptions for guest_requests and tour_bookings
+  useEffect(() => {
+    const ch1 = supabase
+      .channel('experiences-requests-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_requests' }, () => {
+        qc.invalidateQueries({ queryKey: ['all-requests-experiences'] });
+        qc.invalidateQueries({ queryKey: ['recent-requests-history'] });
+      })
+      .subscribe();
+    const ch2 = supabase
+      .channel('experiences-tour-bookings-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tour_bookings' }, () => {
+        qc.invalidateQueries({ queryKey: ['tour-bookings-experiences'] });
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch1);
+      supabase.removeChannel(ch2);
+    };
+  }, [qc]);
+
   const todayTours = tours.filter((t: any) => t.tour_date === todayStr);
   const upcomingTours = tours.filter((t: any) => t.tour_date > todayStr);
 
@@ -108,6 +172,23 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
   const pendingBookings = tourBookings.filter((b: any) => b.status === 'pending');
   const confirmedBookings = tourBookings.filter((b: any) => b.status === 'confirmed');
   const todayBookings = tourBookings.filter((b: any) => b.tour_date === todayStr && b.status !== 'cancelled');
+
+  const pendingRequests = requests.filter((r: any) => r.status === 'pending');
+  const hasPendingItems = pendingBookings.length > 0 || pendingRequests.length > 0;
+
+  // Repeating chime every 5s while there are pending requests/bookings
+  useEffect(() => {
+    if (hasPendingItems) {
+      playChime();
+      intervalRef.current = setInterval(playChime, 5000);
+    } else if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [hasPendingItems, playChime]);
 
   const parsePriceFromDetails = (details: string): number => {
     const match = details.match(/₱([\d,]+)/);
@@ -279,7 +360,7 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
         <div className="mb-6 space-y-2">
           <h2 className="font-display text-xs tracking-wider text-amber-400 uppercase">⏳ Pending Tour Bookings ({pendingBookings.length})</h2>
           {pendingBookings.map((b: any) => (
-            <div key={b.id} className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3 space-y-2">
+            <div key={b.id} className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3 space-y-2 new-order-card">
               <div className="flex justify-between items-start">
                 <div>
                   <div className="flex items-center gap-2">
@@ -395,7 +476,7 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
         <div className="space-y-2">
           <h2 className="font-display text-xs tracking-wider text-muted-foreground uppercase">Guest Requests ({requests.length})</h2>
           {requests.slice(0, 15).map((req: any) => (
-            <div key={req.id} className="border border-border rounded-lg p-3 space-y-1">
+            <div key={req.id} className={`border rounded-lg p-3 space-y-1 ${req.status === 'pending' ? 'border-amber-500/30 bg-amber-500/5 new-order-card' : 'border-border'}`}>
               <div className="flex justify-between items-start">
                 <div>
                   <div className="flex items-center gap-2">
