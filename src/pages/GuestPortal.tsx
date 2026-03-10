@@ -1165,6 +1165,11 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
               : o.status === 'Preparing' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
               : o.status === 'Ready' ? 'bg-green-500/20 text-green-300 border-green-500/30'
               : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+            const statusDesc = o.status === 'New' ? 'Order received'
+              : o.status === 'Preparing' ? 'Being prepared by kitchen'
+              : o.status === 'Ready' ? 'Ready for pickup'
+              : 'Served ✓';
+            const orderTotal = Number(o.total || 0) + Number(o.service_charge || 0);
             return (
               <div key={o.id} className="bg-card border border-border p-3 rounded-lg space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -1174,20 +1179,40 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
                       {new Date(o.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </span>
                   </div>
-                  <Badge variant="outline" className={`text-[10px] ${statusColor}`}>{o.status}</Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="outline" className={`text-[10px] ${statusColor}`}>{o.status}</Badge>
+                  </div>
                 </div>
+                <p className="font-body text-[11px] text-muted-foreground pl-6">{statusDesc}</p>
                 {/* Itemized contents */}
                 <div className="space-y-0.5 pl-6">
                   {items.map((i: any, idx: number) => (
-                    <p key={idx} className="font-body text-sm text-foreground">
-                      {i.qty || 1}× {i.name}
-                    </p>
+                    <div key={idx} className="flex justify-between">
+                      <span className="font-body text-sm text-foreground">{i.qty || 1}× {i.name}</span>
+                      <span className="font-body text-xs text-muted-foreground">₱{((i.price || 0) * (i.qty || 1)).toLocaleString()}</span>
+                    </div>
                   ))}
                 </div>
-                <div className="flex justify-between items-center pl-6">
-                  <span className="font-body text-sm text-amber-400 font-medium">₱{(o.total || 0).toLocaleString()}</span>
-                  {o.status === 'Served' && <Badge variant="outline" className="text-[10px] border-amber-500/50 text-amber-400">Pay at Counter</Badge>}
+                {/* SC breakdown */}
+                <div className="pl-6 border-t border-border/50 pt-1 space-y-0.5">
+                  <div className="flex justify-between">
+                    <span className="font-body text-[11px] text-muted-foreground">Subtotal</span>
+                    <span className="font-body text-[11px] text-muted-foreground">₱{Number(o.total || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-body text-[11px] text-muted-foreground">Service Charge (10%)</span>
+                    <span className="font-body text-[11px] text-muted-foreground">₱{Number(o.service_charge || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-body text-xs text-foreground font-medium">Total</span>
+                    <span className="font-body text-xs text-amber-400 font-medium">₱{orderTotal.toLocaleString()}</span>
+                  </div>
                 </div>
+                {o.status === 'Served' && (
+                  <div className="pl-6">
+                    <Badge variant="outline" className="text-[10px] border-amber-500/50 text-amber-400">Pay at Counter</Badge>
+                  </div>
+                )}
               </div>
             );
           })}
