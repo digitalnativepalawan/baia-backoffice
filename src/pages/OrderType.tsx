@@ -43,7 +43,8 @@ const OrderType = () => {
   });
 
   const activeOrderType = orderTypes.find(ot => ot.type_key === selectedType);
-  const canProceed = selectedType && locationDetail;
+  const isDineIn = selectedType === 'DineIn';
+  const canProceed = selectedType && locationDetail && (!isDineIn || tableDetail);
 
   const getSelectOptions = (sourceTable: string | null) => {
     if (sourceTable === 'units') return units?.map(u => ({ id: u.id, name: u.unit_name })) || [];
@@ -53,7 +54,8 @@ const OrderType = () => {
 
   const handleProceed = () => {
     if (!canProceed) return;
-    const params = new URLSearchParams({ mode, orderType: selectedType, location: locationDetail });
+    const finalLocation = isDineIn ? `${locationDetail} – ${tableDetail}` : locationDetail;
+    const params = new URLSearchParams({ mode, orderType: selectedType, location: finalLocation });
     if (guestName.trim()) params.set('guestName', guestName.trim());
     navigate(`/menu?${params.toString()}`);
   };
