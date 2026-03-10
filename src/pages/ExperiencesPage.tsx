@@ -148,6 +148,7 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
   }, [qc]);
 
   const todayTours = tours.filter((t: any) => t.tour_date === todayStr);
+  const completedToday = todayTours.filter((t: any) => t.status === 'completed');
   const upcomingTours = tours.filter((t: any) => t.tour_date > todayStr);
 
   // Guest portal bookings split
