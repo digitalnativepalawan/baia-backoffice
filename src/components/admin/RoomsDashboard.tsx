@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { ArrowLeft, Upload, Trash2, Plus, Users, FileText, UtensilsCrossed, MapPin, StickyNote, Sparkles, LogIn, LogOut, Camera, Download, Link as LinkIcon, ClipboardCheck, DollarSign, Pencil, Clock, CalendarPlus, ArrowRightLeft, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -92,6 +92,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const [tourProvider, setTourProvider] = useState('');
   const [tourPickupTime, setTourPickupTime] = useState('');
   const [tourNotes, setTourNotes] = useState('');
+  const [tourCatalogMode, setTourCatalogMode] = useState<'catalog' | 'other'>('catalog');
 
   // Note form
   const [noteContent, setNoteContent] = useState('');
@@ -171,6 +172,29 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     queryFn: async () => {
       const { data } = await supabase.from('employees').select('id, name, display_name').eq('active', true).order('name');
       return data || [];
+    },
+  });
+
+  // Catalog data for tour dropdown
+  const { data: toursConfig = [] } = useQuery({
+    queryKey: ['tours-config-catalog'],
+    queryFn: async () => {
+      const { data } = await supabase.from('tours_config').select('*').eq('active', true).order('sort_order');
+      return (data || []) as any[];
+    },
+  });
+  const { data: rentalRates = [] } = useQuery({
+    queryKey: ['rental-rates-catalog'],
+    queryFn: async () => {
+      const { data } = await supabase.from('rental_rates').select('*').eq('active', true).order('sort_order');
+      return (data || []) as any[];
+    },
+  });
+  const { data: transportRates = [] } = useQuery({
+    queryKey: ['transport-rates-catalog'],
+    queryFn: async () => {
+      const { data } = await supabase.from('transport_rates').select('*').eq('active', true).order('sort_order');
+      return (data || []) as any[];
     },
   });
 
@@ -334,6 +358,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     });
     setTourName(''); setTourDate(''); setTourPax('1'); setTourPrice('');
     setTourProvider(''); setTourPickupTime(''); setTourNotes('');
+    setTourCatalogMode('catalog');
     qc.invalidateQueries({ queryKey: ['guest-tours', selectedUnit.name, currentBooking?.id] });
     toast.success('Tour added');
   };
@@ -1089,8 +1114,73 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           <div className="space-y-3">
             {!readOnly && (
               <div className="border border-border rounded-lg p-3 space-y-2">
-                <Input value={tourName} onChange={e => setTourName(e.target.value)} placeholder="Tour name *"
-                  className="bg-secondary border-border text-foreground font-body text-sm" />
+                {/* Catalog dropdown or manual entry */}
+                {tourCatalogMode === 'catalog' ? (
+                  <Select onValueChange={(val) => {
+                    if (val === '__other__') {
+                      setTourCatalogMode('other');
+                      setTourName(''); setTourPrice(''); setTourProvider('');
+                      return;
+                    }
+                    // Parse selection: "type::name::price::provider"
+                    const [, name, price, provider] = val.split('::');
+                    setTourName(name || '');
+                    setTourPrice(price || '0');
+                    setTourProvider(provider || '');
+                  }}>
+                    <SelectTrigger className="bg-secondary border-border text-foreground font-body text-sm">
+                      <SelectValue placeholder="Select tour / experience / rental *" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {toursConfig.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="font-display text-xs tracking-wider text-muted-foreground">Tours & Experiences</SelectLabel>
+                          {toursConfig.map((t: any) => (
+                            <SelectItem key={t.id} value={`tour::${t.name}::${t.price}::${t.provider || ''}`}>
+                              {t.name} — ₱{t.price}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      {rentalRates.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="font-display text-xs tracking-wider text-muted-foreground">Rentals</SelectLabel>
+                          {rentalRates.map((r: any) => (
+                            <SelectItem key={r.id} value={`rental::${r.rate_name}::${r.price}::${r.item_type || ''}`}>
+                              {r.rate_name} — ₱{r.price}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      {transportRates.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="font-display text-xs tracking-wider text-muted-foreground">Transport</SelectLabel>
+                          {transportRates.map((tr: any) => (
+                            <SelectItem key={tr.id} value={`transport::${tr.type}::${tr.price}::`}>
+                              {tr.type} — ₱{tr.price}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      <SelectGroup>
+                        <SelectItem value="__other__">✏️ Other (type manually)</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input value={tourName} onChange={e => setTourName(e.target.value)} placeholder="Tour name *"
+                      className="bg-secondary border-border text-foreground font-body text-sm flex-1" />
+                    <Button size="sm" variant="outline" onClick={() => setTourCatalogMode('catalog')}
+                      className="font-body text-xs shrink-0">Catalog</Button>
+                  </div>
+                )}
+                {tourName && (
+                  <p className="font-body text-xs text-muted-foreground px-1">
+                    Selected: <span className="text-foreground font-medium">{tourName}</span>
+                    {tourPrice && <> · ₱{tourPrice}</>}
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <Input value={tourProvider} onChange={e => setTourProvider(e.target.value)} placeholder="Provider / vendor"
                     className="bg-secondary border-border text-foreground font-body text-xs" />
@@ -1109,7 +1199,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                   className="bg-secondary border-border text-foreground font-body text-xs" />
                 <Button size="sm" onClick={addTour} disabled={!tourName.trim() || !tourDate}
                   className="font-display text-xs tracking-wider w-full min-h-[44px]">
-                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Tour
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Tour / Experience
                 </Button>
               </div>
             )}
@@ -1142,6 +1232,12 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                             <SelectItem value="cancelled">Cancelled</SelectItem>
                           </SelectContent>
                         </Select>
+                        {tour.status === 'confirmed' && (
+                          <Button size="sm" variant="secondary" onClick={() => updateTourStatus(tour.id, 'completed')}
+                            className="h-7 text-xs font-display tracking-wider px-2">
+                            ✓ Done
+                          </Button>
+                        )}
                         <Button size="sm" variant="ghost" onClick={() => deleteTour(tour.id)}>
                           <Trash2 className="w-3.5 h-3.5 text-destructive" />
                         </Button>
