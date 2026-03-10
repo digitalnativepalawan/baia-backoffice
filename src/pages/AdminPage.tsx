@@ -1033,6 +1033,13 @@ const AdminPage = () => {
               <GuestPortalConfig />
             </TabsContent>
           )}
+
+          {/* INTEGRATION READINESS TAB (dev only) */}
+          {import.meta.env.DEV && isAdmin && (
+            <TabsContent value="integration">
+              <IntegrationReadinessDashboard />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
 
