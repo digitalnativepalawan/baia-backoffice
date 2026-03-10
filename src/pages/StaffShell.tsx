@@ -39,6 +39,7 @@ const StaffShell = () => {
   }, [perms, isAdmin]);
 
   const [activeRole, setActiveRole] = useState(() => availableRoles[0]?.key || 'reception');
+  const alerts = useDepartmentAlerts();
 
   if (!session) {
     navigate('/');
