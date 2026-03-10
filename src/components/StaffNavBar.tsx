@@ -28,7 +28,7 @@ const DEPT_LABELS: Record<string, string> = {
   maintenance: 'Maintenance',
   experiences: 'Experiences',
   orders: 'Orders',
-  admin: 'Admin',
+  
 };
 
 interface StaffNavBarProps {
