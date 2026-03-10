@@ -24,6 +24,7 @@ import { useRoomTransactions } from '@/hooks/useRoomTransactions';
 import { canEdit, canManage, hasAccess } from '@/lib/permissions';
 import { logAudit } from '@/lib/auditLog';
 import ReceptionCalendar from '@/components/reception/ReceptionCalendar';
+import RoomBillingTab from '@/components/rooms/RoomBillingTab';
 import type { BookingWithGuest, ResortUnit } from '@/components/reception/calendarUtils';
 
 /** Get current Manila date string (YYYY-MM-DD) */
