@@ -360,7 +360,7 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
         <div className="mb-6 space-y-2">
           <h2 className="font-display text-xs tracking-wider text-amber-400 uppercase">⏳ Pending Tour Bookings ({pendingBookings.length})</h2>
           {pendingBookings.map((b: any) => (
-            <div key={b.id} className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3 space-y-2">
+            <div key={b.id} className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3 space-y-2 new-order-card">
               <div className="flex justify-between items-start">
                 <div>
                   <div className="flex items-center gap-2">
