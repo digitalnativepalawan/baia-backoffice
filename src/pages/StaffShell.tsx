@@ -64,7 +64,7 @@ const StaffShell = () => {
                   activeRole === r.key
                     ? 'bg-primary text-primary-foreground border-primary'
                     : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
-                }`}
+                } ${alerts[r.key as keyof typeof alerts] && activeRole !== r.key ? 'tab-pulse' : ''}`}
               >
                 {r.label}
               </button>
