@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
-import { ArrowLeft, LogIn, LogOut, DollarSign, BedDouble, MapPin, Car, Bike, Palmtree, UtensilsCrossed, ClipboardList, Sparkles, Receipt, ChevronDown, ChevronUp, CheckCircle, Clock, ShieldCheck, Eye } from 'lucide-react';
+import { ArrowLeft, LogIn, LogOut, DollarSign, BedDouble, MapPin, Car, Bike, Palmtree, UtensilsCrossed, ClipboardList, Sparkles, Receipt, ChevronDown, ChevronUp, CheckCircle, Clock, ShieldCheck, Eye, AlertTriangle } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import RoomsDashboard from '@/components/admin/RoomsDashboard';
 import AddPaymentModal from '@/components/rooms/AddPaymentModal';
@@ -23,6 +23,13 @@ import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { useRoomTransactions } from '@/hooks/useRoomTransactions';
 import { canEdit, canManage, hasAccess } from '@/lib/permissions';
 import { logAudit } from '@/lib/auditLog';
+
+/** Get current Manila date string (YYYY-MM-DD) */
+const getManilaDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+/** Get current Manila hour (0-23) */
+const getManilaHour = () => parseInt(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false }));
+/** Format Manila time as readable string */
+const getManilaTimeStr = () => new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
 
 const from = (table: string) => supabase.from(table as any);
 
@@ -87,7 +94,23 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const staffName = session?.name || localStorage.getItem('emp_name') || 'Staff';
   const empId = localStorage.getItem('emp_id');
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getManilaDate();
+
+  // Live Manila clock
+  const [manilaTime, setManilaTime] = useState(getManilaTimeStr());
+  useEffect(() => {
+    const iv = setInterval(() => setManilaTime(getManilaTimeStr()), 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // Early check-in / late check-out fee state
+  const [earlyCheckInFee, setEarlyCheckInFee] = useState('');
+  const [lateCheckOutFee, setLateCheckOutFee] = useState('');
+
+  // Override sell state
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideUnit, setOverrideUnit] = useState<any>(null);
+  const [overrideReason, setOverrideReason] = useState('');
 
   // Walk-in modal state
   const [walkInOpen, setWalkInOpen] = useState(false);
@@ -318,10 +341,24 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in > today && b.check_in <= weekEnd) || null;
   };
 
+  // Helper: get TODAY's arrival booking for a unit (for room protection)
+  const getTodayArrivalBooking = (unit: any) => {
+    const resortUnit = resolveResortUnit(unit.name);
+    if (!resortUnit) return null;
+    return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in === today && getUnitStatus(unit) !== 'occupied') || null;
+  };
+
   // Occupancy counts
   const occupiedUnits = units.filter((u: any) => getUnitStatus(u) === 'occupied');
   const toCleanUnits = units.filter((u: any) => getUnitStatus(u) === 'to_clean');
   const readyUnits = units.filter((u: any) => getUnitStatus(u) === 'ready');
+
+  // Compute reserved unit IDs for today
+  const todayReservedUnitIds = new Set(
+    readyUnits.filter((u: any) => getTodayArrivalBooking(u)).map((u: any) => u.id)
+  );
+  const trulyAvailableUnits = readyUnits.filter((u: any) => !todayReservedUnitIds.has(u.id));
+  const reservedTodayUnits = readyUnits.filter((u: any) => todayReservedUnitIds.has(u.id));
 
   const getUnitNameForBooking = (booking: any) => {
     const ru = resortUnits.find((r: any) => r.id === booking.unit_id);
@@ -527,12 +564,35 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       }).eq('id', checkInBooking.id);
 
       await supabase.from('units').update({ status: 'occupied' } as any).eq('id', unit.id);
-      await logAudit('created', 'units', unit.id, `Check-in: ${checkInBooking.resort_ops_guests?.full_name} to ${unitName}`);
+
+      // Early check-in fee
+      const earlyFee = parseFloat(earlyCheckInFee) || 0;
+      if (earlyFee > 0) {
+        await (from('room_transactions') as any).insert({
+          unit_id: unit.id,
+          unit_name: unitName,
+          guest_name: guestFullName,
+          booking_id: checkInBooking.id,
+          transaction_type: 'charge',
+          amount: earlyFee,
+          tax_amount: 0,
+          service_charge_amount: 0,
+          total_amount: earlyFee,
+          payment_method: '',
+          staff_name: staffName,
+          notes: 'Early check-in fee',
+        });
+        await logAudit('created', 'room_transactions', unit.id, `Early check-in fee: ₱${earlyFee.toLocaleString()} for ${guestFullName} in ${unitName}`);
+      }
+
+      await logAudit('created', 'units', unit.id, `Check-in: ${checkInBooking.resort_ops_guests?.full_name} to ${unitName}${earlyFee > 0 ? ` (early fee: ₱${earlyFee})` : ''}`);
 
       qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
       qc.invalidateQueries({ queryKey: ['rooms-units'] });
+      qc.invalidateQueries({ queryKey: ['room-transactions', unit.id] });
       setCheckInModalOpen(false);
       setCheckInBooking(null);
+      setEarlyCheckInFee('');
       toast.success(`Checked in to ${unitName}. Room password: ${roomPassword}`, { duration: 10000 });
     } catch (err: any) {
       toast.error(err.message || 'Check-in failed');
@@ -668,6 +728,26 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
         });
       }
 
+      // Late check-out fee
+      const lateFee = parseFloat(lateCheckOutFee) || 0;
+      if (lateFee > 0) {
+        await (from('room_transactions') as any).insert({
+          unit_id: checkOutUnit.id,
+          unit_name: checkOutUnit.name,
+          guest_name: checkOutBooking.resort_ops_guests?.full_name,
+          booking_id: checkOutBooking.id,
+          transaction_type: 'charge',
+          amount: lateFee,
+          tax_amount: 0,
+          service_charge_amount: 0,
+          total_amount: lateFee,
+          payment_method: '',
+          staff_name: staffName,
+          notes: 'Late check-out fee',
+        });
+        await logAudit('created', 'room_transactions', checkOutUnit.id, `Late check-out fee: ₱${lateFee.toLocaleString()} for ${checkOutBooking.resort_ops_guests?.full_name} in ${checkOutUnit.name}`);
+      }
+
       await from('resort_ops_bookings').update({ check_out: today }).eq('id', checkOutBooking.id);
       await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', checkOutUnit.id);
 
@@ -714,6 +794,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       setCheckOutOpen(false);
       setCheckOutBooking(null);
       setCheckOutUnit(null);
+      setLateCheckOutFee('');
       toast.success('Checkout complete — housekeepers notified');
     } catch {
       toast.error('Checkout failed');
@@ -736,9 +817,13 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
           <Button size="sm" variant="ghost" onClick={() => navigate('/')}>
             <ArrowLeft className="w-4 h-4" />
           </Button>
-          <div>
+          <div className="flex-1">
             <h1 className="font-display text-xl tracking-wider text-foreground">Reception</h1>
-            <p className="font-body text-xs text-muted-foreground">{format(new Date(), 'EEEE, MMM d, yyyy')}</p>
+            <p className="font-body text-xs text-muted-foreground">{manilaTime}</p>
+          </div>
+          <div className="text-right">
+            <p className="font-display text-sm text-foreground tracking-wider">🇵🇭 Manila</p>
+            <p className="font-body text-[10px] text-muted-foreground">UTC+8</p>
           </div>
         </div>
       )}
@@ -768,9 +853,9 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
           <p className="font-display text-2xl text-foreground">{todayDepartures.length}</p>
           <p className="font-body text-xs text-muted-foreground">Departures</p>
         </div>
-        <div className="border border-border rounded-lg p-3 text-center">
-          <p className="font-display text-2xl text-foreground">{readyUnits.length}</p>
-          <p className="font-body text-xs text-muted-foreground">Available</p>
+        <div className="border border-emerald-500/30 bg-emerald-500/10 rounded-lg p-3 text-center">
+          <p className="font-display text-2xl text-emerald-400">{trulyAvailableUnits.length}</p>
+          <p className="font-body text-xs text-emerald-400/70">Available</p>
         </div>
         <div className="border border-blue-500/30 bg-blue-500/10 rounded-lg p-3 text-center">
           <p className="font-display text-2xl text-blue-400">{weekArrivals.length}</p>
@@ -939,9 +1024,37 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       {readyUnits.length > 0 && (
         <div className="mb-6 space-y-2">
           <div className="flex justify-between items-center">
-            <h2 className="font-display text-xs tracking-wider text-foreground uppercase">Walk-In / Sell Room</h2>
+            <h2 className="font-display text-xs tracking-wider text-foreground uppercase">Walk-In / Sell Room ({trulyAvailableUnits.length} available)</h2>
           </div>
-          {readyUnits.map((unit: any) => {
+
+          {/* Reserved today — protected rooms */}
+          {reservedTodayUnits.map((unit: any) => {
+            const arrivalBooking = getTodayArrivalBooking(unit);
+            const arrGuest = (arrivalBooking as any)?.resort_ops_guests;
+            return (
+              <div key={unit.id} className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <BedDouble className="w-4 h-4 text-amber-400" />
+                  <div>
+                    <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
+                    <p className="font-body text-xs text-amber-400">🔒 Reserved for {arrGuest?.full_name || 'Guest'} at 2:00 PM</p>
+                  </div>
+                </div>
+                {canDoManage && (
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setOverrideUnit(unit);
+                    setOverrideReason('');
+                    setOverrideOpen(true);
+                  }} className="font-display text-[10px] tracking-wider min-h-[44px] border-amber-500/40 text-amber-400 hover:bg-amber-500/10">
+                    <AlertTriangle className="w-3 h-3 mr-1" /> Override
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Truly available rooms */}
+          {trulyAvailableUnits.map((unit: any) => {
             const upcoming = getUpcomingBooking(unit);
             const upGuest = (upcoming as any)?.resort_ops_guests;
             return (
@@ -1283,6 +1396,20 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                     <p className="font-body text-sm text-foreground">{checkInBooking.special_requests}</p>
                   </div>
                 )}
+                {/* Early check-in fee */}
+                {getManilaHour() < 14 && (
+                  <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3 space-y-2">
+                    <p className="font-display text-xs tracking-wider text-amber-400 uppercase">⏰ Early Check-In (before 2:00 PM)</p>
+                    <p className="font-body text-xs text-muted-foreground">Standard check-in is 2:00 PM. Add an optional early check-in fee.</p>
+                    <Input
+                      type="number"
+                      value={earlyCheckInFee}
+                      onChange={e => setEarlyCheckInFee(e.target.value)}
+                      placeholder="₱0 (optional)"
+                      className="bg-secondary border-border text-foreground font-body"
+                    />
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -1428,6 +1555,20 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                       className="bg-secondary border-border text-foreground font-body" />
                   </div>
                 )}
+                {/* Late check-out fee */}
+                {getManilaHour() >= 12 && checkOutBooking.check_out === today && (
+                  <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3 space-y-2">
+                    <p className="font-display text-xs tracking-wider text-amber-400 uppercase">⏰ Late Check-Out (after 12:00 PM)</p>
+                    <p className="font-body text-xs text-muted-foreground">Standard checkout is 12:00 PM noon. Add an optional late check-out fee.</p>
+                    <Input
+                      type="number"
+                      value={lateCheckOutFee}
+                      onChange={e => setLateCheckOutFee(e.target.value)}
+                      placeholder="₱0 (optional)"
+                      className="bg-secondary border-border text-foreground font-body"
+                    />
+                  </div>
+                )}
                 {/* Housekeeping broadcast notice */}
                 <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3">
                   <p className="font-display text-xs tracking-wider text-amber-400 uppercase">🧹 Housekeeping</p>
@@ -1496,6 +1637,62 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* ══════ OVERRIDE SELL DIALOG ══════ */}
+      <Dialog open={overrideOpen} onOpenChange={setOverrideOpen}>
+        <DialogContent className="bg-card border-border max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display tracking-wider text-amber-400">⚠️ Override Reserved Room</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="font-body text-sm text-muted-foreground">
+              This room is reserved for a guest arriving today. Selling it to a walk-in requires a reason.
+            </p>
+            {overrideUnit && (() => {
+              const arrBooking = getTodayArrivalBooking(overrideUnit);
+              const arrGuest = (arrBooking as any)?.resort_ops_guests;
+              return arrGuest ? (
+                <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-2">
+                  <p className="font-body text-xs text-foreground">Reserved: <strong>{arrGuest.full_name}</strong></p>
+                  <p className="font-body text-[10px] text-muted-foreground">Expected at 2:00 PM</p>
+                </div>
+              ) : null;
+            })()}
+            <Textarea
+              value={overrideReason}
+              onChange={e => setOverrideReason(e.target.value)}
+              placeholder="Reason for override (required)"
+              className="bg-secondary border-border text-foreground font-body text-sm min-h-[60px]"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOverrideOpen(false)} className="font-display text-xs tracking-wider">Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={!overrideReason.trim()}
+              onClick={async () => {
+                if (!overrideUnit || !overrideReason.trim()) return;
+                const arrBooking = getTodayArrivalBooking(overrideUnit);
+                const arrGuest = (arrBooking as any)?.resort_ops_guests;
+                await logAudit('updated', 'units', overrideUnit.id, `Override sell: ${overrideReason} — reserved for ${arrGuest?.full_name || 'Guest'} in ${overrideUnit.name}`);
+                setOverrideOpen(false);
+                setOverrideReason('');
+                // Open walk-in modal
+                const rt = roomTypes.find((r: any) => r.id === overrideUnit.room_type_id);
+                const defaultRate = rt?.base_rate ? String(rt.base_rate) : '0';
+                setWalkInUnit(overrideUnit);
+                setWalkInForm({ guestName: '', checkIn: today, checkOut: '', adults: '2', children: '0', platform: 'Direct', roomRate: defaultRate, notes: '' });
+                setWalkInOpen(true);
+                setOverrideUnit(null);
+                toast.info('Override logged — proceed with walk-in');
+              }}
+              className="font-display text-xs tracking-wider"
+            >
+              Override & Sell
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
