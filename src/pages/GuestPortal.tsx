@@ -73,6 +73,8 @@ const GuestPortal = () => {
         .eq('unit_id', opsUnit.id)
         .lte('check_in', today)
         .gte('check_out', today)
+        .order('check_in', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (!booking) { toast.error('No active booking found for this room'); setLoading(false); return; }
