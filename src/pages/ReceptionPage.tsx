@@ -264,6 +264,15 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     },
   });
 
+  // Bill disputes
+  const { data: allDisputes = [] } = useQuery({
+    queryKey: ['reception-bill-disputes'],
+    queryFn: async () => {
+      const { data } = await from('bill_disputes').select('*').eq('status', 'open').order('created_at', { ascending: false });
+      return (data || []) as any[];
+    },
+  });
+
   // Room transactions for checkout
   const { data: checkOutTransactions = [] } = useRoomTransactions(checkOutUnit?.id || null);
 
