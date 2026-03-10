@@ -1251,7 +1251,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
             📋 Guest Requests ({pendingRequests.length} pending)
           </h2>
           {guestRequests.slice(0, 10).map((req: any) => (
-            <div key={req.id} className={`border rounded-lg p-3 space-y-2 ${req.status === 'pending' ? 'border-amber-500/30 bg-amber-500/5' : 'border-border'}`}>
+            <div key={req.id} className={`border rounded-lg p-3 space-y-2 ${req.status === 'pending' ? 'border-amber-500/30 bg-amber-500/5 new-order-card' : 'border-border'}`}>
               <div className="flex justify-between items-start">
                 <div>
                   <p className="font-display text-sm text-foreground tracking-wider">{req.request_type}</p>
