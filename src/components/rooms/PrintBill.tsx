@@ -23,7 +23,16 @@ const PrintBill = ({ unitName, guestName, booking, transactions, roomOrders = []
     const payments = transactions.filter(t => t.total_amount < 0);
     const totalCharges = charges.reduce((s, t) => s + t.total_amount, 0);
     const totalPayments = Math.abs(payments.reduce((s, t) => s + t.total_amount, 0));
-    const balance = totalCharges - totalPayments;
+
+    // Unpaid F&B orders (not charged to room)
+    const unpaidFnB = roomOrders.filter((o: any) => o.status !== 'Paid' && o.payment_type !== 'Charge to Room');
+    const fnbTotal = unpaidFnB.reduce((s: number, o: any) => s + Number(o.total || 0) + Number(o.service_charge || 0), 0);
+
+    // Active tours
+    const activeTours = tours.filter((t: any) => t.status !== 'cancelled');
+    const toursTotal = activeTours.reduce((s: number, t: any) => s + Number(t.price || 0), 0);
+
+    const balance = totalCharges - totalPayments + fnbTotal;
 
     const staffNames = [...new Set(transactions.map(t => t.staff_name))].join(', ');
 
