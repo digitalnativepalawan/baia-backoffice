@@ -1656,10 +1656,13 @@ export type Database = {
           children: number
           commission_applied: number
           created_at: string
+          external_data: Json | null
+          external_reservation_id: string | null
           guest_id: string | null
           guest_login_count: number
           id: string
           last_guest_login: string | null
+          last_synced_at: string | null
           notes: string | null
           paid_amount: number
           password_expires_at: string | null
@@ -1667,6 +1670,7 @@ export type Database = {
           room_password: string | null
           room_rate: number
           sirvoy_booking_id: number | null
+          source: string | null
           special_requests: string
           unit_id: string | null
         }
@@ -1679,10 +1683,13 @@ export type Database = {
           children?: number
           commission_applied?: number
           created_at?: string
+          external_data?: Json | null
+          external_reservation_id?: string | null
           guest_id?: string | null
           guest_login_count?: number
           id?: string
           last_guest_login?: string | null
+          last_synced_at?: string | null
           notes?: string | null
           paid_amount?: number
           password_expires_at?: string | null
@@ -1690,6 +1697,7 @@ export type Database = {
           room_password?: string | null
           room_rate?: number
           sirvoy_booking_id?: number | null
+          source?: string | null
           special_requests?: string
           unit_id?: string | null
         }
@@ -1702,10 +1710,13 @@ export type Database = {
           children?: number
           commission_applied?: number
           created_at?: string
+          external_data?: Json | null
+          external_reservation_id?: string | null
           guest_id?: string | null
           guest_login_count?: number
           id?: string
           last_guest_login?: string | null
+          last_synced_at?: string | null
           notes?: string | null
           paid_amount?: number
           password_expires_at?: string | null
@@ -1713,6 +1724,7 @@ export type Database = {
           room_password?: string | null
           room_rate?: number
           sirvoy_booking_id?: number | null
+          source?: string | null
           special_requests?: string
           unit_id?: string | null
         }
@@ -2486,6 +2498,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      webhook_events: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          event_id: string
+          event_type: string
+          id: string
+          payload: Json
+          processed_at: string | null
+          retry_count: number
+          source: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          event_id: string
+          event_type: string
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+          retry_count?: number
+          source?: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          event_id?: string
+          event_type?: string
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+          retry_count?: number
+          source?: string
+          status?: string
+        }
+        Relationships: []
       }
       weekly_schedules: {
         Row: {
