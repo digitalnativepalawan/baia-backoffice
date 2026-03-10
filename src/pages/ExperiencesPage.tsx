@@ -37,32 +37,6 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Unlock AudioContext on user interaction — keep retrying until running
-  useEffect(() => {
-    const unlock = async () => {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      if (audioCtxRef.current.state === 'suspended') {
-        await audioCtxRef.current.resume();
-      }
-      if (audioCtxRef.current.state === 'running') {
-        document.removeEventListener('touchstart', unlock);
-        document.removeEventListener('click', unlock);
-        // If pending items exist, play chime immediately after unlock
-        if (hasPendingItems) playChime();
-      }
-    };
-    document.addEventListener('touchstart', unlock);
-    document.addEventListener('click', unlock);
-    // Also try eagerly — works on desktop after refresh
-    unlock();
-    return () => {
-      document.removeEventListener('touchstart', unlock);
-      document.removeEventListener('click', unlock);
-    };
-  }, [hasPendingItems, playChime]);
-
   // Play a two-tone chime
   const playChime = useCallback(() => {
     const ctx = audioCtxRef.current;
@@ -183,6 +157,30 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   const pendingRequests = requests.filter((r: any) => r.status === 'pending');
   const hasPendingItems = pendingBookings.length > 0 || pendingRequests.length > 0;
+
+  // Unlock AudioContext on user interaction — keep retrying until running
+  useEffect(() => {
+    const unlock = async () => {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (audioCtxRef.current.state === 'suspended') {
+        await audioCtxRef.current.resume();
+      }
+      if (audioCtxRef.current.state === 'running') {
+        document.removeEventListener('touchstart', unlock);
+        document.removeEventListener('click', unlock);
+        if (hasPendingItems) playChime();
+      }
+    };
+    document.addEventListener('touchstart', unlock);
+    document.addEventListener('click', unlock);
+    unlock();
+    return () => {
+      document.removeEventListener('touchstart', unlock);
+      document.removeEventListener('click', unlock);
+    };
+  }, [hasPendingItems, playChime]);
 
   // Repeating chime every 5s while there are pending requests/bookings
   useEffect(() => {
