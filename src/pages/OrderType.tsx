@@ -189,18 +189,21 @@ const OrderType = () => {
                   ))}
                 </SelectContent>
               </Select>
-              <Select onValueChange={setTableDetail} value={tableDetail}>
-                <SelectTrigger className="bg-secondary border-border text-foreground font-body">
-                  <SelectValue placeholder="Select table" />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {(tables || []).map(t => (
-                    <SelectItem key={t.id} value={t.table_name} className="text-foreground font-body">
-                      {t.table_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="grid grid-cols-3 gap-2">
+                {(tables || []).map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTableDetail(t.table_name)}
+                    className={`min-h-[48px] py-3 border font-display text-sm tracking-wider transition-colors rounded ${
+                      tableDetail === t.table_name
+                        ? 'border-gold text-foreground bg-foreground/5'
+                        : 'border-border text-cream-dim hover:border-foreground/30'
+                    }`}
+                  >
+                    {t.table_name}
+                  </button>
+                ))}
+              </div>
               <Input
                 placeholder="Guest name (optional)"
                 value={guestName}
