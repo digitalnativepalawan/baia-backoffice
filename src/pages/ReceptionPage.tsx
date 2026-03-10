@@ -341,6 +341,20 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in > today && b.check_in <= weekEnd) || null;
   };
 
+  // Helper: get TODAY's arrival booking for a unit (for room protection)
+  const getTodayArrivalBooking = (unit: any) => {
+    const resortUnit = resolveResortUnit(unit.name);
+    if (!resortUnit) return null;
+    return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in === today && getUnitStatus(unit) !== 'occupied') || null;
+  };
+
+  // Compute reserved unit IDs for today
+  const todayReservedUnitIds = new Set(
+    readyUnits.filter((u: any) => getTodayArrivalBooking(u)).map((u: any) => u.id)
+  );
+  const trulyAvailableUnits = readyUnits.filter((u: any) => !todayReservedUnitIds.has(u.id));
+  const reservedTodayUnits = readyUnits.filter((u: any) => todayReservedUnitIds.has(u.id));
+
   // Occupancy counts
   const occupiedUnits = units.filter((u: any) => getUnitStatus(u) === 'occupied');
   const toCleanUnits = units.filter((u: any) => getUnitStatus(u) === 'to_clean');
