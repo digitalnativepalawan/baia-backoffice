@@ -1324,22 +1324,127 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       {recentOrders.length > 0 && (
         <div className="mb-6 space-y-2">
           <h2 className="font-display text-xs tracking-wider text-muted-foreground uppercase">
-            🍽️ Recent Room Orders
+            🍽️ Recent Room Orders ({recentOrders.length})
           </h2>
-          {recentOrders.slice(0, 8).map((order: any) => (
-            <div key={order.id} className="border border-border rounded-lg p-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="font-display text-sm text-foreground tracking-wider">{order.location_detail}</p>
-                  <p className="font-body text-xs text-muted-foreground">{order.guest_name} · ₱{Number(order.total).toLocaleString()}</p>
-                  <p className="font-body text-[10px] text-muted-foreground">{format(new Date(order.created_at), 'MMM d, h:mm a')}</p>
-                </div>
-                <Badge className={`font-body text-xs ${order.status === 'Served' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' : order.status === 'New' ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : 'bg-muted text-muted-foreground'}`}>
-                  {order.status}
-                </Badge>
+          {recentOrders.map((order: any) => {
+            const isExpanded = expandedOrderIds.has(order.id);
+            const items: any[] = Array.isArray(order.items) ? order.items : [];
+            const subtotal = Number(order.total || 0);
+            const sc = Number(order.service_charge || 0);
+            const grandTotal = subtotal + sc;
+            const statusMap: Record<string, { label: string; color: string }> = {
+              'New': { label: '🔵 New', color: 'bg-blue-500/20 text-blue-400 border-blue-500/40' },
+              'Preparing': { label: '🟡 Preparing', color: 'bg-amber-500/20 text-amber-400 border-amber-500/40' },
+              'Ready': { label: '🟢 Ready', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
+              'Served': { label: '✅ Served', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
+              'Paid': { label: '💰 Paid', color: 'bg-green-500/20 text-green-400 border-green-500/40' },
+              'Cancelled': { label: '❌ Cancelled', color: 'bg-destructive/20 text-destructive border-destructive/40' },
+            };
+            const st = statusMap[order.status] || { label: order.status, color: 'bg-muted text-muted-foreground' };
+
+            const toggleExpand = () => {
+              setExpandedOrderIds(prev => {
+                const next = new Set(prev);
+                if (next.has(order.id)) next.delete(order.id); else next.add(order.id);
+                return next;
+              });
+            };
+
+            const handleMarkPaid = async () => {
+              await supabase.from('orders').update({ status: 'Paid', payment_type: 'Cash' }).eq('id', order.id);
+              logAudit('orders', order.id, 'update', `Marked order as Paid from reception`, empName);
+              qc.invalidateQueries({ queryKey: ['reception-recent-orders'] });
+              toast.success('Order marked as Paid');
+            };
+
+            const handleComp = async () => {
+              await supabase.from('orders').update({ total: 0, service_charge: 0, status: 'Paid', payment_type: 'Complimentary' }).eq('id', order.id);
+              logAudit('orders', order.id, 'update', `Comped order (set to ₱0) from reception`, empName);
+              qc.invalidateQueries({ queryKey: ['reception-recent-orders'] });
+              toast.success('Order comped');
+            };
+
+            const handleDelete = async () => {
+              if (!confirm('Delete this order? This cannot be undone.')) return;
+              await supabase.from('orders').delete().eq('id', order.id);
+              logAudit('orders', order.id, 'delete', `Deleted order from reception`, empName);
+              qc.invalidateQueries({ queryKey: ['reception-recent-orders'] });
+              toast.success('Order deleted');
+            };
+
+            return (
+              <div key={order.id} className="border border-border rounded-lg bg-card overflow-hidden">
+                <button onClick={toggleExpand} className="w-full p-3 text-left">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-display text-sm text-foreground tracking-wider">{order.location_detail}</p>
+                      <p className="font-body text-xs text-muted-foreground">{order.guest_name} · ₱{grandTotal.toLocaleString()}</p>
+                      <p className="font-body text-[10px] text-muted-foreground">{format(new Date(order.created_at), 'MMM d, h:mm a')}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Badge className={`font-body text-xs ${st.color}`}>{st.label}</Badge>
+                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+                    </div>
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t border-border px-3 pb-3 space-y-2">
+                    {/* Itemized contents */}
+                    {items.length > 0 && (
+                      <div className="pt-2 space-y-0.5">
+                        {items.map((item: any, idx: number) => (
+                          <div key={idx} className="flex justify-between font-body text-xs">
+                            <span className="text-foreground">{item.qty || 1}× {item.name}</span>
+                            <span className="text-muted-foreground">₱{(Number(item.price || 0) * Number(item.qty || 1)).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* SC breakdown */}
+                    <div className="border-t border-border pt-1.5 space-y-0.5">
+                      <div className="flex justify-between font-body text-xs text-muted-foreground">
+                        <span>Subtotal</span>
+                        <span>₱{subtotal.toLocaleString()}</span>
+                      </div>
+                      {sc > 0 && (
+                        <div className="flex justify-between font-body text-xs text-muted-foreground">
+                          <span>SC 10%</span>
+                          <span>₱{sc.toLocaleString()}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-display text-xs tracking-wider text-foreground">
+                        <span>Total</span>
+                        <span>₱{grandTotal.toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    {/* Staff info */}
+                    <p className="font-body text-[10px] text-muted-foreground">Staff: {order.staff_name || '—'} · Payment: {order.payment_type || 'Unpaid'}</p>
+
+                    {/* Corrective actions */}
+                    {canDoEdit && order.status !== 'Paid' && order.status !== 'Cancelled' && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <Button size="sm" variant="outline" onClick={handleMarkPaid}
+                          className="font-display text-[10px] tracking-wider min-h-[30px]">
+                          <DollarSign className="w-3 h-3 mr-0.5" /> Mark Paid
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={handleComp}
+                          className="font-display text-[10px] tracking-wider min-h-[30px] border-amber-500/40 text-amber-400 hover:bg-amber-500/10">
+                          🎁 Comp
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={handleDelete}
+                          className="font-display text-[10px] tracking-wider min-h-[30px]">
+                          🗑️ Delete
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
