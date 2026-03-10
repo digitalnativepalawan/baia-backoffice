@@ -17,7 +17,7 @@ const DEPT_COLORS: Record<string, string> = {
   maintenance:  'bg-[hsl(220,15%,50%)] text-white',
   experiences:  'bg-[hsl(38,60%,55%)] text-white',
   orders:       'bg-[hsl(200,60%,50%)] text-white',
-  admin:        'bg-destructive text-destructive-foreground',
+  
 };
 
 const DEPT_LABELS: Record<string, string> = {
