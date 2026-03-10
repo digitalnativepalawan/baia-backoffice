@@ -718,9 +718,7 @@ const AdminPage = () => {
 
           {(isAdmin || hasAccess(perms, 'timesheet')) && (
             <TabsContent value="timesheet">
-              <div className={readOnly('timesheet') ? 'pointer-events-none opacity-70' : ''}>
-                <TimesheetDashboard />
-              </div>
+              <TimesheetDashboard readOnly={readOnly('timesheet')} />
             </TabsContent>
           )}
 
