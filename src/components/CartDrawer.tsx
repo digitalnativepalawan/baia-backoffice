@@ -344,7 +344,14 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
       setOrderSummary({ itemCount, grandTotal });
       cart.clearCart();
       setSubmitted(true);
-      toast.success('Order sent to kitchen!');
+      const toastLabel = (() => {
+        const hk = orderItems.some(i => i.department === 'kitchen' || i.department === 'both');
+        const hb = orderItems.some(i => i.department === 'bar' || i.department === 'both');
+        if (hk && hb) return 'Order sent to Kitchen & Bar!';
+        if (hb && !hk) return 'Order sent to Bar!';
+        return 'Order sent to Kitchen!';
+      })();
+      toast.success(toastLabel);
 
       // WhatsApp fallback: send order to kitchen number if configured
       const kitchenPhone = kitchenSettings?.kitchen_whatsapp_number;
