@@ -143,16 +143,13 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
 
   const hasNew = columns.New.length > 0;
 
-  // Chime for new orders
+  // Chime only once when new orders appear (not repeatedly)
+  const prevHasNewRef = useRef(false);
   useEffect(() => {
-    if (hasNew) {
+    if (hasNew && !prevHasNewRef.current) {
       playChime();
-      intervalRef.current = setInterval(playChime, 5000);
-    } else if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
     }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+    prevHasNewRef.current = hasNew;
   }, [hasNew, playChime]);
 
   const handleAction = async (orderId: string, action: string) => {

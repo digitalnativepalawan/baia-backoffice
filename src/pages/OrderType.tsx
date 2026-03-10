@@ -237,7 +237,7 @@ const OrderType = () => {
           {activeOrderType && !isDineIn && activeOrderType.input_mode === 'text' && (
             <div className="space-y-3">
               <Input
-                placeholder={activeOrderType.placeholder || 'Table # or location'}
+                placeholder={activeOrderType.placeholder || 'Name or details'}
                 value={locationDetail}
                 onChange={(e) => setLocationDetail(e.target.value)}
                 className="bg-secondary border-border text-foreground font-body"

@@ -137,15 +137,12 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
 
   const hasNewOrders = statusCounts.pending > 0;
 
+  const prevHasNewRef = useRef(false);
   useEffect(() => {
-    if (hasNewOrders) {
+    if (hasNewOrders && !prevHasNewRef.current) {
       playChime();
-      intervalRef.current = setInterval(playChime, 5000);
-    } else if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
     }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+    prevHasNewRef.current = hasNewOrders;
   }, [hasNewOrders, playChime]);
 
   const filtered = useMemo(() => orders.filter(o => getDeptStatus(o) === activeTab), [orders, activeTab, statusField]);
