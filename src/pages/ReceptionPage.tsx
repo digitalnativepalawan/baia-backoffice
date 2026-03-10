@@ -94,7 +94,23 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const staffName = session?.name || localStorage.getItem('emp_name') || 'Staff';
   const empId = localStorage.getItem('emp_id');
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getManilaDate();
+
+  // Live Manila clock
+  const [manilaTime, setManilaTime] = useState(getManilaTimeStr());
+  useEffect(() => {
+    const iv = setInterval(() => setManilaTime(getManilaTimeStr()), 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // Early check-in / late check-out fee state
+  const [earlyCheckInFee, setEarlyCheckInFee] = useState('');
+  const [lateCheckOutFee, setLateCheckOutFee] = useState('');
+
+  // Override sell state
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideUnit, setOverrideUnit] = useState<any>(null);
+  const [overrideReason, setOverrideReason] = useState('');
 
   // Walk-in modal state
   const [walkInOpen, setWalkInOpen] = useState(false);
