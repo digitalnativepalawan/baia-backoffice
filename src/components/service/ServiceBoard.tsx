@@ -10,12 +10,14 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 import ServiceOrderCard from './ServiceOrderCard';
 import ServiceOrderDetail from './ServiceOrderDetail';
 
-const KANBAN_COLS = ['New', 'Preparing', 'Ready'] as const;
+const KANBAN_COLS_DEFAULT = ['New', 'Preparing', 'Ready'] as const;
+const KANBAN_COLS_RECEPTION = ['New', 'Preparing', 'Ready', 'Bill Out'] as const;
 
 const COL_COLORS: Record<string, string> = {
   New: 'border-t-gold',
   Preparing: 'border-t-orange-400',
   Ready: 'border-t-emerald-400',
+  'Bill Out': 'border-t-amber-400',
 };
 
 interface ServiceBoardProps {
