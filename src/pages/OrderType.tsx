@@ -214,7 +214,7 @@ const OrderType = () => {
             </div>
           )}
 
-          {activeOrderType && !isDineIn && activeOrderType.input_mode === 'text' && (
+          {activeOrderType && activeOrderType.input_mode === 'text' && (
             <div className="space-y-3">
               <Input
                 placeholder={activeOrderType.placeholder || 'Name or details'}
