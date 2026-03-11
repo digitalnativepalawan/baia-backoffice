@@ -357,7 +357,7 @@ const OrderRow = ({ order, selected, onSelect, onAction }: {
   const barItems = items.filter((i: any) => i.department === 'bar' || i.department === 'both');
   const isPaid = order.status === 'Paid';
   const isRoomCharge = order.payment_type === 'Charge to Room';
-  const isPendingPayment = order.status === 'Served';
+  const isPendingPayment = order.status === 'Served' || order.status === 'Ready';
 
   const statusColor = order.status === 'New' ? 'border-l-gold'
     : order.status === 'Preparing' ? 'border-l-orange-400'
