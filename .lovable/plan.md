@@ -1,40 +1,37 @@
 
 
-## Daily Cash Reconciliation Summary for Cashier
+## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
 
-### Approach
-Add a collapsible **Daily Summary** panel to the cashier's right-side panel (shown when no order is selected). This uses the already-fetched `orders` data — no new database tables or queries needed.
+### Issues Found
 
-### What it shows
+1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
 
-A summary card with:
-- **Total Revenue Today**: sum of all Paid orders
-- **Breakdown by Payment Method**: Cash, Card, GCash, Charge to Room, etc. — each showing count and total amount
-- **Cash line highlighted** with a prominent display (since cash reconciliation is the primary concern)
-- **Orders count**: total paid orders today
-- Date/time stamp of when the summary was last refreshed
+2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
 
-### Implementation
+### Changes
 
-**File: `src/components/service/CashierBoard.tsx`**
+**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
+- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
+- Increase touch target size for edit/delete buttons on shift blocks
+- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
 
-Replace the empty-state "Tap an order to open bill & payment" placeholder (lines 285-290) with a `DailySummary` component that:
+**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
+- Add an "Assign Task" button alongside "Add Shift" 
+- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
+- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
+- For other tasks: creates an `employee_tasks` entry with due date and description
+- Tasks appear as colored pills on the timeline (already partially implemented)
 
-1. Filters `buckets.completed` (Paid orders) from today
-2. Groups by `payment_type` and sums totals
-3. Renders a clean summary card with:
-   - Date header ("Today — Mar 11, 2026")
-   - Total orders paid count
-   - Total revenue (₱)
-   - Per-method breakdown rows (icon + name + count + amount)
-   - Cash row given a highlighted/accented style
-   - A `Collapsible` section listing individual cash transactions for quick audit
+**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
+- In the task detail dialog, show who completed the task and when (`completed_at`)
+- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
+- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
 
-This is a single-file change — just adding a new sub-component and swapping the empty-state render.
+**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
+- Add edit capability: change title, description, due date, reassign to different employee
+- Add delete capability for tasks
+- Show completion audit trail
 
-### Files Modified
-
-| File | Change |
-|------|--------|
-| `src/components/service/CashierBoard.tsx` | Add `DailySummary` component, render when no order selected |
+### Files to Edit
+- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
 
