@@ -289,6 +289,18 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
             <ChecklistItem ok={allToursCompleted} label="Tours & experiences completed" detail={!allToursCompleted ? `${incompleteTours.length} tour(s) still active` : undefined} />
             <ChecklistItem ok={allRequestsCompleted} label="Guest requests completed" detail={!allRequestsCompleted ? `${incompleteRequests.length} request(s) still active` : undefined} />
             <ChecklistItem ok={guestAgreed} label="Guest reviewed & agreed to bill" detail={guestAgreed ? `Agreed ${new Date(billAgreement.bill_agreed_at).toLocaleString()}` : 'Not yet agreed on portal'} isWarning />
+            <ChecklistItem
+              ok={hkOrder?.status === 'inspection_cleared'}
+              label="Housekeeping pre-checkout inspection"
+              detail={
+                hkOrder?.status === 'inspection_cleared'
+                  ? `✅ Cleared by ${hkOrder.inspection_by_name || 'staff'}${hkOrder.damage_notes ? ` — Notes: ${hkOrder.damage_notes}` : ''}`
+                  : hkOrder?.status === 'pre_inspection'
+                  ? '⏳ Waiting for housekeeper to inspect'
+                  : 'Pending'
+              }
+              isWarning={hkOrder?.status === 'pre_inspection'}
+            />
 
             {!checklistPassed && !overrideChecklist && (
               <Button size="sm" variant="outline" onClick={() => setOverrideChecklist(true)}
