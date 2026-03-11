@@ -170,7 +170,7 @@ const CashierBoard = () => {
       if (!kitchenItems || order.kitchen_status === 'ready') updateData.status = 'Ready';
     } else if (action === 'mark-served') {
       updateData.status = 'Served';
-      if (order.payment_type === 'Charge to Room' || order.tab_id) {
+      if ((order.payment_type === 'Charge to Room' && order.room_id) || order.tab_id) {
         updateData.status = 'Paid';
         updateData.closed_at = new Date().toISOString();
       }
@@ -302,6 +302,8 @@ const OrderRow = ({ order, selected, onSelect, onAction }: {
   const foodItems = items.filter((i: any) => { const d = i.department || 'kitchen'; return d === 'kitchen' || d === 'both'; });
   const barItems = items.filter((i: any) => i.department === 'bar' || i.department === 'both');
   const isPaid = order.status === 'Paid';
+  const isRoomCharge = order.payment_type === 'Charge to Room';
+  const isPendingPayment = order.status === 'Served' && !order.payment_type;
 
   const statusColor = order.status === 'New' ? 'border-l-gold'
     : order.status === 'Preparing' ? 'border-l-orange-400'
@@ -350,8 +352,11 @@ const OrderRow = ({ order, selected, onSelect, onAction }: {
 
         <div className="flex-1" />
 
-        <Badge variant="outline" className="font-body text-[10px] h-5">
-          {order.status}
+        <Badge variant="outline" className={`font-body text-[10px] h-5 ${
+          isRoomCharge ? 'border-blue-400/50 text-blue-400' :
+          isPendingPayment ? 'border-amber-400/50 text-amber-400' : ''
+        }`}>
+          {isRoomCharge && isPaid ? 'Room Charge' : isPendingPayment ? 'Pending Payment' : order.status}
         </Badge>
 
         <span className="font-display text-sm text-gold tabular-nums">₱{order.total.toLocaleString()}</span>
@@ -517,16 +522,26 @@ const DailySummary = ({ completed }: { completed: any[] }) => {
   const summary = useMemo(() => {
     const methods: Record<string, { count: number; total: number }> = {};
     let totalRevenue = 0;
+    let registerRevenue = 0;
+    let roomChargeTotal = 0;
+    let roomChargeCount = 0;
 
     completed.forEach(o => {
-      const method = o.payment_type || 'Unknown';
+      const method = o.payment_type || 'Pending';
+      const amount = Number(o.total) || 0;
       if (!methods[method]) methods[method] = { count: 0, total: 0 };
       methods[method].count += 1;
-      methods[method].total += Number(o.total) || 0;
-      totalRevenue += Number(o.total) || 0;
+      methods[method].total += amount;
+      totalRevenue += amount;
+      if (method === 'Charge to Room') {
+        roomChargeTotal += amount;
+        roomChargeCount += 1;
+      } else {
+        registerRevenue += amount;
+      }
     });
 
-    return { methods, totalRevenue, orderCount: completed.length };
+    return { methods, totalRevenue, registerRevenue, roomChargeTotal, roomChargeCount, orderCount: completed.length };
   }, [completed]);
 
   const sortedMethods = useMemo(() => {
@@ -544,12 +559,27 @@ const DailySummary = ({ completed }: { completed: any[] }) => {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
-        {/* Total revenue */}
+        {/* Register revenue (excluding room charges) */}
         <div className="text-center space-y-1">
-          <p className="font-body text-xs text-muted-foreground uppercase tracking-wider">Total Revenue Today</p>
-          <p className="font-display text-3xl text-gold tabular-nums">₱{summary.totalRevenue.toLocaleString()}</p>
-          <p className="font-body text-xs text-muted-foreground">{summary.orderCount} paid order{summary.orderCount !== 1 ? 's' : ''}</p>
+          <p className="font-body text-xs text-muted-foreground uppercase tracking-wider">Register Revenue Today</p>
+          <p className="font-display text-3xl text-gold tabular-nums">₱{summary.registerRevenue.toLocaleString()}</p>
+          <p className="font-body text-xs text-muted-foreground">{summary.orderCount - summary.roomChargeCount} settled order{(summary.orderCount - summary.roomChargeCount) !== 1 ? 's' : ''}</p>
         </div>
+
+        {/* Room charges info */}
+        {summary.roomChargeCount > 0 && (
+          <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-4 py-3 space-y-0.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Home className="w-4 h-4 text-blue-400" />
+                <span className="font-display text-xs tracking-wider text-blue-400">ROOM CHARGES</span>
+              </div>
+              <span className="font-body text-xs text-blue-400">{summary.roomChargeCount} order{summary.roomChargeCount !== 1 ? 's' : ''}</span>
+            </div>
+            <p className="font-display text-lg text-blue-400 tabular-nums">₱{summary.roomChargeTotal.toLocaleString()}</p>
+            <p className="font-body text-[10px] text-muted-foreground">Charged to guest rooms — settled at checkout</p>
+          </div>
+        )}
 
         {/* Cash highlight */}
         {cashEntry && (
@@ -571,7 +601,7 @@ const DailySummary = ({ completed }: { completed: any[] }) => {
           <div className="space-y-2">
             <p className="font-display text-xs tracking-wider text-muted-foreground">BREAKDOWN BY METHOD</p>
             <div className="space-y-1">
-              {sortedMethods.map(([method, data]) => (
+              {sortedMethods.filter(([m]) => m !== 'Charge to Room').map(([method, data]) => (
                 <div key={method} className={`flex items-center justify-between rounded-lg px-3 py-2 ${method === 'Cash' ? 'bg-gold/5' : 'bg-secondary/50'}`}>
                   <div className="flex items-center gap-2">
                     <span className={`font-body text-sm ${method === 'Cash' ? 'text-gold font-semibold' : 'text-foreground'}`}>{method}</span>
