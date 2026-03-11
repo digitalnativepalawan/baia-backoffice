@@ -92,19 +92,32 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     },
   });
 
-  // Check housekeeping clearance
-  const { data: hkOrder } = useQuery({
+  // Check housekeeping clearance — also create pre_inspection order if none exists
+  const { data: hkOrder, refetch: refetchHk } = useQuery({
     queryKey: ['checkout-hk-clearance', unitName],
     enabled: open && !!unitName,
     queryFn: async () => {
-      const { data } = await (supabase.from('housekeeping_orders') as any)
-        .select('id, status, damage_notes')
+      // Check for existing active HK order
+      const { data: existing } = await (supabase.from('housekeeping_orders') as any)
+        .select('id, status, damage_notes, inspection_by_name')
         .eq('unit_name', unitName)
         .neq('status', 'completed')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      return data as any;
+
+      if (existing) return existing as any;
+
+      // Auto-create a pre_inspection order when checkout modal opens
+      const { data: newOrder } = await (supabase.from('housekeeping_orders') as any)
+        .insert({
+          unit_name: unitName,
+          room_type_id: roomTypeId || null,
+          status: 'pre_inspection',
+        })
+        .select('id, status, damage_notes, inspection_by_name')
+        .single();
+      return newOrder as any;
     },
   });
 
