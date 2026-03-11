@@ -81,6 +81,7 @@ h2, h3 { margin: 4px 0; }
 .small { font-size: 10px; color: #555; }
 </style></head><body>
 <div class="center">
+  ${profile?.logo_url ? `<img src="${profile.logo_url}" alt="" style="max-height:${profile?.logo_size || 64}px;margin:0 auto 4px;" />` : ''}
   <h2>${resortName}</h2>
   ${tagline ? `<p class="small">${tagline}</p>` : ''}
   ${address ? `<p class="small">${address}</p>` : ''}
