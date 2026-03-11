@@ -568,10 +568,10 @@ const BillOutPanel = ({
           size="lg"
           className="w-full min-h-[56px] font-display text-base tracking-wider gap-2 bg-gold text-primary-foreground hover:bg-gold/90"
         >
-          {busy ? 'Processing…' : (
+        {busy ? 'Processing…' : (
             <>
               <Check className="w-5 h-5" />
-              Confirm Payment — ₱{total.toLocaleString()}
+              {order.status === 'Ready' ? 'Serve & Confirm Payment' : 'Confirm Payment'} — ₱{total.toLocaleString()}
             </>
           )}
         </Button>
