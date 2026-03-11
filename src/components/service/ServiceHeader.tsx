@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Flame, GlassWater, BellRing, ArrowLeft, Plus } from 'lucide-react';
+import { LogOut, Flame, GlassWater, BellRing, Banknote, ArrowLeft, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useMemo } from 'react';
 import { getStaffSession, clearStaffSession } from '@/lib/session';
@@ -8,10 +8,11 @@ const DEPT_CONFIG: Record<string, { label: string; icon: React.ReactNode; gradie
   kitchen: { label: 'Kitchen', icon: <Flame className="w-4 h-4" />, gradient: 'from-[hsl(25,85%,55%)] to-[hsl(15,80%,45%)]' },
   bar: { label: 'Bar', icon: <GlassWater className="w-4 h-4" />, gradient: 'from-[hsl(270,60%,55%)] to-[hsl(280,55%,42%)]' },
   reception: { label: 'Reception', icon: <BellRing className="w-4 h-4" />, gradient: 'from-[hsl(210,70%,50%)] to-[hsl(220,65%,40%)]' },
+  cashier: { label: 'Cashier', icon: <Banknote className="w-4 h-4" />, gradient: 'from-[hsl(45,90%,50%)] to-[hsl(35,85%,42%)]' },
 };
 
 interface ServiceHeaderProps {
-  department: 'kitchen' | 'bar' | 'reception';
+  department: 'kitchen' | 'bar' | 'reception' | 'cashier';
 }
 
 const ServiceHeader = ({ department }: ServiceHeaderProps) => {
