@@ -243,20 +243,15 @@ const CashierBoard = () => {
         </div>
 
         <div className="flex-1 md:overflow-y-auto">
-          {/* Bill Out section — priority */}
+          {/* Bill Out section — grouped by room */}
           {buckets.billOut.length > 0 && (
             <div className="p-3">
               <h3 className="font-display text-xs tracking-wider text-amber-400 mb-2 px-1">💰 BILL OUT — Awaiting Payment</h3>
-              <div className="space-y-2">
-                {buckets.billOut.map(order => (
-                  <OrderRow
-                    key={order.id}
-                    order={order}
-                    selected={selectedOrder?.id === order.id}
-                    onSelect={() => handleOrderSelect(order)}
-                  />
-                ))}
-              </div>
+              <GroupedBillOut
+                orders={buckets.billOut}
+                selectedOrderId={selectedOrder?.id}
+                onSelect={handleOrderSelect}
+              />
             </div>
           )}
 
@@ -340,6 +335,71 @@ const CashierBoard = () => {
           <DailySummary completed={completedOrders} />
         )}
       </div>
+    </div>
+  );
+};
+
+/** Grouped Bill Out — rooms grouped, walk-ins individual */
+const GroupedBillOut = ({ orders, selectedOrderId, onSelect }: {
+  orders: any[];
+  selectedOrderId?: string;
+  onSelect: (order: any) => void;
+}) => {
+  const { roomGroups, ungrouped } = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    const solo: any[] = [];
+    orders.forEach(o => {
+      if (o.room_id || o.payment_type === 'Charge to Room' || o.tab_id) {
+        const key = o.location_detail || o.order_type || 'Room';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(o);
+      } else {
+        solo.push(o);
+      }
+    });
+    return { roomGroups: Object.entries(groups), ungrouped: solo };
+  }, [orders]);
+
+  return (
+    <div className="space-y-2">
+      {/* Room groups */}
+      {roomGroups.map(([roomName, roomOrders]) => {
+        const totalAmount = roomOrders.reduce((s: number, o: any) => s + Number(o.total || 0), 0);
+        return (
+          <Collapsible key={roomName} defaultOpen>
+            <CollapsibleTrigger className="w-full flex items-center justify-between rounded-xl border border-border/60 border-l-4 border-l-blue-400 bg-card/90 px-3 py-3 hover:bg-secondary/50 transition-colors">
+              <div className="flex items-center gap-2">
+                <Home className="w-4 h-4 text-blue-400" />
+                <span className="font-display text-sm tracking-wider text-foreground">{roomName}</span>
+                <Badge variant="outline" className="font-body text-[10px] h-5 border-blue-400/50 text-blue-400">
+                  {roomOrders.length} order{roomOrders.length !== 1 ? 's' : ''}
+                </Badge>
+              </div>
+              <span className="font-display text-sm text-gold tabular-nums">₱{totalAmount.toLocaleString()}</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pl-3 pt-1 space-y-1.5">
+              {roomOrders.map(order => (
+                <OrderRow
+                  key={order.id}
+                  order={order}
+                  selected={selectedOrderId === order.id}
+                  onSelect={() => onSelect(order)}
+                />
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        );
+      })}
+
+      {/* Ungrouped walk-ins */}
+      {ungrouped.map(order => (
+        <OrderRow
+          key={order.id}
+          order={order}
+          selected={selectedOrderId === order.id}
+          onSelect={() => onSelect(order)}
+        />
+      ))}
     </div>
   );
 };

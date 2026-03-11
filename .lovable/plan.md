@@ -1,91 +1,37 @@
 
 
-## Fix: Order Flow, Walk-in Visibility, and Room Order Grouping in Cashier
+## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
 
-### Problems Identified
+### Issues Found
 
-1. **ServiceBoard `mark-served` auto-pays room charges and tabs** (lines 194-200 in ServiceBoard.tsx) — bypasses the cashier entirely. Room/tab orders jump straight to "Paid" when kitchen/bar marks them served, so the cashier never sees them.
+1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
 
-2. **Walk-in orders not reaching cashier** — related to the flow above; walk-ins work correctly in CashierBoard but may not appear if they're stuck at intermediate statuses.
+2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
 
-3. **Room orders listed individually in Bill Out** — each order for the same room shows as a separate card. The user wants them grouped by room for a cleaner view.
+### Changes
 
-### Plan
+**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
+- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
+- Increase touch target size for edit/delete buttons on shift blocks
+- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
 
-#### 1. Stop auto-paying on "Mark Served" in ServiceBoard.tsx
+**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
+- Add an "Assign Task" button alongside "Add Shift" 
+- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
+- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
+- For other tasks: creates an `employee_tasks` entry with due date and description
+- Tasks appear as colored pills on the timeline (already partially implemented)
 
-**File: `src/components/service/ServiceBoard.tsx`** (lines 194-200)
+**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
+- In the task detail dialog, show who completed the task and when (`completed_at`)
+- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
+- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
 
-Change `mark-served` to always set `status = 'Served'` — never auto-jump to `Paid`. Remove the auto-pay logic for room charges and tabs. This ensures ALL orders flow through the cashier for final payment confirmation.
+**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
+- Add edit capability: change title, description, due date, reassign to different employee
+- Add delete capability for tasks
+- Show completion audit trail
 
-```typescript
-// BEFORE:
-} else if (action === 'mark-served') {
-  updateData.status = 'Served';
-  if ((order.payment_type === 'Charge to Room' && order.room_id) || order.tab_id) {
-    updateData.status = 'Paid';
-    updateData.closed_at = new Date().toISOString();
-  }
-}
-
-// AFTER:
-} else if (action === 'mark-served') {
-  updateData.status = 'Served';
-}
-```
-
-#### 2. Update ServiceBoard bucketing for reception
-
-Since room/tab orders will now stay at "Served" instead of jumping to "Paid", update the reception column logic so `Served` room/tab orders go to "Bill Out" instead of "Completed":
-
-- `Served` (any) → Bill Out
-- Only `Paid` → Completed
-
-This aligns reception's view with the cashier flow.
-
-#### 3. Update CashierBoard Bill Out to include all Served orders
-
-**File: `src/components/service/CashierBoard.tsx`**
-
-The current bucketing already puts `Served` and non-auto-payable `Ready` orders into billOut. Since we're removing auto-pay, ALL served orders (including room charges and tabs) will now appear in Bill Out — which is correct.
-
-#### 4. Group room orders by room in Bill Out section
-
-**File: `src/components/service/CashierBoard.tsx`**
-
-Replace the flat list of bill-out orders with grouped rendering:
-- Orders with a `room_id` or `payment_type === 'Charge to Room'` are grouped by `location_detail` (room name)
-- Each room group shows as a single expandable card: "Room 3 — 2 orders — ₱1,200"
-- Tapping the room group expands to show individual orders inside
-- Walk-in/dine-in orders remain as individual cards (ungrouped)
-
-```text
-Bill Out section layout:
-┌─────────────────────────┐
-│ 💰 BILL OUT             │
-│                         │
-│ ┌── Room 3 ──────────┐  │  ← grouped card
-│ │ 2 orders  ₱1,200   │  │
-│ │  > French Toast     │  │  ← expanded items
-│ │  > Mojito           │  │
-│ └─────────────────────┘  │
-│                         │
-│ ┌── Walk-In: Table 2 ─┐ │  ← individual card
-│ │ Pancakes    ₱350    │  │
-│ └─────────────────────┘  │
-└─────────────────────────┘
-```
-
-Implementation: Create a `GroupedBillOut` component that:
-- Separates billOut orders into `roomGroups` (keyed by `location_detail`) and `ungrouped` (walk-ins)
-- Each room group is a `Collapsible` that shows total count and combined amount
-- When a specific order inside a group is tapped, it opens the BillOutPanel for that order
-- The cashier can pay orders individually or (future) batch-pay a room group
-
-### Files Changed
-
-| File | Change |
-|------|--------|
-| `src/components/service/ServiceBoard.tsx` | Remove auto-pay from `mark-served`; update reception bucketing |
-| `src/components/service/CashierBoard.tsx` | Group room orders in Bill Out by room name |
+### Files to Edit
+- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
 

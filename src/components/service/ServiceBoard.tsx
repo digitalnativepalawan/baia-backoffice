@@ -115,29 +115,24 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
   const columns = useMemo(() => {
     const cols: Record<string, any[]> = { New: [], Preparing: [], Ready: [], 'Bill Out': [], Completed: [] };
 
-    // Walk-in/dine-in served orders stay visible until marked paid
-    const isAutoPayable = (o: any) => o.payment_type === 'Charge to Room' || !!o.tab_id;
-
     if (department === 'kitchen' || department === 'bar') {
       const field = department === 'kitchen' ? 'kitchen_status' : 'bar_status';
       relevantOrders.forEach(o => {
         const deptStatus = o[field] as string;
         if (o.status === 'Paid') cols.Completed.push(o);
-        else if (o.status === 'Served' && isAutoPayable(o)) cols.Completed.push(o);
-        else if (o.status === 'Served') cols.Ready.push(o); // Walk-in stays visible
+        else if (o.status === 'Served') cols.Ready.push(o); // All served stay visible until paid
         else if (deptStatus === 'pending' && (o.status === 'New' || o.status === 'Preparing')) cols.New.push(o);
         else if (deptStatus === 'preparing') cols.Preparing.push(o);
         else if (deptStatus === 'ready' || o.status === 'Ready') cols.Ready.push(o);
       });
     } else {
-      // Reception: use overall order.status directly — Served walk-ins go to Bill Out
+      // Reception: Served orders go to Bill Out, only Paid goes to Completed
       relevantOrders.forEach(o => {
         if (o.status === 'New') cols.New.push(o);
         else if (o.status === 'Preparing') cols.Preparing.push(o);
         else if (o.status === 'Ready') cols.Ready.push(o);
         else if (o.status === 'Paid') cols.Completed.push(o);
-        else if (o.status === 'Served' && isAutoPayable(o)) cols.Completed.push(o);
-        else if (o.status === 'Served') cols['Bill Out'].push(o); // Walk-in awaiting payment
+        else if (o.status === 'Served') cols['Bill Out'].push(o);
       });
     }
     return cols;
@@ -193,11 +188,6 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
       }
     } else if (action === 'mark-served') {
       updateData.status = 'Served';
-      // Auto-complete to Paid only for valid Room charges (with room_id) or Tab orders
-      if ((order.payment_type === 'Charge to Room' && order.room_id) || order.tab_id) {
-        updateData.status = 'Paid';
-        updateData.closed_at = new Date().toISOString();
-      }
     } else if (action === 'mark-paid') {
       updateData.status = 'Paid';
       updateData.closed_at = new Date().toISOString();
