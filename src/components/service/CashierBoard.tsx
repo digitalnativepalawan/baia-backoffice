@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { Input } from '@/components/ui/input';
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 import { getStaffSession } from '@/lib/session';
 import { toast } from 'sonner';
@@ -9,7 +10,7 @@ import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Clock, Flame, GlassWater, Home, ChevronDown, ChevronUp, CreditCard, Check, ArrowLeft, Printer } from 'lucide-react';
+import { Clock, Flame, GlassWater, Home, ChevronDown, ChevronUp, CreditCard, Check, ArrowLeft, Printer, CalendarIcon } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import CashierReceipt from './CashierReceipt';
 
@@ -30,7 +31,7 @@ const CashierBoard = () => {
   const [busy, setBusy] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<any | null>(null);
   const [completedOpen, setCompletedOpen] = useState(false);
-
+  const [completedDate, setCompletedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const permissions = useMemo(() => {
     const s = getStaffSession();
     return s?.permissions || ['admin'];
@@ -47,7 +48,7 @@ const CashierBoard = () => {
     return () => { supabase.removeChannel(channel); };
   }, [qc]);
 
-  // Fetch today's orders
+  // Fetch today's orders (active)
   const { data: orders = [] } = useQuery({
     queryKey: ['cashier-orders'],
     queryFn: async () => {
@@ -56,13 +57,32 @@ const CashierBoard = () => {
       const { data } = await supabase
         .from('orders')
         .select('*')
-        .in('status', ['New', 'Preparing', 'Ready', 'Served', 'Paid'])
+        .in('status', ['New', 'Preparing', 'Ready', 'Served'])
         .gte('created_at', start.toISOString())
         .order('created_at', { ascending: true })
         .limit(300);
       return data || [];
     },
     refetchInterval: 5000,
+  });
+
+  // Fetch completed orders for selected date
+  const { data: completedOrders = [] } = useQuery({
+    queryKey: ['cashier-completed', completedDate],
+    queryFn: async () => {
+      const dayStart = `${completedDate}T00:00:00`;
+      const dayEnd = `${completedDate}T23:59:59`;
+      const { data } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('status', 'Paid')
+        .gte('created_at', dayStart)
+        .lte('created_at', dayEnd)
+        .order('created_at', { ascending: false })
+        .limit(300);
+      return data || [];
+    },
+    refetchInterval: 10000,
   });
 
   // Active bookings for charge-to-room
@@ -80,19 +100,17 @@ const CashierBoard = () => {
     },
   });
 
-  // Bucket orders — ALL Served orders go to billOut, never auto-complete
+  // Bucket orders — active only (completed fetched separately)
   const buckets = useMemo(() => {
     const active: any[] = [];
     const billOut: any[] = [];
-    const completed: any[] = [];
 
     orders.forEach(o => {
-      if (o.status === 'Paid') completed.push(o);
-      else if (o.status === 'Served') billOut.push(o);
+      if (o.status === 'Served') billOut.push(o);
       else active.push(o);
     });
 
-    return { active, billOut, completed };
+    return { active, billOut };
   }, [orders]);
 
   // Handle payment confirmation
@@ -250,29 +268,39 @@ const CashierBoard = () => {
             <p className="font-body text-sm text-muted-foreground text-center py-12">No active orders</p>
           )}
 
-          {/* Completed */}
-          {buckets.completed.length > 0 && (
-            <div className="px-3 pb-4">
-              <Collapsible open={completedOpen} onOpenChange={setCompletedOpen}>
-                <CollapsibleTrigger className="w-full flex items-center justify-between bg-secondary/50 border border-border rounded-lg px-4 py-3 hover:bg-secondary transition-colors">
-                  <span className="font-display text-xs tracking-wider text-muted-foreground">
-                    ✓ Completed ({buckets.completed.length})
-                  </span>
-                  {completedOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronUp className="w-4 h-4 text-muted-foreground" />}
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-3 space-y-2 max-h-[30vh] overflow-y-auto">
-                  {buckets.completed.map(order => (
-                    <OrderRow
-                      key={order.id}
-                      order={order}
-                      selected={false}
-                      onSelect={() => handleOrderSelect(order)}
-                    />
-                  ))}
-                </CollapsibleContent>
-              </Collapsible>
-            </div>
-          )}
+          {/* Completed — date picker + stacked cards */}
+          <div className="px-3 pb-4">
+            <Collapsible open={completedOpen} onOpenChange={setCompletedOpen}>
+              <CollapsibleTrigger className="w-full flex items-center justify-between bg-secondary/50 border border-border rounded-lg px-4 py-3 hover:bg-secondary transition-colors">
+                <span className="font-display text-xs tracking-wider text-muted-foreground">
+                  ✓ Completed ({completedOrders.length})
+                </span>
+                {completedOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-3 space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <CalendarIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <Input
+                    type="date"
+                    value={completedDate}
+                    onChange={e => setCompletedDate(e.target.value || format(new Date(), 'yyyy-MM-dd'))}
+                    className="bg-secondary border-border text-foreground font-body text-sm h-9 w-auto"
+                  />
+                </div>
+                {completedOrders.length === 0 && (
+                  <p className="font-body text-xs text-muted-foreground text-center py-4">No completed orders for this date</p>
+                )}
+                {completedOrders.map(order => (
+                  <OrderRow
+                    key={order.id}
+                    order={order}
+                    selected={false}
+                    onSelect={() => handleOrderSelect(order)}
+                  />
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
         </div>
       </div>
 
@@ -295,7 +323,7 @@ const CashierBoard = () => {
             onPreviewReceipt={() => setReceiptOrder(selectedOrder)}
           />
         ) : (
-          <DailySummary completed={buckets.completed} />
+          <DailySummary completed={completedOrders} />
         )}
       </div>
     </div>
