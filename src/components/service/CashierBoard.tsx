@@ -9,7 +9,7 @@ import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Clock, Flame, GlassWater, Home, ChevronDown, ChevronUp, CreditCard, Check, ArrowLeft } from 'lucide-react';
+import { Clock, Flame, GlassWater, Home, ChevronDown, ChevronUp, CreditCard, Check, ArrowLeft, Printer } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import CashierReceipt from './CashierReceipt';
 
@@ -28,7 +28,7 @@ const CashierBoard = () => {
   const [chargeToRoom, setChargeToRoom] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [paidOrder, setPaidOrder] = useState<any | null>(null);
+  const [receiptOrder, setReceiptOrder] = useState<any | null>(null);
   const [completedOpen, setCompletedOpen] = useState(false);
 
   const permissions = useMemo(() => {
@@ -80,9 +80,7 @@ const CashierBoard = () => {
     },
   });
 
-  const isAutoPayable = useCallback((o: any) => o.payment_type === 'Charge to Room' || !!o.tab_id, []);
-
-  // Bucket orders
+  // Bucket orders — ALL Served orders go to billOut, never auto-complete
   const buckets = useMemo(() => {
     const active: any[] = [];
     const billOut: any[] = [];
@@ -90,13 +88,12 @@ const CashierBoard = () => {
 
     orders.forEach(o => {
       if (o.status === 'Paid') completed.push(o);
-      else if (o.status === 'Served' && isAutoPayable(o)) completed.push(o);
       else if (o.status === 'Served') billOut.push(o);
       else active.push(o);
     });
 
     return { active, billOut, completed };
-  }, [orders, isAutoPayable]);
+  }, [orders]);
 
   // Handle payment confirmation
   const handleConfirmPayment = async () => {
@@ -122,7 +119,7 @@ const CashierBoard = () => {
       await supabase.from('orders').update(updateData).eq('id', selectedOrder.id);
 
       // Store paid order for receipt display
-      setPaidOrder({ ...selectedOrder, payment_type: paymentType });
+      setReceiptOrder({ ...selectedOrder, payment_type: paymentType });
       setSelectedOrder(null);
       setSelectedPayment('');
       setChargeToRoom(false);
@@ -135,7 +132,7 @@ const CashierBoard = () => {
     }
   };
 
-  // Handle order actions (same as ServiceBoard)
+  // Handle order actions — never auto-jump to Paid on serve
   const handleAction = async (orderId: string, action: string) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
@@ -169,11 +166,8 @@ const CashierBoard = () => {
       });
       if (!kitchenItems || order.kitchen_status === 'ready') updateData.status = 'Ready';
     } else if (action === 'mark-served') {
+      // Cashier always goes to Served — never auto-pay
       updateData.status = 'Served';
-      if ((order.payment_type === 'Charge to Room' && order.room_id) || order.tab_id) {
-        updateData.status = 'Paid';
-        updateData.closed_at = new Date().toISOString();
-      }
     }
 
     await supabase.from('orders').update(updateData).eq('id', orderId);
@@ -182,11 +176,23 @@ const CashierBoard = () => {
   };
 
   // Receipt view
-  if (paidOrder) {
-    return <CashierReceipt order={paidOrder} onDone={() => setPaidOrder(null)} />;
+  if (receiptOrder) {
+    return <CashierReceipt order={receiptOrder} onDone={() => setReceiptOrder(null)} />;
   }
 
   const activePaymentMethods = paymentMethods.filter(m => m.is_active && m.name !== 'Charge to Room');
+
+  // Handle tapping a completed/paid order — show receipt
+  const handleOrderSelect = (order: any) => {
+    if (order.status === 'Paid') {
+      setReceiptOrder(order);
+    } else {
+      setSelectedOrder(order);
+      setChargeToRoom(false);
+      setSelectedPayment('');
+      setSelectedBooking(null);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col md:flex-row overflow-hidden">
@@ -215,7 +221,7 @@ const CashierBoard = () => {
                     key={order.id}
                     order={order}
                     selected={selectedOrder?.id === order.id}
-                    onSelect={() => { setSelectedOrder(order); setChargeToRoom(false); setSelectedPayment(''); setSelectedBooking(null); }}
+                    onSelect={() => handleOrderSelect(order)}
                   />
                 ))}
               </div>
@@ -232,7 +238,7 @@ const CashierBoard = () => {
                     key={order.id}
                     order={order}
                     selected={selectedOrder?.id === order.id}
-                    onSelect={() => { setSelectedOrder(order); setChargeToRoom(false); setSelectedPayment(''); setSelectedBooking(null); }}
+                    onSelect={() => handleOrderSelect(order)}
                     onAction={handleAction}
                   />
                 ))}
@@ -256,7 +262,12 @@ const CashierBoard = () => {
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-3 space-y-2 max-h-[30vh] overflow-y-auto">
                   {buckets.completed.map(order => (
-                    <OrderRow key={order.id} order={order} selected={false} onSelect={() => {}} />
+                    <OrderRow
+                      key={order.id}
+                      order={order}
+                      selected={false}
+                      onSelect={() => handleOrderSelect(order)}
+                    />
                   ))}
                 </CollapsibleContent>
               </Collapsible>
@@ -281,6 +292,7 @@ const CashierBoard = () => {
             onConfirm={handleConfirmPayment}
             busy={busy}
             onBack={() => setSelectedOrder(null)}
+            onPreviewReceipt={() => setReceiptOrder(selectedOrder)}
           />
         ) : (
           <DailySummary completed={buckets.completed} />
@@ -303,7 +315,7 @@ const OrderRow = ({ order, selected, onSelect, onAction }: {
   const barItems = items.filter((i: any) => i.department === 'bar' || i.department === 'both');
   const isPaid = order.status === 'Paid';
   const isRoomCharge = order.payment_type === 'Charge to Room';
-  const isPendingPayment = order.status === 'Served' && !order.payment_type;
+  const isPendingPayment = order.status === 'Served';
 
   const statusColor = order.status === 'New' ? 'border-l-gold'
     : order.status === 'Preparing' ? 'border-l-orange-400'
@@ -313,9 +325,9 @@ const OrderRow = ({ order, selected, onSelect, onAction }: {
 
   return (
     <div
-      onClick={!isPaid ? onSelect : undefined}
-      className={`rounded-xl border border-border/60 border-l-4 ${statusColor} p-3 transition-all ${
-        !isPaid ? 'cursor-pointer active:scale-[0.98]' : 'opacity-60'
+      onClick={onSelect}
+      className={`rounded-xl border border-border/60 border-l-4 ${statusColor} p-3 transition-all cursor-pointer active:scale-[0.98] ${
+        isPaid ? 'opacity-70 hover:opacity-90' : ''
       } ${selected ? 'ring-2 ring-gold bg-gold/5' : 'bg-card/90'}`}
     >
       <div className="flex items-start justify-between mb-1">
@@ -331,6 +343,7 @@ const OrderRow = ({ order, selected, onSelect, onAction }: {
           )}
         </div>
         <div className="flex items-center gap-1.5 text-muted-foreground flex-shrink-0 ml-2">
+          {isPaid && <Printer className="w-3 h-3 text-gold" />}
           <Clock className="w-3 h-3" />
           <span className="font-body text-[11px] tabular-nums">{elapsed}</span>
         </div>
@@ -356,10 +369,11 @@ const OrderRow = ({ order, selected, onSelect, onAction }: {
         <div className="flex-1" />
 
         <Badge variant="outline" className={`font-body text-[10px] h-5 ${
-          isRoomCharge ? 'border-blue-400/50 text-blue-400' :
-          isPendingPayment ? 'border-amber-400/50 text-amber-400' : ''
+          isRoomCharge && isPaid ? 'border-blue-400/50 text-blue-400' :
+          isPendingPayment ? 'border-amber-400/50 text-amber-400' :
+          isPaid ? 'border-emerald-400/50 text-emerald-400' : ''
         }`}>
-          {isRoomCharge && isPaid ? 'Room Charge' : isPendingPayment ? 'Pending Payment' : order.status}
+          {isRoomCharge && isPaid ? 'Room Charge' : isPendingPayment ? 'Pending Payment' : isPaid ? 'Paid' : order.status}
         </Badge>
 
         <span className="font-display text-sm text-gold tabular-nums">₱{order.total.toLocaleString()}</span>
@@ -372,7 +386,7 @@ const OrderRow = ({ order, selected, onSelect, onAction }: {
 const BillOutPanel = ({
   order, paymentMethods, selectedPayment, onSelectPayment,
   chargeToRoom, onChargeToRoom, activeBookings, selectedBooking,
-  onSelectBooking, onConfirm, busy, onBack
+  onSelectBooking, onConfirm, busy, onBack, onPreviewReceipt
 }: {
   order: any;
   paymentMethods: any[];
@@ -386,6 +400,7 @@ const BillOutPanel = ({
   onConfirm: () => void;
   busy: boolean;
   onBack: () => void;
+  onPreviewReceipt: () => void;
 }) => {
   const items = (order.items as any[]) || [];
   const subtotal = items.reduce((s: number, i: any) => s + i.price * (i.qty || i.quantity || 1), 0);
@@ -409,6 +424,9 @@ const BillOutPanel = ({
             <p className="font-body text-xs text-muted-foreground">{order.guest_name}</p>
           )}
         </div>
+        <Button variant="outline" size="sm" onClick={onPreviewReceipt} className="gap-1.5 font-display text-xs tracking-wider">
+          <Printer className="w-3.5 h-3.5" /> Preview
+        </Button>
         <Badge variant="outline" className="font-body text-xs">{order.status}</Badge>
       </div>
 
@@ -644,7 +662,7 @@ const DailySummary = ({ completed }: { completed: any[] }) => {
       </div>
 
       <div className="px-4 py-3 border-t border-border text-center">
-        <p className="font-body text-[10px] text-muted-foreground">Tap an order to open bill & payment</p>
+        <p className="font-body text-[10px] text-muted-foreground">Tap an order to open bill & payment · Tap completed orders to reprint</p>
       </div>
     </div>
   );
