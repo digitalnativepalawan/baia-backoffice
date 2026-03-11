@@ -31,7 +31,7 @@ const CashierBoard = () => {
   const [busy, setBusy] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<any | null>(null);
   const [completedOpen, setCompletedOpen] = useState(false);
-
+  const [completedDate, setCompletedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const permissions = useMemo(() => {
     const s = getStaffSession();
     return s?.permissions || ['admin'];
