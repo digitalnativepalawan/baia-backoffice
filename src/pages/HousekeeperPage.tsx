@@ -161,9 +161,11 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   if (activeOrder) {
+    const hkMode = activeOrder.status === 'pre_inspection' ? 'pre_inspection' : 'cleaning';
     return (
       <HousekeepingInspection
         order={activeOrder}
+        mode={hkMode}
         onClose={() => {
           setActiveOrder(null);
           qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
