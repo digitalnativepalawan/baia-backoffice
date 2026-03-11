@@ -84,8 +84,7 @@ const OrderType = () => {
   });
 
   const activeOrderType = orderTypes.find(ot => ot.type_key === selectedType);
-  const isDineIn = selectedType === 'DineIn';
-  const canProceed = selectedType && locationDetail && (!isDineIn || tableDetail);
+  const canProceed = selectedType && locationDetail;
 
   const getSelectOptions = (sourceTable: string | null) => {
     if (sourceTable === 'units') return units?.map(u => ({ id: u.id, name: u.unit_name })) || [];
