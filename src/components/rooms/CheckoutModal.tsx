@@ -118,7 +118,6 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     },
   });
 
-  const unpaidTotal = unpaidOrders.reduce((s, o: any) => s + (o.total || 0), 0);
 
   // Fetch housekeeping employees
   const { data: hkEmployees = [] } = useQuery({
