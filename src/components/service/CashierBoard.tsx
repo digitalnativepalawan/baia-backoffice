@@ -43,6 +43,7 @@ const CashierBoard = () => {
       .channel('cashier-board')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: ['cashier-orders'] });
+        qc.invalidateQueries({ queryKey: ['cashier-completed'] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -106,17 +107,25 @@ const CashierBoard = () => {
   });
 
   // Bucket orders — active only (completed fetched separately)
+  const isAutoPayable = useCallback((o: any) => o.payment_type === 'Charge to Room' || !!o.tab_id, []);
+
   const buckets = useMemo(() => {
     const active: any[] = [];
     const billOut: any[] = [];
 
     orders.forEach(o => {
-      if (o.status === 'Served') billOut.push(o);
-      else active.push(o);
+      if (o.status === 'Served') {
+        billOut.push(o);
+      } else if (o.status === 'Ready' && !isAutoPayable(o)) {
+        // Walk-in/dine-in Ready orders go to Bill Out for cashier to collect payment
+        billOut.push(o);
+      } else {
+        active.push(o);
+      }
     });
 
     return { active, billOut };
-  }, [orders]);
+  }, [orders, isAutoPayable]);
 
   // Handle payment confirmation
   const handleConfirmPayment = async () => {
@@ -348,7 +357,7 @@ const OrderRow = ({ order, selected, onSelect, onAction }: {
   const barItems = items.filter((i: any) => i.department === 'bar' || i.department === 'both');
   const isPaid = order.status === 'Paid';
   const isRoomCharge = order.payment_type === 'Charge to Room';
-  const isPendingPayment = order.status === 'Served';
+  const isPendingPayment = order.status === 'Served' || order.status === 'Ready';
 
   const statusColor = order.status === 'New' ? 'border-l-gold'
     : order.status === 'Preparing' ? 'border-l-orange-400'
@@ -559,10 +568,10 @@ const BillOutPanel = ({
           size="lg"
           className="w-full min-h-[56px] font-display text-base tracking-wider gap-2 bg-gold text-primary-foreground hover:bg-gold/90"
         >
-          {busy ? 'Processing…' : (
+        {busy ? 'Processing…' : (
             <>
               <Check className="w-5 h-5" />
-              Confirm Payment — ₱{total.toLocaleString()}
+              {order.status === 'Ready' ? 'Serve & Confirm Payment' : 'Confirm Payment'} — ₱{total.toLocaleString()}
             </>
           )}
         </Button>
