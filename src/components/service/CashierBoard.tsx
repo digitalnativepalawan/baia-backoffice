@@ -459,7 +459,7 @@ const BillOutPanel = ({
       </div>
 
       {/* Itemized bill */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+      <div className="flex-1 md:overflow-y-auto px-4 py-3 space-y-4">
         <div className="space-y-1">
           {items.map((item: any, idx: number) => (
             <div key={idx} className="flex justify-between font-body text-sm">
