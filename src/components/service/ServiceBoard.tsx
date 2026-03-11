@@ -228,6 +228,11 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
             {columns.Ready.length} READY
           </span>
         )}
+        {columns['Bill Out'].length > 0 && (
+          <span className="font-body text-xs text-amber-400 font-bold">
+            {columns['Bill Out'].length} BILL OUT
+          </span>
+        )}
       </div>
 
       {/* Kanban columns — horizontal on tablet, vertical on phone */}
