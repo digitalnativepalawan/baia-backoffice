@@ -193,8 +193,8 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
       }
     } else if (action === 'mark-served') {
       updateData.status = 'Served';
-      // Auto-complete to Paid for Room/Tab orders (no manual payment needed)
-      if (order.payment_type === 'Charge to Room' || order.tab_id) {
+      // Auto-complete to Paid only for valid Room charges (with room_id) or Tab orders
+      if ((order.payment_type === 'Charge to Room' && order.room_id) || order.tab_id) {
         updateData.status = 'Paid';
         updateData.closed_at = new Date().toISOString();
       }

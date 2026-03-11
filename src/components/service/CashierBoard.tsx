@@ -559,12 +559,27 @@ const DailySummary = ({ completed }: { completed: any[] }) => {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
-        {/* Total revenue */}
+        {/* Register revenue (excluding room charges) */}
         <div className="text-center space-y-1">
-          <p className="font-body text-xs text-muted-foreground uppercase tracking-wider">Total Revenue Today</p>
-          <p className="font-display text-3xl text-gold tabular-nums">₱{summary.totalRevenue.toLocaleString()}</p>
-          <p className="font-body text-xs text-muted-foreground">{summary.orderCount} paid order{summary.orderCount !== 1 ? 's' : ''}</p>
+          <p className="font-body text-xs text-muted-foreground uppercase tracking-wider">Register Revenue Today</p>
+          <p className="font-display text-3xl text-gold tabular-nums">₱{summary.registerRevenue.toLocaleString()}</p>
+          <p className="font-body text-xs text-muted-foreground">{summary.orderCount - summary.roomChargeCount} settled order{(summary.orderCount - summary.roomChargeCount) !== 1 ? 's' : ''}</p>
         </div>
+
+        {/* Room charges info */}
+        {summary.roomChargeCount > 0 && (
+          <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-4 py-3 space-y-0.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Home className="w-4 h-4 text-blue-400" />
+                <span className="font-display text-xs tracking-wider text-blue-400">ROOM CHARGES</span>
+              </div>
+              <span className="font-body text-xs text-blue-400">{summary.roomChargeCount} order{summary.roomChargeCount !== 1 ? 's' : ''}</span>
+            </div>
+            <p className="font-display text-lg text-blue-400 tabular-nums">₱{summary.roomChargeTotal.toLocaleString()}</p>
+            <p className="font-body text-[10px] text-muted-foreground">Charged to guest rooms — settled at checkout</p>
+          </div>
+        )}
 
         {/* Cash highlight */}
         {cashEntry && (

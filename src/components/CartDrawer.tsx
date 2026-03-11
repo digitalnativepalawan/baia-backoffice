@@ -560,25 +560,13 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
                     </div>
                   )}
 
-                  {isStaff && selectedOrderType !== 'WalkIn' && selectedOrderType !== 'DineIn' && (
+                  {/* Payment type is set by cashier at settlement — shown as "Pending Payment" */}
+                  {isStaff && selectedOrderType !== 'WalkIn' && selectedOrderType !== 'DineIn' && selectedOrderType !== 'Room' && (
                     <div className="mt-4 pt-3 border-t border-border">
-                      <p className="font-display text-sm text-foreground tracking-wider mb-2">Payment Type</p>
-                      <Select onValueChange={(v) => { setPaymentType(v); if (v !== 'Tab') { setTabMode('new'); setSelectedTabId(''); } }} value={paymentType}>
-                        <SelectTrigger className="bg-secondary border-border text-foreground font-body">
-                          <SelectValue placeholder="Select payment type" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-card border-border">
-                          {activePaymentMethods.map(m => (
-                            <SelectItem key={m.id} value={m.name} className="text-foreground font-body">{m.name}</SelectItem>
-                          ))}
-                          <SelectItem value="Tab" className="text-foreground font-body">📋 Open Tab</SelectItem>
-                        </SelectContent>
-                      </Select>
-
-                      {/* Tab picker when "Tab" is selected */}
-                      {paymentType === 'Tab' && (
-                        <TabPicker tabMode={tabMode} setTabMode={setTabMode} selectedTabId={selectedTabId} setSelectedTabId={setSelectedTabId} />
-                      )}
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                        <Clock className="w-4 h-4 text-amber-400" />
+                        <span className="font-body text-xs text-amber-400">Payment will be set by cashier at settlement</span>
+                      </div>
                     </div>
                   )}
 
