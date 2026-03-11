@@ -16,7 +16,6 @@ const OrderType = () => {
 
   const [selectedType, setSelectedType] = useState('');
   const [locationDetail, setLocationDetail] = useState('');
-  const [tableDetail, setTableDetail] = useState('');
   const [guestName, setGuestName] = useState('');
 
   const { data: orderTypes = [] } = useQuery({
@@ -84,8 +83,7 @@ const OrderType = () => {
   });
 
   const activeOrderType = orderTypes.find(ot => ot.type_key === selectedType);
-  const isDineIn = selectedType === 'DineIn';
-  const canProceed = selectedType && locationDetail && (!isDineIn || tableDetail);
+  const canProceed = selectedType && locationDetail;
 
   const getSelectOptions = (sourceTable: string | null) => {
     if (sourceTable === 'units') return units?.map(u => ({ id: u.id, name: u.unit_name })) || [];
@@ -107,11 +105,10 @@ const OrderType = () => {
 
   const handleProceed = () => {
     if (!canProceed) return;
-    const finalLocation = isDineIn ? `${locationDetail} – ${tableDetail}` : locationDetail;
-    const params = new URLSearchParams({ mode, orderType: selectedType, location: finalLocation });
+    const params = new URLSearchParams({ mode, orderType: selectedType, location: locationDetail });
     if (guestName.trim()) params.set('guestName', guestName.trim());
     const sourceTable = activeOrderType?.source_table;
-    if (sourceTable === 'units' || isDineIn) {
+    if (sourceTable === 'units') {
       params.set('roomName', locationDetail);
     }
     if (returnTo) params.set('returnTo', returnTo);
@@ -162,7 +159,7 @@ const OrderType = () => {
             {orderTypes.map(ot => (
               <button
                 key={ot.id}
-                onClick={() => { setSelectedType(ot.type_key); setLocationDetail(''); setTableDetail(''); setGuestName(''); }}
+                onClick={() => { setSelectedType(ot.type_key); setLocationDetail(''); setGuestName(''); }}
                 className={`min-h-[48px] py-3 border font-display text-sm tracking-wider transition-colors ${
                   selectedType === ot.type_key
                     ? 'border-gold text-foreground bg-foreground/5'
@@ -174,47 +171,8 @@ const OrderType = () => {
             ))}
           </div>
 
-          {/* DineIn: unit + table + guest name */}
-          {activeOrderType && isDineIn && (
-            <div className="space-y-3">
-              <Select onValueChange={setLocationDetail} value={locationDetail}>
-                <SelectTrigger className="bg-secondary border-border text-foreground font-body">
-                  <SelectValue placeholder="Select unit" />
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {(units || []).map(u => (
-                    <SelectItem key={u.id} value={u.unit_name} className="text-foreground font-body">
-                      {u.unit_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="grid grid-cols-3 gap-2">
-                {(tables || []).map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => setTableDetail(t.table_name)}
-                    className={`min-h-[48px] py-3 border font-display text-sm tracking-wider transition-colors rounded ${
-                      tableDetail === t.table_name
-                        ? 'border-gold text-foreground bg-foreground/5'
-                        : 'border-border text-cream-dim hover:border-foreground/30'
-                    }`}
-                  >
-                    {t.table_name}
-                  </button>
-                ))}
-              </div>
-              <Input
-                placeholder="Guest name (optional)"
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-                className="bg-secondary border-border text-foreground font-body"
-              />
-            </div>
-          )}
-
-          {/* Standard select (non-DineIn) with tiles for tables, dropdown for units */}
-          {activeOrderType && !isDineIn && activeOrderType.input_mode === 'select' && activeOrderType.source_table && (
+          {/* Standard select with tiles for tables, dropdown for units */}
+          {activeOrderType && activeOrderType.input_mode === 'select' && activeOrderType.source_table && (
             <div className="space-y-3">
               {activeOrderType.source_table === 'resort_tables' ? (
                 <div className="grid grid-cols-3 gap-2">
@@ -255,7 +213,7 @@ const OrderType = () => {
             </div>
           )}
 
-          {activeOrderType && !isDineIn && activeOrderType.input_mode === 'text' && (
+          {activeOrderType && activeOrderType.input_mode === 'text' && (
             <div className="space-y-3">
               <Input
                 placeholder={activeOrderType.placeholder || 'Name or details'}

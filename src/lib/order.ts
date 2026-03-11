@@ -1,7 +1,7 @@
 import { CartItem } from './cart';
 
 export interface OrderInfo {
-  orderType: 'Room' | 'DineIn' | 'Beach' | 'WalkIn';
+  orderType: string;
   locationDetail: string;
   isStaff: boolean;
   paymentType?: string;
@@ -10,9 +10,9 @@ export interface OrderInfo {
 export function formatWhatsAppMessage(order: OrderInfo, items: CartItem[], total: number, scheduledFor?: string | null): string {
   const typeLabels: Record<string, string> = {
     Room: 'Room',
-    DineIn: 'Dine In',
-    Beach: 'Beach Delivery',
+    RoomDelivery: 'Room Delivery',
     WalkIn: 'Walk-In Guest',
+    'Friends&Familywalkin': 'Friends & Family Walk-In',
   };
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
