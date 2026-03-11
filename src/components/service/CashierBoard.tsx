@@ -283,11 +283,7 @@ const CashierBoard = () => {
             onBack={() => setSelectedOrder(null)}
           />
         ) : (
-          <div className="flex items-center justify-center h-full p-8">
-            <p className="font-body text-sm text-muted-foreground text-center">
-              Tap an order to open bill & payment
-            </p>
-          </div>
+          <DailySummary completed={buckets.completed} />
         )}
       </div>
     </div>
