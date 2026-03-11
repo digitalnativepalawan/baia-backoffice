@@ -213,9 +213,9 @@ const CashierBoard = () => {
   };
 
   return (
-    <div className="h-full flex flex-col md:flex-row overflow-hidden max-w-full">
+    <div className="min-h-0 flex flex-col md:flex-row md:h-full md:overflow-hidden max-w-full">
       {/* Left: Order list */}
-      <div className="flex-1 flex flex-col overflow-hidden border-r border-border/50 min-w-0">
+      <div className="flex-1 flex flex-col md:overflow-hidden border-r border-border/50 min-w-0">
         {/* Summary */}
         <div className="flex items-center gap-4 px-4 py-2 border-b border-border bg-card/50 flex-shrink-0">
           <span className="font-display text-sm text-foreground tracking-wider">
