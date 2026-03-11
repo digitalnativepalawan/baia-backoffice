@@ -1449,8 +1449,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                       <p className="font-body text-xs text-muted-foreground">Assigned: {getEmployeeName(hkOrder.assigned_to)}</p>
                     )}
                     {hkOrder && (
-                      <Badge variant="outline" className="font-body text-xs mt-1 text-amber-400 border-amber-500/40">
-                        {hkOrder.status === 'pending_inspection' ? 'Pending Inspection' : hkOrder.status === 'cleaning' ? 'Cleaning' : hkOrder.status}
+                      <Badge variant="outline" className={`font-body text-xs mt-1 ${hkOrder.status === 'inspection_cleared' ? 'text-emerald-400 border-emerald-500/40' : 'text-amber-400 border-amber-500/40'}`}>
+                        {hkOrder.status === 'pre_inspection' ? '🔍 Pre-Inspection' : hkOrder.status === 'inspection_cleared' ? '✅ Cleared' : hkOrder.status === 'pending_inspection' ? 'Pending Inspection' : hkOrder.status === 'cleaning' ? '🧹 Cleaning' : hkOrder.status}
                       </Badge>
                     )}
                   </div>

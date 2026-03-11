@@ -253,7 +253,7 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-display text-base tracking-wider text-foreground">{order.unit_name}</span>
                   <Badge variant="outline" className="font-body text-xs">
-                    {order.status === 'cleaning' ? '🧹 Cleaning' : '🔍 Inspection'}
+                    {order.status === 'cleaning' ? '🧹 Cleaning' : order.status === 'pre_inspection' ? '🔍 Pre-Checkout' : '🔍 Inspection'}
                   </Badge>
                 </div>
                 {order.accepted_at && (

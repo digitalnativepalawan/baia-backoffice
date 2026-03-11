@@ -204,31 +204,28 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
 
       await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', unitId);
 
-      // Create housekeeping order with assignment
-      const { data: existingOrders } = await (supabase.from('housekeeping_orders' as any) as any)
-        .select('id')
-        .eq('unit_name', unitName)
-        .neq('status', 'completed');
-
+      // Transition existing HK order to 'cleaning' (post-checkout phase)
       const hkEmployee = hkEmployees.find((e: any) => e.id === selectedHousekeeper);
 
-      if (!existingOrders || existingOrders.length === 0) {
+      if (hkOrder?.id) {
+        await (supabase.from('housekeeping_orders' as any) as any).update({
+          status: 'cleaning',
+          assigned_to: selectedHousekeeper || hkOrder.assigned_to || null,
+          accepted_by: selectedHousekeeper || hkOrder.accepted_by || null,
+          accepted_by_name: hkEmployee ? (hkEmployee.display_name || hkEmployee.name) : (hkOrder.accepted_by_name || ''),
+          accepted_at: selectedHousekeeper ? new Date().toISOString() : (hkOrder.accepted_at || null),
+        }).eq('id', hkOrder.id);
+      } else {
+        // Fallback: create new cleaning order
         await (supabase.from('housekeeping_orders' as any) as any).insert({
           unit_name: unitName,
           room_type_id: roomTypeId || null,
-          status: 'pending_inspection',
+          status: 'cleaning',
           assigned_to: selectedHousekeeper || null,
           accepted_by: selectedHousekeeper || null,
           accepted_by_name: hkEmployee ? (hkEmployee.display_name || hkEmployee.name) : '',
           accepted_at: selectedHousekeeper ? new Date().toISOString() : null,
         });
-      } else if (selectedHousekeeper) {
-        await (supabase.from('housekeeping_orders' as any) as any).update({
-          assigned_to: selectedHousekeeper,
-          accepted_by: selectedHousekeeper,
-          accepted_by_name: hkEmployee ? (hkEmployee.display_name || hkEmployee.name) : '',
-          accepted_at: new Date().toISOString(),
-        }).eq('id', existingOrders[0].id);
       }
 
       // Send WhatsApp notification to assigned housekeeper

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, CheckCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Search, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { differenceInMinutes } from 'date-fns';
 import PasswordConfirmModal from '@/components/housekeeping/PasswordConfirmModal';
@@ -16,16 +16,29 @@ const from = (table: string) => supabase.from(table as any);
 interface HousekeepingInspectionProps {
   order: any;
   onClose: () => void;
+  /** 'pre_inspection' = damage check only (before guest leaves), 'cleaning' = full clean + restock */
+  mode?: 'pre_inspection' | 'cleaning';
 }
 
-const HousekeepingInspection = ({ order, onClose }: HousekeepingInspectionProps) => {
+const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspectionProps) => {
   const qc = useQueryClient();
-  const derivedStep = order.status === 'pending_inspection' || order.status === 'inspecting' ? 'inspection' : 'cleaning';
-  const [currentStep, setCurrentStep] = useState(derivedStep);
-  // Guard: once we move to 'cleaning', never go back even if order re-renders with old status
-  const [lockedStep, setLockedStep] = useState(false);
 
-  // PIN confirmation state — only used for cleaning completion
+  // Determine mode from prop or order status
+  const resolvedMode = mode || (
+    order.status === 'pre_inspection' || order.status === 'pending_inspection' || order.status === 'inspecting'
+      ? 'pre_inspection'
+      : 'cleaning'
+  );
+
+  const isPreInspection = resolvedMode === 'pre_inspection';
+
+  // For cleaning mode, derive step from order status
+  const derivedStep = isPreInspection ? 'inspection' : (
+    order.status === 'pending_inspection' || order.status === 'inspecting' ? 'inspection' : 'cleaning'
+  );
+  const [currentStep, setCurrentStep] = useState(derivedStep);
+
+  // PIN confirmation state
   const [pinAction, setPinAction] = useState<'cleaning' | null>(null);
 
   // ── Checklist items for this room type ──
@@ -39,10 +52,10 @@ const HousekeepingInspection = ({ order, onClose }: HousekeepingInspectionProps)
     },
   });
 
-  // ── Cleaning packages + items for this room type ──
+  // ── Cleaning packages + items (only needed in cleaning mode) ──
   const { data: packages = [] } = useQuery({
     queryKey: ['cleaning-packages-for-type', order.room_type_id],
-    enabled: !!order.room_type_id,
+    enabled: !!order.room_type_id && !isPreInspection,
     queryFn: async () => {
       const { data } = await from('cleaning_packages')
         .select('*').eq('room_type_id', order.room_type_id);
@@ -52,6 +65,7 @@ const HousekeepingInspection = ({ order, onClose }: HousekeepingInspectionProps)
 
   const { data: packageItems = [] } = useQuery({
     queryKey: ['cleaning-package-items-all'],
+    enabled: !isPreInspection,
     queryFn: async () => {
       const { data } = await from('cleaning_package_items').select('*');
       return (data || []) as any[];
@@ -60,6 +74,7 @@ const HousekeepingInspection = ({ order, onClose }: HousekeepingInspectionProps)
 
   const { data: ingredients = [] } = useQuery({
     queryKey: ['ingredients'],
+    enabled: !isPreInspection,
     queryFn: async () => {
       const { data } = await supabase.from('ingredients').select('*').order('name');
       return data || [];
@@ -111,13 +126,47 @@ const HousekeepingInspection = ({ order, onClose }: HousekeepingInspectionProps)
   };
 
   // Auto-init when packages load
-  if (packages.length > 0 && !selectedPackageId && Object.keys(supplyQuantities).length === 0) {
+  if (!isPreInspection && packages.length > 0 && !selectedPackageId && Object.keys(supplyQuantities).length === 0) {
     initSupplies(packages[0].id);
   }
 
   const getIngredient = (id: string) => ingredients.find((i: any) => i.id === id);
 
-  // ── Complete Inspection (called after PIN confirm) ──
+  // ── Pre-Inspection: Clear for Checkout ──
+  const completePreInspection = async () => {
+    setInspecting(true);
+    try {
+      const inspectionData = checklistItems.map((item: any) => ({
+        id: item.id,
+        label: item.item_label,
+        checked: !!checkedItems[item.id],
+        count: item.count_expected ? parseInt(itemCounts[item.id] || '0') : undefined,
+        required: item.is_required,
+      }));
+
+      const empName = localStorage.getItem('emp_display_name') || localStorage.getItem('emp_name') || '';
+
+      await from('housekeeping_orders').update({
+        status: 'inspection_cleared',
+        inspection_data: inspectionData,
+        damage_notes: damageNotes,
+        inspection_completed_at: new Date().toISOString(),
+        inspection_by_name: empName,
+      } as any).eq('id', order.id);
+
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
+      qc.invalidateQueries({ queryKey: ['checkout-hk-clearance'] });
+      toast.success(`✅ ${order.unit_name} cleared for checkout — Reception notified`, { duration: 5000 });
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to complete inspection');
+    } finally {
+      setInspecting(false);
+    }
+  };
+
+  // ── Complete Inspection (cleaning mode — step 1 → step 2) ──
   const completeInspection = async () => {
     setInspecting(true);
     try {
@@ -140,10 +189,8 @@ const HousekeepingInspection = ({ order, onClose }: HousekeepingInspectionProps)
         inspection_by_name: empName,
       } as any).eq('id', order.id);
 
-      // Set step BEFORE invalidating queries to prevent re-mount resetting state
       setCurrentStep('cleaning');
       toast.success('Inspection completed — proceed to cleaning');
-      // Delay query invalidation so React processes the state update first
       setTimeout(() => {
         qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
         qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
@@ -155,7 +202,7 @@ const HousekeepingInspection = ({ order, onClose }: HousekeepingInspectionProps)
     }
   };
 
-  // ── Complete Cleaning (called after PIN confirm) ──
+  // ── Complete Cleaning ──
   const completeCleaning = async (confirmedBy: { id: string; name: string; display_name: string }) => {
     setCleaning(true);
     try {
@@ -223,6 +270,91 @@ const HousekeepingInspection = ({ order, onClose }: HousekeepingInspectionProps)
     setPinAction(null);
   };
 
+  // ═══ PRE-INSPECTION MODE (simplified damage check) ═══
+  if (isPreInspection) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Button size="sm" variant="ghost" onClick={onClose}>
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h3 className="font-display text-lg tracking-wider text-foreground">
+              🔍 Pre-Checkout Inspection
+            </h3>
+            <p className="font-body text-xs text-muted-foreground">{order.unit_name} — Check for damages before guest leaves</p>
+          </div>
+        </div>
+
+        {/* Single step indicator */}
+        <div className="flex gap-2">
+          <div className="flex-1 h-1.5 rounded-full bg-amber-500" />
+        </div>
+
+        <div className="space-y-4">
+          {/* Checklist */}
+          {checklistItems.length > 0 ? (
+            <div className="space-y-2">
+              <h4 className="font-display text-xs tracking-wider text-muted-foreground uppercase">Damage & Condition Check</h4>
+              {checklistItems.map((item: any) => (
+                <div key={item.id} className="flex items-center gap-3 border border-border rounded p-3 min-h-[44px]">
+                  <Checkbox
+                    checked={!!checkedItems[item.id]}
+                    onCheckedChange={v => setCheckedItems(prev => ({ ...prev, [item.id]: !!v }))}
+                  />
+                  <span className="font-body text-sm text-foreground flex-1">
+                    {item.item_label}
+                    {item.is_required && <span className="text-amber-400 text-xs ml-1">*</span>}
+                  </span>
+                  {item.count_expected && (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        value={itemCounts[item.id] || ''}
+                        onChange={e => setItemCounts(prev => ({ ...prev, [item.id]: e.target.value }))}
+                        placeholder={`/${item.count_expected}`}
+                        className="bg-secondary border-border text-foreground font-body h-8 w-16 text-xs text-center"
+                      />
+                      <span className="font-body text-xs text-muted-foreground">/{item.count_expected}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="font-body text-xs text-muted-foreground">
+              No checklist configured for this room type.
+            </p>
+          )}
+
+          {/* Damage notes */}
+          <div>
+            <label className="font-body text-xs text-muted-foreground">Damage / Issue Report</label>
+            <Textarea
+              value={damageNotes}
+              onChange={e => setDamageNotes(e.target.value)}
+              placeholder="Describe any damage, missing items, or issues found..."
+              className="bg-secondary border-border text-foreground font-body text-sm min-h-[100px] mt-1"
+            />
+          </div>
+
+          <Button
+            onClick={completePreInspection}
+            disabled={inspecting}
+            className="w-full font-display tracking-wider min-h-[52px] bg-emerald-600 hover:bg-emerald-700 text-lg"
+          >
+            <CheckCircle className="w-5 h-5 mr-2" />
+            {inspecting ? 'Submitting...' : '✅ Clear for Checkout'}
+          </Button>
+          <p className="font-body text-xs text-muted-foreground text-center">
+            This will notify reception that the room is cleared for final checkout.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══ CLEANING MODE (full inspection + cleaning) ═══
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -231,7 +363,7 @@ const HousekeepingInspection = ({ order, onClose }: HousekeepingInspectionProps)
         </Button>
         <div>
           <h3 className="font-display text-lg tracking-wider text-foreground">
-            {currentStep === 'inspection' ? 'Room Inspection' : 'Cleaning'}
+            {currentStep === 'inspection' ? '🔍 Room Inspection' : '🧹 Cleaning'}
           </h3>
           <p className="font-body text-xs text-muted-foreground">{order.unit_name}</p>
         </div>
@@ -388,7 +520,7 @@ const HousekeepingInspection = ({ order, onClose }: HousekeepingInspectionProps)
             className="w-full font-display tracking-wider min-h-[44px] bg-emerald-600 hover:bg-emerald-700"
           >
             <CheckCircle className="w-4 h-4 mr-2" />
-            {cleaning ? 'Completing...' : 'Cleaning Completed — Room Ready'}
+            {cleaning ? 'Completing...' : '✅ Cleaning Done — Room Ready'}
           </Button>
         </div>
       )}
