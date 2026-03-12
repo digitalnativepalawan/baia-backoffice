@@ -1,37 +1,89 @@
 
 
-## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
+## Fix: Room Occupancy Detection from Active Bookings
 
-### Issues Found
+### Problem
+Wendy has an active booking for Double Room #2 (Mar 9-13), but the `units.status` field is `ready` instead of `occupied`. This causes:
+1. Room shows as "Ready" in the Walk-In/Sell section instead of occupied
+2. Wendy doesn't appear in "Current Guests" on the reception page
+3. Wendy doesn't appear in "Current Guests" on the OrderType page for staff ordering
+4. The calendar shows her booking correctly (it reads from `resort_ops_bookings`, not `units.status`)
 
-1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
+The `units.status` field is a mutable flag that easily gets out of sync — housekeeping completion, reservation deletion, or other flows can reset it to `ready` even when there's still an active booking.
 
-2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
+### Solution: Hybrid Status with Booking-Based Fallback
 
-### Changes
+Instead of relying solely on `units.status`, derive the effective status by cross-referencing active bookings. If `units.status` is `ready` but there's an active booking (`check_in <= today && check_out > today`), treat the unit as `occupied`.
 
-**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
-- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
-- Increase touch target size for edit/delete buttons on shift blocks
-- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
+#### 1. `src/pages/ReceptionPage.tsx` — Fix `getUnitStatus` to check bookings
 
-**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
-- Add an "Assign Task" button alongside "Add Shift" 
-- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
-- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
-- For other tasks: creates an `employee_tasks` entry with due date and description
-- Tasks appear as colored pills on the timeline (already partially implemented)
+Replace the simple status lookup with a function that also checks for active bookings:
 
-**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
-- In the task detail dialog, show who completed the task and when (`completed_at`)
-- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
-- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
+```typescript
+const getUnitStatus = (unit: any): 'occupied' | 'to_clean' | 'ready' => {
+  const raw = (unit as any).status || 'ready';
+  if (raw === 'occupied') return 'occupied';
+  if (raw === 'to_clean') return 'to_clean';
+  // Fallback: check if there's an active booking for this unit
+  const resortUnit = resolveResortUnit(unit.name);
+  if (resortUnit) {
+    const hasActiveBooking = bookings.some((b: any) =>
+      b.unit_id === resortUnit.id && b.check_in <= today && b.check_out > today
+    );
+    if (hasActiveBooking) return 'occupied';
+  }
+  return 'ready';
+};
+```
 
-**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
-- Add edit capability: change title, description, due date, reassign to different employee
-- Add delete capability for tasks
-- Show completion audit trail
+Also fix `getActiveBooking` to remove the status gate — it should find the booking regardless since `getUnitStatus` now handles the logic:
+
+```typescript
+const getActiveBooking = (unit: any) => {
+  const resortUnit = resolveResortUnit(unit.name);
+  if (!resortUnit) return null;
+  return bookings.find((b: any) =>
+    b.unit_id === resortUnit.id && b.check_in <= today && b.check_out > today
+  ) || null;
+};
+```
+
+This single change cascades through all downstream logic: `occupiedUnits`, `readyUnits`, `trulyAvailableUnits`, `todayDepartures`, etc.
+
+#### 2. Auto-heal: Sync `units.status` when mismatch detected
+
+Add a one-time effect that detects mismatched units (booking-occupied but status=ready) and fixes them in the DB:
+
+```typescript
+useEffect(() => {
+  units.forEach(unit => {
+    if (unit.status === 'ready') {
+      const ru = resolveResortUnit(unit.name);
+      if (ru && bookings.some(b => b.unit_id === ru.id && b.check_in <= today && b.check_out > today)) {
+        supabase.from('units').update({ status: 'occupied' }).eq('id', unit.id);
+      }
+    }
+  });
+}, [units, bookings, resortUnits]);
+```
+
+#### 3. `src/pages/OrderType.tsx` — Fix "Current Guests" to use bookings
+
+The current logic filters on `units.status === 'occupied'`. Change it to also include units with active bookings:
+
+```typescript
+// Instead of only occupied units, also check for active bookings
+const occupiedUnits = (units || []).filter(u => {
+  if (u.status === 'occupied') return true;
+  const opsUnit = opsUnits?.find(ou => ou.name.toLowerCase().trim() === u.unit_name.toLowerCase().trim());
+  return opsUnit && bookings?.some(b => b.unit_id === opsUnit.id);
+});
+```
 
 ### Files to Edit
-- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
+
+| File | Change |
+|------|--------|
+| `src/pages/ReceptionPage.tsx` | Fix `getUnitStatus` with booking fallback; fix `getActiveBooking`; add auto-heal effect |
+| `src/pages/OrderType.tsx` | Fix "Current Guests" to use booking-based occupancy detection |
 
