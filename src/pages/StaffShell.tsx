@@ -77,6 +77,9 @@ const StaffShell = () => {
           </div>
         )}
 
+        {/* Morning Briefing — top-level operational summary */}
+        <MorningBriefing />
+
         {/* Action Required — always visible, sorted by urgency */}
         <ActionRequiredPanel />
 
