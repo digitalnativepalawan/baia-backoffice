@@ -32,12 +32,9 @@ function useMorningBriefing() {
   return useQuery<BriefingData>({
     queryKey: ['morning-briefing', today],
     queryFn: async () => {
-      const [unitsRes, bookingsRes, hkRes, ordersRes] = await Promise.all([
+      const [unitsRes, bookingsRes, ordersRes] = await Promise.all([
         from('units').select('id, status'),
         from('resort_ops_bookings').select('id, check_in, check_out, unit_id'),
-        from('housekeeping_orders')
-          .select('id', { count: 'exact', head: true })
-          .in('status', ['pending_cleaning', 'pending_inspection']),
         from('orders')
           .select('id', { count: 'exact', head: true })
           .in('status', ['New', 'Preparing']),
@@ -55,6 +52,11 @@ function useMorningBriefing() {
         );
       }).length;
 
+      // Rooms to clean = units with dirty or to_clean status
+      const roomsToClean = units.filter(
+        (u) => u.status === 'dirty' || u.status === 'cleaning' || u.status === 'to_clean'
+      ).length;
+
       const arrivalsToday = bookings.filter((b: any) => b.check_in === today).length;
       const departuresToday = bookings.filter((b: any) => b.check_out === today).length;
 
@@ -63,7 +65,7 @@ function useMorningBriefing() {
         totalRooms,
         arrivalsToday,
         departuresToday,
-        roomsToClean: hkRes.count || 0,
+        roomsToClean,
         pendingKitchenOrders: ordersRes.count || 0,
       };
     },
