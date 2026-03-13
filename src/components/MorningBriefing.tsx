@@ -129,7 +129,8 @@ const statsDef = [
 ] as const;
 
 const MorningBriefing = () => {
-  const { data, isLoading } = useMorningBriefing();
+  const { data: rawData, isLoading } = useMorningBriefing();
+  const data = rawData ? { ...rawData, adminTasks: rawData.adminTasks || [], opsTasks: rawData.opsTasks || [] } : undefined;
 
   const values: Record<string, string> = data
     ? {
