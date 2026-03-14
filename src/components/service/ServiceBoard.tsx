@@ -129,16 +129,15 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
         else if (deptStatus === 'ready' || o.status === 'Ready') cols.Ready.push(o);
       });
     } else {
-      // Reception: Served orders go to Bill Out, only Paid goes to Completed
+      // Reception: Served and Paid go to Completed
       relevantOrders.forEach(o => {
         if (o.status === 'New') cols.New.push(o);
         else if (o.status === 'Preparing') cols.Preparing.push(o);
         else if (o.status === 'Ready') cols.Ready.push(o);
-        else if (o.status === 'Paid') {
+        else if (o.status === 'Paid' || o.status === 'Served') {
           const isRoomOrder = o.room_id || o.payment_type === 'Charge to Room';
           if (!isRoomOrder) cols.Completed.push(o);
         }
-        else if (o.status === 'Served') cols['Bill Out'].push(o);
       });
     }
     return cols;
