@@ -39,6 +39,14 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
   const [showAdjustment, setShowAdjustment] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
 
+  // Selective payment states
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [showPaySelected, setShowPaySelected] = useState(false);
+  const [paySelectedMethod, setPaySelectedMethod] = useState('');
+  const [paySelectedBusy, setPaySelectedBusy] = useState(false);
+  const { data: paymentMethods = [] } = usePaymentMethods();
+  const activePayMethods = paymentMethods.filter(m => m.is_active && m.name !== 'Charge to Room');
+
   // Inline edit states
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [editOrderAmount, setEditOrderAmount] = useState('');
