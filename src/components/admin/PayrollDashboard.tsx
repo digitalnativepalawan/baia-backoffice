@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
@@ -101,6 +101,23 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       return (data || []) as any[];
     },
   });
+
+  // Realtime subscriptions for payments, shifts, and bonuses
+  useEffect(() => {
+    const channel = supabase
+      .channel('payroll-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payroll_payments' }, () => {
+        qc.invalidateQueries({ queryKey: ['payroll-payments'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_shifts' }, () => {
+        qc.invalidateQueries({ queryKey: ['employee-shifts-all'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_bonuses' }, () => {
+        qc.invalidateQueries({ queryKey: ['employee-bonuses'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [qc]);
 
   // Payment form state
   const [payEmployee, setPayEmployee] = useState('');
