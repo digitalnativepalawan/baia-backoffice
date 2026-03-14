@@ -10,6 +10,7 @@ import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import { canEdit } from '@/lib/permissions';
 import EditTourModal from '@/components/rooms/EditTourModal';
+import EditRequestModal from '@/components/rooms/EditRequestModal';
 
 const from = (table: string) => supabase.from(table as any);
 
@@ -36,6 +37,8 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [editTour, setEditTour] = useState<any>(null);
+  const [editTourSource, setEditTourSource] = useState<'guest_tours' | 'tour_bookings'>('guest_tours');
+  const [editRequest, setEditRequest] = useState<any>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -370,11 +373,12 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
           {pendingBookings.map((b: any) => (
             <div key={b.id} className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3 space-y-2 new-order-card">
               <div className="flex justify-between items-start">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Palmtree className="w-3.5 h-3.5 text-amber-400" />
-                    <p className="font-display text-sm text-foreground tracking-wider">{b.tour_name}</p>
-                  </div>
+                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { if (canDoEdit) { setEditTourSource('tour_bookings'); setEditTour(b); } }}>
+                    <div className="flex items-center gap-2">
+                     <Palmtree className="w-3.5 h-3.5 text-amber-400" />
+                     <p className="font-display text-sm text-foreground tracking-wider">{b.tour_name}</p>
+                     {canDoEdit && <Pencil className="w-3 h-3 text-muted-foreground" />}
+                   </div>
                    <p className="font-body text-xs text-muted-foreground mt-1">
                      <span className="inline-flex items-center gap-1"><CalendarDays className="w-3 h-3" />{b.tour_date && format(new Date(b.tour_date + 'T00:00:00'), 'EEE, MMM d, yyyy')}</span>
                      {' · '}{b.pickup_time || ''} · {b.pax} pax
@@ -456,10 +460,11 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
             {todayBookings.map((b: any) => (
               <div key={b.id} className="border border-border rounded-lg p-3 space-y-2">
                 <div className="flex justify-between items-start">
-                  <div>
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { if (canDoEdit) { setEditTourSource('tour_bookings'); setEditTour(b); } }}>
                     <div className="flex items-center gap-2">
-                      <Palmtree className="w-3.5 h-3.5 text-primary" />
-                      <p className="font-display text-sm text-foreground tracking-wider">{b.tour_name}</p>
+                       <Palmtree className="w-3.5 h-3.5 text-primary" />
+                       <p className="font-display text-sm text-foreground tracking-wider">{b.tour_name}</p>
+                       {canDoEdit && <Pencil className="w-3 h-3 text-muted-foreground" />}
                     </div>
                     <p className="font-body text-xs text-muted-foreground mt-1">
                       {b.pickup_time || ''} · {b.guest_name} · {b.pax} pax
@@ -526,10 +531,11 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
           {requests.slice(0, 15).map((req: any) => (
             <div key={req.id} className={`border rounded-lg p-3 space-y-1 ${req.status === 'pending' ? 'border-amber-500/30 bg-amber-500/5 new-order-card' : 'border-border'}`}>
               <div className="flex justify-between items-start">
-                <div>
+                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => canDoEdit && setEditRequest(req)}>
                   <div className="flex items-center gap-2">
                     {getRequestIcon(req.request_type)}
                     <p className="font-display text-sm text-foreground tracking-wider">{req.request_type}</p>
+                    {canDoEdit && <Pencil className="w-3 h-3 text-muted-foreground" />}
                   </div>
                   <p className="font-body text-xs text-muted-foreground">{req.guest_name} · {req.details}</p>
                   <p className="font-body text-[10px] text-muted-foreground">{format(new Date(req.created_at), 'MMM d, h:mm a')}</p>
@@ -598,10 +604,18 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
       {/* Edit Tour Modal */}
       <EditTourModal
         open={!!editTour}
-        onOpenChange={(open) => !open && setEditTour(null)}
+        onOpenChange={(open) => { if (!open) { setEditTour(null); setEditTourSource('guest_tours'); } }}
         tour={editTour}
         unitName={editTour?.unit_name || ''}
         bookingId={editTour?.booking_id || null}
+        sourceTable={editTourSource}
+      />
+
+      {/* Edit Request Modal */}
+      <EditRequestModal
+        open={!!editRequest}
+        onOpenChange={(open) => !open && setEditRequest(null)}
+        request={editRequest}
       />
     </div>
   );

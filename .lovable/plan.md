@@ -1,47 +1,37 @@
 
 
-## Plan: Make All Guest Services Editable with Proper Data Wiring
+## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
 
-### Problem
-Currently only `guest_tours` records are editable via `EditTourModal`. Tour bookings from the guest portal (`tour_bookings` table) and guest requests (`guest_requests` — transport, rentals, etc.) cannot be edited. Additionally, the `EditTourModal` only invalidates the room-detail query key, not the Experiences page queries.
+### Issues Found
+
+1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
+
+2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
 
 ### Changes
 
-#### 1. Generalize `EditTourModal` to handle both `guest_tours` AND `tour_bookings`
+**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
+- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
+- Increase touch target size for edit/delete buttons on shift blocks
+- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
 
-Add a `sourceTable` prop (default `'guest_tours'`). When saving, update the correct table and invalidate all relevant query keys:
-- `all-tours-experiences`
-- `tour-bookings-experiences`
-- `reception-tours-today`
-- `reception-tour-bookings`
-- `guest-tours` (room detail)
+**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
+- Add an "Assign Task" button alongside "Add Shift" 
+- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
+- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
+- For other tasks: creates an `employee_tasks` entry with due date and description
+- Tasks appear as colored pills on the timeline (already partially implemented)
 
-#### 2. Create `EditRequestModal` for guest requests (transport, rentals, etc.)
+**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
+- In the task detail dialog, show who completed the task and when (`completed_at`)
+- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
+- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
 
-A new modal for editing `guest_requests` records with fields:
-- Request type (text)
-- Guest name (text)
-- Details (textarea)
-- Status display
+**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
+- Add edit capability: change title, description, due date, reassign to different employee
+- Add delete capability for tasks
+- Show completion audit trail
 
-On save, update `guest_requests` and invalidate `all-requests-experiences` + `recent-requests-history`.
-
-#### 3. Wire up clickable editing in `ExperiencesPage.tsx`
-
-- **Pending tour bookings**: Make cards clickable → open `EditTourModal` with `sourceTable='tour_bookings'`
-- **Today's tour bookings**: Same clickable edit
-- **Guest requests**: Make cards clickable → open `EditRequestModal`
-- Add pencil icon to all editable cards
-
-#### 4. Fix `EditTourModal` query invalidation
-
-Currently only invalidates `['guest-tours', unitName, bookingId]`. Add invalidation for all experiences/reception query keys so changes reflect immediately everywhere.
-
-### Files
-
-| File | Change |
-|------|--------|
-| `src/components/rooms/EditTourModal.tsx` | Add `sourceTable` prop, save to correct table, invalidate all relevant query keys |
-| `src/components/rooms/EditRequestModal.tsx` | New modal for editing guest requests (transport, rentals) |
-| `src/pages/ExperiencesPage.tsx` | Wire tour bookings + requests to open edit modals on click, add pencil icons |
+### Files to Edit
+- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
 
