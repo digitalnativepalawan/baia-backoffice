@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -11,10 +12,11 @@ interface EditTourModalProps {
   onOpenChange: (open: boolean) => void;
   tour: any;
   unitName: string;
-  bookingId: string | null;
+  bookingId?: string | null;
+  sourceTable?: 'guest_tours' | 'tour_bookings';
 }
 
-const EditTourModal = ({ open, onOpenChange, tour, unitName, bookingId }: EditTourModalProps) => {
+const EditTourModal = ({ open, onOpenChange, tour, unitName, bookingId, sourceTable = 'guest_tours' }: EditTourModalProps) => {
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -45,17 +47,30 @@ const EditTourModal = ({ open, onOpenChange, tour, unitName, bookingId }: EditTo
     if (!form.tour_name.trim() || !form.tour_date) { toast.error('Tour name and date are required'); return; }
     setSaving(true);
     try {
-      const { error } = await (supabase.from('guest_tours' as any) as any).update({
+      const payload: any = {
         tour_name: form.tour_name.trim(),
         tour_date: form.tour_date,
         pickup_time: form.pickup_time.trim(),
         pax: parseInt(form.pax) || 1,
         price: parseFloat(form.price) || 0,
-        provider: form.provider.trim(),
         notes: form.notes.trim(),
-      }).eq('id', tour.id);
+      };
+      // guest_tours has provider, tour_bookings may not
+      if (sourceTable === 'guest_tours') {
+        payload.provider = form.provider.trim();
+      }
+
+      const { error } = await (supabase.from(sourceTable as any) as any).update(payload).eq('id', tour.id);
       if (error) throw error;
+
+      // Invalidate ALL relevant query keys so changes reflect everywhere
+      qc.invalidateQueries({ queryKey: ['all-tours-experiences'] });
+      qc.invalidateQueries({ queryKey: ['tour-bookings-experiences'] });
+      qc.invalidateQueries({ queryKey: ['reception-tours-today'] });
+      qc.invalidateQueries({ queryKey: ['reception-tour-bookings'] });
+      qc.invalidateQueries({ queryKey: ['recent-tours-history'] });
       qc.invalidateQueries({ queryKey: ['guest-tours', unitName, bookingId] });
+
       toast.success('Tour updated');
       onOpenChange(false);
     } catch {
@@ -89,7 +104,7 @@ const EditTourModal = ({ open, onOpenChange, tour, unitName, bookingId }: EditTo
                 placeholder="e.g. 7:00 AM" className="bg-secondary border-border text-foreground font-body text-xs mt-1" />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className={`grid gap-2 ${sourceTable === 'guest_tours' ? 'grid-cols-3' : 'grid-cols-2'}`}>
             <div>
               <label className="font-body text-xs text-muted-foreground">Pax</label>
               <Input type="number" min="1" value={form.pax} onChange={e => setForm(p => ({ ...p, pax: e.target.value }))}
@@ -100,16 +115,18 @@ const EditTourModal = ({ open, onOpenChange, tour, unitName, bookingId }: EditTo
               <Input type="number" value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))}
                 className="bg-secondary border-border text-foreground font-body text-xs mt-1" />
             </div>
-            <div>
-              <label className="font-body text-xs text-muted-foreground">Provider</label>
-              <Input value={form.provider} onChange={e => setForm(p => ({ ...p, provider: e.target.value }))}
-                className="bg-secondary border-border text-foreground font-body text-xs mt-1" />
-            </div>
+            {sourceTable === 'guest_tours' && (
+              <div>
+                <label className="font-body text-xs text-muted-foreground">Provider</label>
+                <Input value={form.provider} onChange={e => setForm(p => ({ ...p, provider: e.target.value }))}
+                  className="bg-secondary border-border text-foreground font-body text-xs mt-1" />
+              </div>
+            )}
           </div>
           <div>
             <label className="font-body text-xs text-muted-foreground">Notes</label>
-            <Input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
-              className="bg-secondary border-border text-foreground font-body text-xs mt-1" />
+            <Textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
+              rows={3} className="bg-secondary border-border text-foreground font-body text-xs mt-1" />
           </div>
         </div>
         <DialogFooter>
