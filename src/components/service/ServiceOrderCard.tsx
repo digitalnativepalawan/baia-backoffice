@@ -39,7 +39,7 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
   const foodItems = items.filter((i: any) => { const d = i.department || 'kitchen'; return d === 'kitchen' || d === 'both'; });
   const barItems = items.filter((i: any) => i.department === 'bar' || i.department === 'both');
 
-  const deptItems = department === 'reception' ? items : items.filter((i: any) => {
+  const deptItems = (department === 'reception' || department === 'cashier') ? items : items.filter((i: any) => {
     const d = i.department || 'kitchen';
     return d === department || d === 'both';
   });
@@ -94,7 +94,7 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
   // Show invoice button for non-room/tab served/paid orders
   const showInvoice = !isAutoPayable && (order.status === 'Served' || order.status === 'Paid');
 
-  if (deptItems.length === 0 && department !== 'reception') return null;
+  if (deptItems.length === 0 && department !== 'reception' && department !== 'cashier') return null;
 
   const statusKey = department === 'kitchen' ? order.kitchen_status :
                     department === 'bar' ? order.bar_status : order.status;
@@ -171,7 +171,7 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
       <div className="pt-2.5 border-t border-border/50 space-y-2">
         <div className="flex items-center justify-between">
           <span className="font-display text-lg text-gold tabular-nums">₱{order.total.toLocaleString()}</span>
-          {primaryAction && onAction && (
+          {primaryAction && onAction && department !== 'cashier' && (
             <Button
               onClick={(e) => handleAction(e, primaryAction!.action)}
               disabled={busy}
@@ -206,7 +206,7 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
         </div>
 
         {/* Secondary cross-dept actions */}
-        {secondaryActions.length > 0 && onAction && (
+        {secondaryActions.length > 0 && onAction && department !== 'cashier' && (
           <div className="flex gap-2 flex-wrap">
             {secondaryActions.map(a => (
               <Button
