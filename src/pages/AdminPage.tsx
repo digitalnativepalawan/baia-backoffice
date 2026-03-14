@@ -116,6 +116,7 @@ const AdminPage = () => {
       .channel('admin-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: ['orders-admin'] });
+        qc.invalidateQueries({ queryKey: ['orders-staff'] });
         qc.invalidateQueries({ queryKey: ['tabs-admin'] });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tabs' }, () => {
@@ -187,6 +188,7 @@ const AdminPage = () => {
       const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(200);
       return data || [];
     },
+    refetchInterval: 5000,
   });
 
   const { data: tabs = [] } = useQuery({
@@ -409,6 +411,9 @@ const AdminPage = () => {
       }
     }
     qc.invalidateQueries({ queryKey: ['orders-admin'] });
+    qc.invalidateQueries({ queryKey: ['orders-staff'] });
+    qc.invalidateQueries({ queryKey: ['orders-kitchen'] });
+    qc.invalidateQueries({ queryKey: ['orders-bar'] });
     toast.success(`Order → ${nextStatus}`);
   };
 
