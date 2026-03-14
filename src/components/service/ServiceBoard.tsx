@@ -119,7 +119,10 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
       const field = department === 'kitchen' ? 'kitchen_status' : 'bar_status';
       relevantOrders.forEach(o => {
         const deptStatus = o[field] as string;
-        if (o.status === 'Paid') cols.Completed.push(o);
+        if (o.status === 'Paid') {
+          const isRoomOrder = o.room_id || o.payment_type === 'Charge to Room';
+          if (!isRoomOrder) cols.Completed.push(o);
+        }
         else if (o.status === 'Served') cols.Ready.push(o); // All served stay visible until paid
         else if (deptStatus === 'pending' && (o.status === 'New' || o.status === 'Preparing')) cols.New.push(o);
         else if (deptStatus === 'preparing') cols.Preparing.push(o);
@@ -131,7 +134,10 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
         if (o.status === 'New') cols.New.push(o);
         else if (o.status === 'Preparing') cols.Preparing.push(o);
         else if (o.status === 'Ready') cols.Ready.push(o);
-        else if (o.status === 'Paid') cols.Completed.push(o);
+        else if (o.status === 'Paid') {
+          const isRoomOrder = o.room_id || o.payment_type === 'Charge to Room';
+          if (!isRoomOrder) cols.Completed.push(o);
+        }
         else if (o.status === 'Served') cols['Bill Out'].push(o);
       });
     }
