@@ -42,48 +42,47 @@ const OrderType = () => {
     },
   });
 
-  // Query occupied rooms with guest names for quick-select
+  // Query occupied rooms with guest names — single joined query, no dependency on units query
   const { data: occupiedGuests = [] } = useQuery({
     queryKey: ['occupied-guests'],
     enabled: isStaff,
+    staleTime: 30000,
     queryFn: async () => {
-      // Get resort_ops_units for name-based matching
-      const { data: opsUnits } = await supabase.from('resort_ops_units').select('id, name');
-
-      // Get today's active bookings
       const today = new Date().toISOString().split('T')[0];
+
+      // Single query: active bookings with guest names and unit names
       const { data: bookings } = await supabase
         .from('resort_ops_bookings')
-        .select('*, resort_ops_guests(full_name)')
+        .select('id, check_in, check_out, unit_id, resort_ops_guests(full_name), resort_ops_units(name)')
         .lte('check_in', today)
         .gt('check_out', today);
 
-      // Use hybrid detection: units.status OR active booking
-      const occupiedUnits = (units || []).filter(u => {
-        if (u.status === 'occupied') return true;
-        const opsUnit = opsUnits?.find(
-          ou => ou.name.toLowerCase().trim() === u.unit_name.toLowerCase().trim()
-        );
-        return opsUnit && bookings?.some(b => b.unit_id === opsUnit.id);
-      });
-      if (occupiedUnits.length === 0) return [];
+      if (!bookings || bookings.length === 0) return [];
 
-      return occupiedUnits.map(unit => {
-        const opsUnit = opsUnits?.find(
-          ou => ou.name.toLowerCase().trim() === unit.unit_name.toLowerCase().trim()
-        );
-        const booking = opsUnit
-          ? bookings?.find(b => b.unit_id === opsUnit.id)
-          : null;
-        const guestName = booking?.resort_ops_guests?.full_name || '';
-        return {
-          unitId: unit.id,
-          unitName: unit.unit_name,
-          guestName,
-        };
-      });
+      // Fetch units list (self-contained, no external dependency)
+      const { data: unitsList } = await supabase
+        .from('units')
+        .select('id, unit_name')
+        .eq('active', true);
+
+      const unitsMap = new Map(
+        (unitsList || []).map(u => [u.unit_name.toLowerCase().trim(), u])
+      );
+
+      return bookings
+        .map(b => {
+          const opsUnitName = (b.resort_ops_units as any)?.name || '';
+          const unit = unitsMap.get(opsUnitName.toLowerCase().trim());
+          if (!unit) return null;
+          return {
+            unitId: unit.id,
+            unitName: unit.unit_name,
+            guestName: (b.resort_ops_guests as any)?.full_name || '',
+          };
+        })
+        .filter(Boolean) as { unitId: string; unitName: string; guestName: string }[];
     },
-    refetchInterval: 30000, // refresh every 30s for real-time feel
+    refetchInterval: 30000,
   });
 
   const activeOrderType = orderTypes.find(ot => ot.type_key === selectedType);
