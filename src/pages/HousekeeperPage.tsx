@@ -9,6 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth } from 'date-fns';
 import PasswordConfirmModal from '@/components/housekeeping/PasswordConfirmModal';
 import HousekeepingInspection from '@/components/admin/HousekeepingInspection';
+import { getStaffSession } from '@/lib/session';
+import { hasAccess, canEdit } from '@/lib/permissions';
 
 const from = (table: string) => supabase.from(table as any);
 
