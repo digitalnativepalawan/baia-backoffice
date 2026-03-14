@@ -579,7 +579,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
               </div>
               <div className="text-[9px] font-body text-foreground/60 truncate">
                 {fmtTime(s.time_in)} – {fmtTime(s.time_out)}
-                {isOvernight && <span className="ml-0.5 text-[8px] text-indigo-400">⏩</span>}
+                {isContinuation && <span className="ml-0.5 text-[8px] text-muted-foreground">↔</span>}
               </div>
               <span className={`text-[8px] font-display ${SHIFT_TEXT_COLORS[type]} opacity-80`}>{type}</span>
             </div>
