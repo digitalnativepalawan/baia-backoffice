@@ -472,8 +472,9 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
   const ShiftBlock = ({ s, compact = false }: { s: Schedule; compact?: boolean }) => {
     const type = inferShiftType(s.time_in, s.time_out);
     const left = timeToPercent(s.time_in.slice(0, 5));
-    const right = timeToPercent(s.time_out.slice(0, 5));
-    const width = right - left;
+    const isOvernight = s.time_out.slice(0, 5) <= s.time_in.slice(0, 5);
+    const right = isOvernight ? 100 : timeToPercent(s.time_out.slice(0, 5));
+    const width = Math.max(right - left, 2);
     const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const actionClickedRef = useRef(false);
 
