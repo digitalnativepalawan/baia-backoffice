@@ -21,7 +21,7 @@ const COL_COLORS: Record<string, string> = {
 };
 
 interface ServiceBoardProps {
-  department: 'kitchen' | 'bar' | 'reception';
+  department: 'kitchen' | 'bar' | 'reception' | 'cashier';
 }
 
 const ServiceBoard = ({ department }: ServiceBoardProps) => {
