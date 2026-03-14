@@ -1,37 +1,39 @@
 
 
-## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
+## Plan: Fix Housekeeping Staff Filtering, Button Navigation & Role-Based Views
 
-### Issues Found
+### Issues Identified
 
-1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
+1. **HousekeeperPickerModal shows all staff** — The query filters by `employee_permissions` with `housekeeping%` permission, but also falls back to showing ALL employees if none match. Additionally, it should also check the `employee_roles` table for `builtin:housekeeping` role assignments.
 
-2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
+2. **Housekeeping tab in StaffShell flashes and opens HousekeepingConfig** — In `StaffShell.tsx`, the Housekeeping tab renders `HousekeepingHome` → `HousekeeperPage`, which is correct. The "flashing" is the `tab-pulse` CSS class triggered by `useDepartmentAlerts` when there are pending housekeeping orders. The real issue is likely in the **AdminPage** (line 711) where the housekeeping tab shows `HousekeepingConfig` (configuration) instead of the operational dashboard.
+
+3. **Housekeeping staff see all rooms instead of only assigned ones** — `HousekeeperPage` shows both `pendingOrders` (unassigned) and `myInProgress` (assigned to me). Housekeeping staff should only see orders assigned to them, while admin/reception/assistantGM should see all and be able to assign.
 
 ### Changes
 
-**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
-- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
-- Increase touch target size for edit/delete buttons on shift blocks
-- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
+#### 1. `src/components/rooms/HousekeeperPickerModal.tsx` — Filter to housekeeping staff only
 
-**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
-- Add an "Assign Task" button alongside "Add Shift" 
-- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
-- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
-- For other tasks: creates an `employee_tasks` entry with due date and description
-- Tasks appear as colored pills on the timeline (already partially implemented)
+- Query `employee_roles` table for `role_key = 'builtin:housekeeping'` in addition to checking `employee_permissions`
+- Combine both sets of IDs
+- Remove the fallback that shows all employees when no housekeeping staff found — instead show "No housekeeping staff found"
 
-**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
-- In the task detail dialog, show who completed the task and when (`completed_at`)
-- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
-- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
+#### 2. `src/pages/AdminPage.tsx` — Housekeeping tab shows operational view
 
-**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
-- Add edit capability: change title, description, due date, reassign to different employee
-- Add delete capability for tasks
-- Show completion audit trail
+- Change the housekeeping `TabsContent` (line 710-712) from rendering `HousekeepingConfig` to rendering `HousekeeperPage embedded` (the operational dashboard showing rooms to clean/assign)
+- Keep `HousekeepingConfig` in the Setup tab where it already exists (line 889)
 
-### Files to Edit
-- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
+#### 3. `src/pages/HousekeeperPage.tsx` — Role-based view filtering
+
+- Import `getStaffSession` and check permissions
+- If user has `admin`, `reception:edit`/`reception:manage`, or `assistantGM`-level access → show ALL orders (pending + in-progress by anyone) with ability to assign
+- If user is housekeeping-only staff → hide unassigned "Assignments" section, only show "My In Progress" (orders assigned to or accepted by them) and "Completed Today"
+
+#### Files to edit
+
+| File | Change |
+|------|--------|
+| `src/components/rooms/HousekeeperPickerModal.tsx` | Also query `employee_roles` for `builtin:housekeeping`, remove all-staff fallback |
+| `src/pages/AdminPage.tsx` | Change housekeeping tab from `HousekeepingConfig` to `HousekeeperPage embedded` |
+| `src/pages/HousekeeperPage.tsx` | Add role check: housekeeping-only staff see only their assigned orders; admin/reception/AGM see all + can assign |
 
