@@ -1,41 +1,37 @@
 
 
-## Plan: Fix Billing Totals, Print Bill Item Labels, and Guest Portal Room Charges
+## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
 
-### Problems Identified
+### Issues Found
 
-1. **Print Bill doesn't show item descriptions** — Room ledger charges only show timestamp + amount (e.g., "3/14 10:52AM ₱6,500") with no label for what the charge is (Accommodation, Transport, Experience, etc.). The `notes` and `transaction_type` fields are available but not rendered.
+1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
 
-2. **Print Bill balance doesn't include tours** — The balance calculation on line 35 is `totalCharges - totalPayments + fnbTotal` but does NOT add `toursTotal`. Tours render on the bill but don't affect the balance.
-
-3. **Print Bill doesn't include guest requests (transport, bike rental)** — The `PrintBill` component receives `roomOrders` and `tours` props but has no `requests` prop. Transport, bike rentals, and other guest requests are completely absent from the printed bill.
-
-4. **Guest Portal doesn't show room charges clearly** — The guest sees "Transactions" at the bottom which includes accommodation and room_charge entries, but these are labeled generically. The guest portal also doesn't show `room_charge` type transactions with their notes/descriptions prominently — they just show "room charge" with no context of what it's for.
+2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
 
 ### Changes
 
-#### 1. `src/components/rooms/PrintBill.tsx`
+**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
+- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
+- Increase touch target size for edit/delete buttons on shift blocks
+- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
 
-- **Add `requests` prop** for guest requests data
-- **Show item labels on charges** — Display `t.notes || t.transaction_type` next to each charge line instead of just the timestamp
-- **Fix balance calculation** — Add `toursTotal` and requests total to the balance: `balance = totalCharges - totalPayments + fnbTotal + toursTotal + requestsTotal`
-- **Add REQUESTS section** — New "TRANSPORT & RENTALS" section on the printed bill showing request type + details
+**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
+- Add an "Assign Task" button alongside "Add Shift" 
+- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
+- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
+- For other tasks: creates an `employee_tasks` entry with due date and description
+- Tasks appear as colored pills on the timeline (already partially implemented)
 
-#### 2. `src/components/rooms/RoomBillingTab.tsx`
+**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
+- In the task detail dialog, show who completed the task and when (`completed_at`)
+- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
+- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
 
-- **Pass `requests` to `PrintBill`** — Add the `requests` prop when rendering `PrintBill` (lines 462, 473)
-- **Fix balance calculation** — Currently `balance = totalCharges - totalPayments + unpaidOrdersTotal` but doesn't include tours or requests. Add tours total (non-cancelled, non-completed with price > 0) and active requests to the folio balance display in the summary section.
+**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
+- Add edit capability: change title, description, due date, reassign to different employee
+- Add delete capability for tasks
+- Show completion audit trail
 
-#### 3. `src/pages/GuestPortal.tsx`
-
-- **Show room charges in a dedicated section** — Add a "Room Charges" section above Transactions that filters `room_charge` and `accommodation` type transactions and displays them with their notes/descriptions prominently (instead of buried in generic "Transactions")
-- **Show adjustment transactions clearly** — Label adjustments with their notes so guests understand discounts/corrections
-
-### Files to edit
-
-| File | Change |
-|------|--------|
-| `src/components/rooms/PrintBill.tsx` | Add `requests` prop, show charge labels, fix balance, add requests section |
-| `src/components/rooms/RoomBillingTab.tsx` | Pass `requests` to PrintBill |
-| `src/pages/GuestPortal.tsx` | Add dedicated Room Charges section with clear labels |
+### Files to Edit
+- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
 

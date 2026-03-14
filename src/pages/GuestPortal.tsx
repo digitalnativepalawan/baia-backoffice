@@ -1156,8 +1156,12 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const unpaidOrdersTotal = unpaidOrders.reduce((s: number, o: any) => s + (o.total || 0) + (o.service_charge || 0), 0);
   const unpaidOrdersSCTotal = unpaidOrders.reduce((s: number, o: any) => s + (o.service_charge || 0), 0);
   const unpaidOrdersSubtotal = unpaidOrdersTotal - unpaidOrdersSCTotal;
-  const balance = totalCharges - totalPayments + unpaidOrdersTotal;
+  const activeToursTotal = [...completedTours, ...pendingTours].reduce((s: number, t: any) => s + Number(t.price || 0), 0);
+  const balance = totalCharges - totalPayments + unpaidOrdersTotal + activeToursTotal;
   const hasPending = pendingTours.length > 0 || pendingRequests.length > 0;
+
+  // Separate room charges (accommodation, room_charge, adjustment) for clear display
+  const roomCharges = charges.filter((t: any) => ['accommodation', 'room_charge', 'adjustment', 'charge'].includes(t.transaction_type));
 
   return (
     <div className="space-y-4">
@@ -1329,37 +1333,54 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
         </div>
       )}
 
-      {/* Confirmed transactions — grouped by type */}
-      <div className="space-y-2">
-        {transactions.length > 0 && (
-          <p className="font-display text-xs tracking-wider text-muted-foreground uppercase">Transactions</p>
-        )}
-        {transactions.map((t: any) => {
-          const isAccom = t.transaction_type === 'accommodation';
-          const isPayment = t.transaction_type === 'payment';
-          return (
-            <div key={t.id} className={`p-3 rounded-lg flex justify-between items-start ${isAccom ? 'bg-primary/5 border border-primary/20' : 'bg-secondary'}`}>
+      {/* Room Charges — accommodation, adjustments, etc. */}
+      {roomCharges.length > 0 && (
+        <div className="space-y-2">
+          <p className="font-display text-xs tracking-wider text-muted-foreground uppercase flex items-center gap-1">
+            🏠 Room Charges
+          </p>
+          {roomCharges.map((t: any) => (
+            <div key={t.id} className="bg-primary/5 border border-primary/20 p-3 rounded-lg flex justify-between items-start">
               <div className="flex items-start gap-2">
-                {isAccom ? <span className="text-base">🏠</span> : getBillIcon(t.notes, t.transaction_type)}
+                <CreditCard className="w-4 h-4 text-primary mt-0.5" />
                 <div>
                   <p className="font-body text-sm text-foreground">
-                    {isAccom ? 'Accommodation' : (t.notes || t.transaction_type.replace('_', ' '))}
+                    {t.notes || t.transaction_type.replace(/_/g, ' ')}
                   </p>
-                  {isAccom && t.notes && (
-                    <p className="font-body text-xs text-muted-foreground">{t.notes}</p>
-                  )}
                   <p className="font-body text-xs text-muted-foreground">
                     {new Date(t.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     {t.staff_name ? ` · ${t.staff_name}` : ''}
                   </p>
                 </div>
               </div>
-              <span className={`font-body text-sm font-medium ${isPayment ? 'text-green-400' : 'text-foreground'}`}>
-                {isPayment ? '-' : '+'}₱{Math.abs(t.total_amount || 0).toLocaleString()}
-              </span>
+              <span className="font-body text-sm font-medium text-foreground">+₱{Math.abs(t.total_amount || 0).toLocaleString()}</span>
             </div>
-          );
-        })}
+          ))}
+        </div>
+      )}
+
+      {/* Payments & other transactions */}
+      <div className="space-y-2">
+        {payments.length > 0 && (
+          <p className="font-display text-xs tracking-wider text-muted-foreground uppercase">Payments</p>
+        )}
+        {payments.map((t: any) => (
+          <div key={t.id} className="bg-secondary p-3 rounded-lg flex justify-between items-start">
+            <div className="flex items-start gap-2">
+              {getBillIcon(t.notes, t.transaction_type)}
+              <div>
+                <p className="font-body text-sm text-foreground">
+                  {t.payment_method}{t.notes ? ` — ${t.notes}` : ''}
+                </p>
+                <p className="font-body text-xs text-muted-foreground">
+                  {new Date(t.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  {t.staff_name ? ` · ${t.staff_name}` : ''}
+                </p>
+              </div>
+            </div>
+            <span className="font-body text-sm font-medium text-green-400">-₱{Math.abs(t.total_amount || 0).toLocaleString()}</span>
+          </div>
+        ))}
         {transactions.length === 0 && !hasPending && unpaidOrders.length === 0 && <p className="font-body text-sm text-muted-foreground text-center">No transactions yet.</p>}
       </div>
 
