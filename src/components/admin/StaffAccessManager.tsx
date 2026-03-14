@@ -333,15 +333,11 @@ const StaffAccessManager = () => {
 
   const cycleRolePerm = (section: string) => {
     const current = getPermissionLevel(rolePerms, section);
-    const isThreeLevel = THREE_LEVEL_SECTIONS.has(section);
     const cleaned = rolePerms.filter(p => p !== section && p !== `${section}:view` && p !== `${section}:edit` && p !== `${section}:manage`);
 
+    // Always cycle: Off → View → Edit → Off (no manage)
     let nextLevel: PermissionLevel;
-    if (isThreeLevel) {
-      nextLevel = current === 'off' ? 'view' : current === 'view' ? 'edit' : current === 'edit' ? 'manage' : 'off';
-    } else {
-      nextLevel = current === 'off' ? 'view' : current === 'view' ? 'edit' : 'off';
-    }
+    nextLevel = current === 'off' ? 'view' : current === 'view' ? 'edit' : 'off';
     if (nextLevel !== 'off') {
       cleaned.push(`${section}:${nextLevel}`);
     }
