@@ -127,14 +127,12 @@ const GRANULAR_PERMISSIONS = [
   { key: 'documents', label: 'Documents' },
 ] as const;
 
-const THREE_LEVEL_SECTIONS = new Set(['reception', 'experiences', 'orders']);
-
-const LEVEL_LABELS: Record<PermissionLevel, string> = { off: 'Off', view: 'View', edit: 'Edit', manage: 'Manage' };
+const LEVEL_LABELS: Record<PermissionLevel, string> = { off: 'Off', view: 'View', edit: 'Edit', manage: 'Edit' };
 const LEVEL_COLORS: Record<PermissionLevel, string> = {
   off: 'bg-muted text-muted-foreground',
   view: 'bg-blue-600/20 text-blue-400 border-blue-500/40',
   edit: 'bg-emerald-600/20 text-emerald-400 border-emerald-500/40',
-  manage: 'bg-purple-600/20 text-purple-400 border-purple-500/40',
+  manage: 'bg-emerald-600/20 text-emerald-400 border-emerald-500/40',
 };
 
 const PERM_LEVELS: Record<string, number> = { off: 0, view: 1, edit: 2, manage: 3 };
