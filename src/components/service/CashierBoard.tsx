@@ -583,44 +583,7 @@ const BillOutPanel = ({
             ))}
           </div>
 
-          {/* Charge to Room */}
-          {activeBookings.length > 0 && (
-            <div className="space-y-2">
-              <button
-                onClick={onChargeToRoom}
-                className={`w-full min-h-[52px] rounded-xl border-2 font-display text-sm tracking-wider flex items-center justify-center gap-2 transition-all ${
-                  chargeToRoom
-                    ? 'border-[hsl(210,70%,50%)] bg-[hsl(210,70%,50%,0.1)] text-[hsl(210,70%,65%)]'
-                    : 'border-border bg-card text-foreground hover:border-accent/40'
-                }`}
-              >
-                <Home className="w-4 h-4" /> Charge to Room
-              </button>
-
-              {chargeToRoom && (
-                <div className="grid grid-cols-2 gap-2">
-                  {activeBookings.map(b => {
-                    const unitName = (b as any).resort_ops_units?.name || 'Room';
-                    const guestName = (b as any).resort_ops_guests?.full_name || 'Guest';
-                    return (
-                      <button
-                        key={b.id}
-                        onClick={() => onSelectBooking(b.id)}
-                        className={`min-h-[48px] rounded-xl border-2 font-body text-xs flex flex-col items-center justify-center transition-all ${
-                          selectedBooking === b.id
-                            ? 'border-[hsl(210,70%,50%)] bg-[hsl(210,70%,50%,0.1)] text-[hsl(210,70%,65%)]'
-                            : 'border-border bg-card text-foreground hover:border-accent/40'
-                        }`}
-                      >
-                        <span className="font-display text-sm tracking-wider">{unitName}</span>
-                        <span className="text-muted-foreground truncate max-w-full px-2">{guestName}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+          {/* Room charging removed from cashier — handled at reception */}
         </div>
       </div>
 
