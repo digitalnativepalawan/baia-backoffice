@@ -5,7 +5,59 @@
 @tailwind utilities;
 
 @layer base {
+  /* ── Light mode (default) ── */
   :root {
+    --background: 0 0% 99%;
+    --foreground: 220 20% 15%;
+
+    --card: 220 15% 97%;
+    --card-foreground: 220 20% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 15%;
+
+    --primary: 220 30% 25%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 12% 92%;
+    --secondary-foreground: 220 20% 15%;
+
+    --muted: 220 10% 93%;
+    --muted-foreground: 220 10% 45%;
+
+    --accent: 35 40% 55%;
+    --accent-foreground: 220 30% 12%;
+
+    --destructive: 0 62.8% 50%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 30% 12%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 10% 85%;
+    --input: 220 10% 85%;
+    --ring: 220 30% 50%;
+
+    --radius: 0.25rem;
+
+    --sidebar-background: 220 12% 96%;
+    --sidebar-foreground: 220 20% 15%;
+    --sidebar-primary: 220 30% 25%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 10% 92%;
+    --sidebar-accent-foreground: 220 20% 15%;
+    --sidebar-border: 220 10% 88%;
+    --sidebar-ring: 220 30% 50%;
+
+    --navy-deep: 220 12% 95%;
+    --cream: 220 20% 15%;
+    --cream-dim: 220 10% 45%;
+    --gold: 38 60% 50%;
+  }
+
+  /* ── Dark mode ── */
+  .dark {
     --background: 220 30% 12%;
     --foreground: 40 30% 88%;
 
@@ -37,8 +89,6 @@
     --border: 220 15% 25%;
     --input: 220 15% 25%;
     --ring: 40 30% 70%;
-
-    --radius: 0.25rem;
 
     --sidebar-background: 220 30% 10%;
     --sidebar-foreground: 40 30% 88%;
@@ -92,6 +142,18 @@
     background-image: 
       radial-gradient(ellipse at 20% 50%, hsla(220, 30%, 15%, 0.4) 0%, transparent 50%),
       radial-gradient(ellipse at 80% 20%, hsla(220, 25%, 18%, 0.3) 0%, transparent 50%);
+  }
+  .dark .bg-navy-texture {
+    background-color: hsl(var(--navy-deep));
+    background-image: 
+      radial-gradient(ellipse at 20% 50%, hsla(220, 30%, 15%, 0.4) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, hsla(220, 25%, 18%, 0.3) 0%, transparent 50%);
+  }
+  :root:not(.dark) .bg-navy-texture {
+    background-color: hsl(var(--background));
+    background-image: 
+      radial-gradient(ellipse at 20% 50%, hsla(220, 10%, 92%, 0.5) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, hsla(220, 10%, 90%, 0.4) 0%, transparent 50%);
   }
   .blink-dot {
     animation: blink-dot 1s ease-in-out infinite;
