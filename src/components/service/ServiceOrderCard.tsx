@@ -206,7 +206,7 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
         </div>
 
         {/* Secondary cross-dept actions */}
-        {secondaryActions.length > 0 && onAction && (
+        {secondaryActions.length > 0 && onAction && department !== 'cashier' && (
           <div className="flex gap-2 flex-wrap">
             {secondaryActions.map(a => (
               <Button
