@@ -72,6 +72,13 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
   const empId = localStorage.getItem('emp_id');
   const empName = localStorage.getItem('emp_name') || 'Housekeeper';
 
+  // Determine if this user is a manager (admin/reception/assistantGM) who can see all orders
+  const session = getStaffSession();
+  const perms: string[] = session?.permissions || [];
+  const isManager = perms.includes('admin')
+    || canEdit(perms, 'reception')
+    || hasAccess(perms, 'rooms') && canEdit(perms, 'housekeeping');
+
   const { data: allOrders = [] } = useQuery({
     queryKey: ['housekeeping-orders-all'],
     queryFn: async () => {
