@@ -614,9 +614,10 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
             )}
           </div>
           <div className="flex-1 relative" style={{ minHeight: compact ? '40px' : '48px' }}>
-            {HOURS.map((h, i) => (
+            {HOURS.filter(h => h % 3 === 0).map(h => (
               <div key={h} className="absolute top-0 bottom-0 border-r border-border/30"
-                style={{ left: `${(i / TIMELINE_HOURS) * 100}%` }} />
+                style={{ left: `${((h - TIMELINE_START) / TIMELINE_HOURS) * 100}%` }} />
+            ))}
             ))}
             {shifts.map(s => <ShiftBlock key={s.id} s={s} compact={compact} />)}
             <TooltipProvider delayDuration={200}>
