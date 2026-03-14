@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DoorOpen, Users, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { getStaffSession, setStaffSession, isRemembered } from '@/lib/session';
+import ThemeToggle from '@/components/ThemeToggle';
 
 const Index = () => {
   const navigate = useNavigate();
