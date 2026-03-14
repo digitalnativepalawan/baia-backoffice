@@ -4,8 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChefHat, Truck, AlertTriangle, Clock } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { ChefHat, Truck, AlertTriangle, Clock, Zap, Timer } from 'lucide-react';
+import { formatDistanceToNow, format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { Home, LogOut } from 'lucide-react';
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
@@ -33,12 +33,36 @@ const DEPT_STATUS_COLORS: Record<DeptStatus, string> = {
 
 const DEPT_TABS: DeptStatus[] = ['pending', 'preparing', 'ready'];
 
+const PREP_WINDOW_MS = 30 * 60 * 1000; // 30 minutes before scheduled time
+
+// Helper: is order scheduled for the future (outside prep window)?
+const isScheduledFuture = (order: any, now: Date): boolean => {
+  if (!order.scheduled_for) return false;
+  const scheduledTime = new Date(order.scheduled_for).getTime();
+  return (scheduledTime - now.getTime()) > PREP_WINDOW_MS;
+};
+
+const getPrepTime = (scheduledFor: string): Date => {
+  return new Date(new Date(scheduledFor).getTime() - PREP_WINDOW_MS);
+};
+
+const formatScheduledTime = (date: Date): string => {
+  return format(date, 'h:mm a');
+};
+
 const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrdersViewProps) => {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const audioCtxRef = useRef<AudioContext | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [activeTab, setActiveTab] = useState<DeptStatus>('pending');
+  const [now, setNow] = useState(() => new Date());
+
+  // Tick every minute to re-evaluate scheduled orders
+  useEffect(() => {
+    intervalRef.current = setInterval(() => setNow(new Date()), 60_000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, []);
 
   // Read session permissions for edit access
   const sessionPerms = (() => {
@@ -70,17 +94,17 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
   const playChime = useCallback(() => {
     const ctx = audioCtxRef.current;
     if (!ctx || ctx.state !== 'running') return;
-    const now = ctx.currentTime;
+    const t = ctx.currentTime;
     const gain = ctx.createGain();
     gain.connect(ctx.destination);
-    gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.6);
     const osc = ctx.createOscillator();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(department === 'bar' ? 660 : 880, now);
+    osc.frequency.setValueAtTime(department === 'bar' ? 660 : 880, t);
     osc.connect(gain);
-    osc.start(now);
-    osc.stop(now + 0.4);
+    osc.start(t);
+    osc.stop(t + 0.4);
   }, [department]);
 
   // Realtime
@@ -135,6 +159,11 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
     return counts;
   }, [orders, statusField]);
 
+  // Count scheduled vs now for the pending tab badge
+  const scheduledPendingCount = useMemo(() => {
+    return orders.filter(o => getDeptStatus(o) === 'pending' && isScheduledFuture(o, now)).length;
+  }, [orders, statusField, now]);
+
   const hasNewOrders = statusCounts.pending > 0;
 
   const prevHasNewRef = useRef(false);
@@ -146,6 +175,16 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
   }, [hasNewOrders, playChime]);
 
   const filtered = useMemo(() => orders.filter(o => getDeptStatus(o) === activeTab), [orders, activeTab, statusField]);
+
+  // Split pending orders into now vs scheduled
+  const { nowOrders, scheduledOrders } = useMemo(() => {
+    if (activeTab !== 'pending') return { nowOrders: filtered, scheduledOrders: [] };
+    const nowList = filtered.filter(o => !isScheduledFuture(o, now));
+    const schedList = filtered
+      .filter(o => isScheduledFuture(o, now))
+      .sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime());
+    return { nowOrders: nowList, scheduledOrders: schedList };
+  }, [filtered, activeTab, now]);
 
   // Check if order has items for the other department
   const hasOtherDeptItems = (order: any): boolean => {
@@ -160,29 +199,22 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
   const advanceDeptStatus = async (order: any, nextDeptStatus: DeptStatus) => {
     const updateData: any = { [statusField]: nextDeptStatus };
 
-    // If this department is now ready, check if the other department is also ready
-    // If so, advance the overall order status
     if (nextDeptStatus === 'ready') {
       const otherStatus = order[otherStatusField] as string;
       const otherHasItems = hasOtherDeptItems(order);
-      
-      // Overall is "Served" when all departments are ready
       if (!otherHasItems || otherStatus === 'ready') {
         updateData.status = 'Served';
       }
     }
 
-    // If moving to preparing and overall is still New, advance overall to Preparing
     if (nextDeptStatus === 'preparing' && order.status === 'New') {
       updateData.status = 'Preparing';
     }
 
     await supabase.from('orders').update(updateData).eq('id', order.id);
 
-    // Deduct inventory when this department starts preparing
     if (nextDeptStatus === 'preparing') {
       const items = (order.items as any[]) || [];
-      // Only deduct items belonging to this department
       const deptItems = items.filter((item: any) => {
         const d = item.department || 'kitchen';
         return d === department || d === 'both';
@@ -207,6 +239,149 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
 
   const deptLabel = department === 'kitchen' ? '🍳 Kitchen' : '🍹 Bar';
 
+  // Render a single order card
+  const renderOrderCard = (order: any, isScheduledCard: boolean) => {
+    const allItems = (order.items as any[]) || [];
+    const deptItems = allItems.filter(item => {
+      const d = item.department || 'kitchen';
+      return d === department || d === 'both';
+    });
+    const otherItems = allItems.filter(item => {
+      const d = item.department || 'kitchen';
+      return d !== department && d !== 'both';
+    });
+    const deptStatus = getDeptStatus(order);
+    const isPending = deptStatus === 'pending';
+    const otherDeptStatus = hasOtherDeptItems(order) ? (order[otherStatusField] as string || 'pending') : null;
+    const otherDeptLabel = department === 'kitchen' ? 'Bar' : 'Kitchen';
+
+    const scheduledFor = order.scheduled_for ? new Date(order.scheduled_for) : null;
+    const prepTime = order.scheduled_for ? getPrepTime(order.scheduled_for) : null;
+
+    return (
+      <div key={order.id} className={`p-4 border rounded-lg transition-all ${
+        isScheduledCard
+          ? 'border-blue-400/40 bg-blue-500/5'
+          : isPending
+            ? 'border-gold new-order-card bg-gold/10'
+            : 'border-border bg-card/50'
+      }`}>
+        {/* Scheduled order: detailed time badge */}
+        {isScheduledCard && scheduledFor && prepTime && (
+          <div className="mb-3 space-y-1.5">
+            <div className="flex items-center gap-2 bg-blue-500/20 rounded px-3 py-2 border border-blue-400/40">
+              <Clock className="w-4 h-4 text-blue-400 shrink-0" />
+              <div className="flex-1">
+                <span className="font-display text-sm text-blue-400 tracking-wider font-bold">
+                  🕒 {formatScheduledTime(scheduledFor)}
+                </span>
+                <span className="font-body text-xs text-blue-400/70 ml-2">
+                  · {formatDistanceToNow(scheduledFor, { addSuffix: true })}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 bg-amber-500/10 rounded px-3 py-1.5 border border-amber-400/30">
+              <Timer className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="font-body text-xs text-amber-400">
+                ⏰ Prepare at {formatScheduledTime(prepTime)} · {formatDistanceToNow(prepTime, { addSuffix: true })}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Non-scheduled pending: "New Order" banner */}
+        {!isScheduledCard && isPending && (
+          <div className="flex items-center gap-2 mb-3 bg-gold/20 rounded px-3 py-1.5 border border-gold/40">
+            <AlertTriangle className="w-4 h-4 text-gold blink-dot" />
+            <span className="font-display text-sm text-gold tracking-widest font-bold uppercase">New Order</span>
+          </div>
+        )}
+
+        {/* Non-scheduled but has scheduled_for that's within prep window — show serve time inline */}
+        {!isScheduledCard && order.scheduled_for && (
+          <div className="flex items-center gap-2 mb-3 bg-blue-500/20 rounded px-3 py-1.5 border border-blue-400/40">
+            <Clock className="w-4 h-4 text-blue-400" />
+            <span className="font-display text-sm text-blue-400 tracking-widest font-bold uppercase">
+              Serve at {formatScheduledTime(new Date(order.scheduled_for))}
+            </span>
+          </div>
+        )}
+
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <p className="font-display text-sm text-foreground tracking-wider">
+              {order.order_type} — {order.location_detail}
+            </p>
+            {order.guest_name && (
+              <p className="font-body text-xs text-foreground/70 mt-0.5">{order.guest_name}</p>
+            )}
+            <p className="font-body text-xs text-cream-dim mt-0.5">
+              Ordered {formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Badge variant="outline" className={`font-body text-xs ${DEPT_STATUS_COLORS[deptStatus]}`}>
+              {DEPT_STATUS_LABELS[deptStatus]}
+            </Badge>
+            {otherDeptStatus && (
+              <Badge variant="outline" className="font-body text-[10px] bg-muted/50 text-muted-foreground border-border">
+                {otherDeptLabel}: {otherDeptStatus}
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Department items — highlighted */}
+        <div className="space-y-1 mb-2">
+          {deptItems.map((item: any, idx: number) => (
+            <div key={idx} className="flex justify-between font-body text-sm">
+              <span className="text-foreground font-semibold">{item.qty}× {item.name}</span>
+              <span className="text-cream-dim">₱{(item.price * item.qty).toFixed(0)}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Other department items — dimmed */}
+        {otherItems.length > 0 && (
+          <div className="space-y-0.5 mb-3 opacity-40">
+            {otherItems.map((item: any, idx: number) => (
+              <div key={idx} className="flex justify-between font-body text-xs">
+                <span className="text-cream-dim">{item.qty}× {item.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Action */}
+        <div className="pt-3 border-t border-border flex items-center justify-between">
+          <span className="font-display text-sm text-gold">₱{order.total.toLocaleString()}</span>
+          {canAct && deptStatus === 'pending' && !isScheduledCard && (
+            <Button
+              onClick={() => advanceDeptStatus(order, 'preparing')}
+              className="font-body text-xs gap-1.5 bg-gold text-primary-foreground hover:bg-gold/90 font-bold"
+            >
+              <ChefHat className="w-4 h-4" /> Start Preparing
+            </Button>
+          )}
+          {canAct && deptStatus === 'pending' && isScheduledCard && prepTime && (
+            <span className="font-body text-xs text-muted-foreground italic">
+              Not yet — prep at {formatScheduledTime(prepTime)}
+            </span>
+          )}
+          {canAct && deptStatus === 'preparing' && (
+            <Button
+              onClick={() => advanceDeptStatus(order, 'ready')}
+              variant="outline"
+              className="font-body text-xs gap-1.5"
+            >
+              <Truck className="w-4 h-4" /> Mark Ready
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={embedded ? 'flex flex-col' : 'min-h-screen bg-navy-texture flex flex-col'}>
       {!embedded && (
@@ -223,7 +398,7 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
         </header>
       )}
 
-      {/* Status tabs — department-specific */}
+      {/* Status tabs */}
       <div className="flex flex-wrap gap-1 px-4 py-3">
         {DEPT_TABS.map(s => (
           <button
@@ -240,7 +415,10 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
               <span className={`text-[10px] font-body font-bold rounded-full w-5 h-5 flex items-center justify-center ${
                 activeTab === s ? 'bg-foreground/20 text-foreground' : 'bg-muted text-muted-foreground'
               }`}>
-                {statusCounts[s]}
+                {s === 'pending' && scheduledPendingCount > 0
+                  ? `${statusCounts[s] - scheduledPendingCount}+${scheduledPendingCount}`
+                  : statusCounts[s]
+                }
               </span>
             )}
           </button>
@@ -252,109 +430,43 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
         {filtered.length === 0 && (
           <p className="font-body text-sm text-cream-dim text-center py-12">No {DEPT_STATUS_LABELS[activeTab].toLowerCase()} orders for {department}</p>
         )}
-        {filtered.map(order => {
-          const allItems = (order.items as any[]) || [];
-          const deptItems = allItems.filter(item => {
-            const d = item.department || 'kitchen';
-            return d === department || d === 'both';
-          });
-          const otherItems = allItems.filter(item => {
-            const d = item.department || 'kitchen';
-            return d !== department && d !== 'both';
-          });
-          const deptStatus = getDeptStatus(order);
-          const isPending = deptStatus === 'pending';
 
-          // Show other department status if order spans both
-          const otherDeptStatus = hasOtherDeptItems(order) ? (order[otherStatusField] as string || 'pending') : null;
-          const otherDeptLabel = department === 'kitchen' ? 'Bar' : 'Kitchen';
-
-          return (
-            <div key={order.id} className={`p-4 border rounded-lg transition-all ${
-              isPending ? 'border-gold new-order-card bg-gold/10' : 'border-border bg-card/50'
-            }`}>
-              {isPending && (
-                <div className="flex items-center gap-2 mb-3 bg-gold/20 rounded px-3 py-1.5 border border-gold/40">
-                  <AlertTriangle className="w-4 h-4 text-gold blink-dot" />
-                  <span className="font-display text-sm text-gold tracking-widest font-bold uppercase">New Order</span>
-                </div>
-              )}
-
-              {order.scheduled_for && (
-                <div className="flex items-center gap-2 mb-3 bg-blue-500/20 rounded px-3 py-1.5 border border-blue-400/40">
-                  <Clock className="w-4 h-4 text-blue-400" />
-                  <span className="font-display text-sm text-blue-400 tracking-widest font-bold uppercase">
-                    Scheduled — {order.location_detail}
-                  </span>
-                </div>
-              )}
-
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <p className="font-display text-sm text-foreground tracking-wider">
-                    {order.order_type} — {order.location_detail}
-                  </p>
-                  <p className="font-body text-xs text-cream-dim mt-0.5">
-                    {formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Badge variant="outline" className={`font-body text-xs ${DEPT_STATUS_COLORS[deptStatus]}`}>
-                    {DEPT_STATUS_LABELS[deptStatus]}
-                  </Badge>
-                  {otherDeptStatus && (
-                    <Badge variant="outline" className="font-body text-[10px] bg-muted/50 text-muted-foreground border-border">
-                      {otherDeptLabel}: {otherDeptStatus}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-
-              {/* Department items — highlighted */}
-              <div className="space-y-1 mb-2">
-                {deptItems.map((item: any, idx: number) => (
-                  <div key={idx} className="flex justify-between font-body text-sm">
-                    <span className="text-foreground font-semibold">{item.qty}× {item.name}</span>
-                    <span className="text-cream-dim">₱{(item.price * item.qty).toFixed(0)}</span>
+        {/* Pending tab: split into Due Now and Scheduled */}
+        {activeTab === 'pending' && filtered.length > 0 && (
+          <>
+            {/* Due Now section */}
+            {nowOrders.length > 0 && (
+              <>
+                {scheduledOrders.length > 0 && (
+                  <div className="flex items-center gap-2 pt-1 pb-1">
+                    <Zap className="w-4 h-4 text-gold" />
+                    <span className="font-display text-xs tracking-widest text-gold uppercase font-bold">Due Now / ASAP</span>
+                    <span className="font-body text-xs text-cream-dim">({nowOrders.length})</span>
                   </div>
-                ))}
-              </div>
+                )}
+                {nowOrders.map(order => renderOrderCard(order, false))}
+              </>
+            )}
 
-              {/* Other department items — dimmed */}
-              {otherItems.length > 0 && (
-                <div className="space-y-0.5 mb-3 opacity-40">
-                  {otherItems.map((item: any, idx: number) => (
-                    <div key={idx} className="flex justify-between font-body text-xs">
-                      <span className="text-cream-dim">{item.qty}× {item.name}</span>
-                    </div>
-                  ))}
+            {/* Scheduled section */}
+            {scheduledOrders.length > 0 && (
+              <>
+                <div className="flex items-center gap-2 pt-3 pb-1">
+                  <Clock className="w-4 h-4 text-blue-400" />
+                  <span className="font-display text-xs tracking-widest text-blue-400 uppercase font-bold">Scheduled for Later</span>
+                  <span className="font-body text-xs text-cream-dim">({scheduledOrders.length})</span>
                 </div>
-              )}
+                {scheduledOrders.map(order => renderOrderCard(order, true))}
+              </>
+            )}
 
-              {/* Action */}
-              <div className="pt-3 border-t border-border flex items-center justify-between">
-                <span className="font-display text-sm text-gold">₱{order.total.toLocaleString()}</span>
-              {canAct && deptStatus === 'pending' && (
-                  <Button
-                    onClick={() => advanceDeptStatus(order, 'preparing')}
-                    className="font-body text-xs gap-1.5 bg-gold text-primary-foreground hover:bg-gold/90 font-bold"
-                  >
-                    <ChefHat className="w-4 h-4" /> Start Preparing
-                  </Button>
-                )}
-                {canAct && deptStatus === 'preparing' && (
-                  <Button
-                    onClick={() => advanceDeptStatus(order, 'ready')}
-                    variant="outline"
-                    className="font-body text-xs gap-1.5"
-                  >
-                    <Truck className="w-4 h-4" /> Mark Ready
-                  </Button>
-                )}
-              </div>
-            </div>
-          );
-        })}
+            {/* Only now orders, no section headers needed */}
+            {scheduledOrders.length === 0 && nowOrders.length > 0 && nowOrders.map(order => renderOrderCard(order, false))}
+          </>
+        )}
+
+        {/* Non-pending tabs: render normally */}
+        {activeTab !== 'pending' && filtered.map(order => renderOrderCard(order, false))}
       </div>
     </div>
   );
