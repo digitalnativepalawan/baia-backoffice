@@ -516,12 +516,15 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
   };
 
   // Shift Block Component
-  const ShiftBlock = ({ s, compact = false }: { s: Schedule; compact?: boolean }) => {
+  const ShiftBlock = ({ s, compact = false }: { s: TimelineSchedule; compact?: boolean }) => {
     const type = inferShiftType(s.time_in, s.time_out);
-    const left = timeToPercent(s.time_in.slice(0, 5));
-    const isOvernight = s.time_out.slice(0, 5) <= s.time_in.slice(0, 5);
-    const right = isOvernight ? 100 : timeToPercent(s.time_out.slice(0, 5));
+    const renderTimeIn = s.render_time_in || s.time_in.slice(0, 5);
+    const renderTimeOut = s.render_time_out || s.time_out.slice(0, 5);
+    const left = timeToPercent(renderTimeIn);
+    const right = timeToPercent(renderTimeOut);
     const width = Math.max(right - left, 2);
+    const isOvernight = s.time_out.slice(0, 5) <= s.time_in.slice(0, 5);
+    const isContinuation = !!(s.continues_from_previous || s.continues_to_next);
     const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const actionClickedRef = useRef(false);
 
