@@ -6,11 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import {
   DollarSign, RefreshCw, LogOut, UtensilsCrossed, MapPin, Bike, Truck,
   Trash2, Gift, FileText, CreditCard, Palmtree, CheckCircle, Pencil, Check, X,
-  AlertTriangle, MessageSquare,
+  AlertTriangle, MessageSquare, ShoppingCart,
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import AddPaymentModal from './AddPaymentModal';
@@ -19,6 +21,7 @@ import CheckoutModal from './CheckoutModal';
 import PrintBill from './PrintBill';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/auditLog';
+import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 
 const from = (t: string) => supabase.from(t as any) as any;
 
@@ -35,6 +38,14 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
   const [showPayment, setShowPayment] = useState(false);
   const [showAdjustment, setShowAdjustment] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
+
+  // Selective payment states
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [showPaySelected, setShowPaySelected] = useState(false);
+  const [paySelectedMethod, setPaySelectedMethod] = useState('');
+  const [paySelectedBusy, setPaySelectedBusy] = useState(false);
+  const { data: paymentMethods = [] } = usePaymentMethods();
+  const activePayMethods = paymentMethods.filter(m => m.is_active && m.name !== 'Charge to Room');
 
   // Inline edit states
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
@@ -235,6 +246,68 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
     qc.invalidateQueries({ queryKey: ['billing-requests'] });
   };
 
+  // ── Selective payment helpers ──
+  const toggleOrderSelection = (orderId: string) => {
+    setSelectedOrderIds(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId); else next.add(orderId);
+      return next;
+    });
+  };
+
+  const selectAllUnpaid = () => {
+    if (selectedOrderIds.size === unpaidOrders.filter(o => o.payment_type !== 'Charge to Room').length) {
+      setSelectedOrderIds(new Set());
+    } else {
+      setSelectedOrderIds(new Set(unpaidOrders.filter(o => o.payment_type !== 'Charge to Room').map(o => o.id)));
+    }
+  };
+
+  const selectedTotal = unpaidOrders
+    .filter(o => selectedOrderIds.has(o.id))
+    .reduce((s, o) => s + Number(o.total || 0) + Number(o.service_charge || 0), 0);
+
+  const handlePaySelected = async () => {
+    if (!paySelectedMethod || selectedOrderIds.size === 0) return;
+    setPaySelectedBusy(true);
+    try {
+      const ids = Array.from(selectedOrderIds);
+      for (const id of ids) {
+        await supabase.from('orders').update({
+          status: 'Paid',
+          payment_type: paySelectedMethod,
+          closed_at: new Date().toISOString(),
+        }).eq('id', id);
+      }
+      // Record a payment transaction on the room ledger
+      await (supabase.from('room_transactions' as any) as any).insert({
+        unit_id: unit.id,
+        unit_name: unit.name,
+        guest_name: guestName,
+        booking_id: booking?.id || null,
+        transaction_type: 'payment',
+        amount: -selectedTotal,
+        tax_amount: 0,
+        service_charge_amount: 0,
+        total_amount: -selectedTotal,
+        payment_method: paySelectedMethod,
+        staff_name: staffName,
+        notes: `Partial payment for ${ids.length} F&B order(s)`,
+      });
+      await logAudit('created', 'room_transactions', unit.id, `Partial payment ₱${selectedTotal.toLocaleString()} via ${paySelectedMethod} for ${ids.length} orders — ${unit.name}`);
+      qc.invalidateQueries({ queryKey: ['billing-room-orders'] });
+      qc.invalidateQueries({ queryKey: ['room-transactions', unit.id] });
+      setSelectedOrderIds(new Set());
+      setShowPaySelected(false);
+      setPaySelectedMethod('');
+      toast.success(`${ids.length} order(s) paid — ₱${selectedTotal.toLocaleString()}`);
+    } catch {
+      toast.error('Failed to process payment');
+    } finally {
+      setPaySelectedBusy(false);
+    }
+  };
+
   const orderStatusColor = (s: string) => {
     switch (s) {
       case 'New': return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
@@ -406,19 +479,77 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
       {/* ═══ SECTION: Active F&B Orders ═══ */}
       {unpaidOrders.length > 0 && (
         <div className="space-y-2">
-          <p className="font-display text-xs tracking-wider text-muted-foreground uppercase flex items-center gap-1.5">
-            <UtensilsCrossed className="w-3.5 h-3.5" /> Active F&B Orders
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="font-display text-xs tracking-wider text-muted-foreground uppercase flex items-center gap-1.5">
+              <UtensilsCrossed className="w-3.5 h-3.5" /> Active F&B Orders
+            </p>
+            {!readOnly && unpaidOrders.filter(o => o.payment_type !== 'Charge to Room').length > 0 && (
+              <Button size="sm" variant="ghost" onClick={selectAllUnpaid}
+                className="font-body text-[10px] text-muted-foreground h-6 px-2">
+                {selectedOrderIds.size === unpaidOrders.filter(o => o.payment_type !== 'Charge to Room').length ? 'Deselect All' : 'Select All'}
+              </Button>
+            )}
+          </div>
+
+          {/* Pay Selected bar */}
+          {!readOnly && selectedOrderIds.size > 0 && (
+            <div className="border border-primary/40 bg-primary/5 rounded-lg p-3 space-y-2">
+              {!showPaySelected ? (
+                <Button size="sm" onClick={() => setShowPaySelected(true)}
+                  className="w-full font-display text-xs tracking-wider gap-1.5 min-h-[44px]">
+                  <ShoppingCart className="w-3.5 h-3.5" />
+                  Pay Selected ({selectedOrderIds.size} orders — ₱{selectedTotal.toLocaleString()})
+                </Button>
+              ) : (
+                <div className="space-y-2">
+                  <p className="font-display text-xs tracking-wider text-foreground">
+                    Pay {selectedOrderIds.size} order(s) — ₱{selectedTotal.toLocaleString()}
+                  </p>
+                  <Select onValueChange={setPaySelectedMethod} value={paySelectedMethod}>
+                    <SelectTrigger className="bg-secondary border-border text-foreground font-body text-sm">
+                      <SelectValue placeholder="Select payment method" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border">
+                      {activePayMethods.map(m => (
+                        <SelectItem key={m.id} value={m.name} className="text-foreground font-body">{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handlePaySelected} disabled={!paySelectedMethod || paySelectedBusy}
+                      className="flex-1 font-display text-xs tracking-wider gap-1 min-h-[40px]">
+                      <Check className="w-3.5 h-3.5" /> {paySelectedBusy ? 'Processing...' : 'Confirm Payment'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => { setShowPaySelected(false); setPaySelectedMethod(''); }}
+                      className="font-display text-xs tracking-wider min-h-[40px]">
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {unpaidOrders.map(o => {
             const items = Array.isArray(o.items) ? o.items : [];
             const isChargedToRoom = o.payment_type === 'Charge to Room';
             const isEditing = editingOrderId === o.id;
+            const isSelectable = !isChargedToRoom && !readOnly;
             return (
               <div key={o.id} className="border border-border rounded-lg p-3 space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-body text-xs text-muted-foreground">
-                    {format(new Date(o.created_at), 'MMM d h:mma')} · {o.staff_name || '—'}
-                  </span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    {isSelectable && (
+                      <Checkbox
+                        checked={selectedOrderIds.has(o.id)}
+                        onCheckedChange={() => toggleOrderSelection(o.id)}
+                        className="shrink-0"
+                      />
+                    )}
+                    <span className="font-body text-xs text-muted-foreground truncate">
+                      {format(new Date(o.created_at), 'MMM d h:mma')} · {o.staff_name || '—'}
+                    </span>
+                  </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Badge variant="outline" className={`text-[10px] ${orderStatusColor(o.status)}`}>{o.status}</Badge>
                     {isChargedToRoom && <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30">Room</Badge>}
@@ -449,19 +580,16 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
                   )}
                   {!readOnly && !isEditing && (
                     <div className="flex items-center gap-1">
-                      {/* Edit price */}
                       <Button size="sm" variant="ghost" onClick={() => { setEditingOrderId(o.id); setEditOrderAmount(String(o.total)); }}
                         className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground">
                         <Pencil className="w-3 h-3" />
                       </Button>
-                      {/* Mark Paid */}
                       {o.status === 'Served' && !isChargedToRoom && (
                         <Button size="sm" variant="ghost" onClick={() => handleMarkPaidOrder(o.id)}
                           className="h-7 px-2 text-xs text-green-400 hover:text-green-300">
                           <DollarSign className="w-3 h-3 mr-0.5" /> Paid
                         </Button>
                       )}
-                      {/* Comp */}
                       {!isChargedToRoom && (
                         <Button size="sm" variant="ghost" onClick={() => handleCompOrder(o.id)}
                           className="h-7 px-2 text-xs text-amber-400 hover:text-amber-300">
