@@ -284,7 +284,6 @@ const StaffAccessManager = () => {
   const cyclePermission = async (empId: string, section: string) => {
     const empPerms = getEmpPermissions(empId);
     const current = getPermissionLevel(empPerms, section);
-    const isThreeLevel = THREE_LEVEL_SECTIONS.has(section);
 
     const toRemove = permissions.filter(
       p => p.employee_id === empId && (p.permission === section || p.permission === `${section}:view` || p.permission === `${section}:edit` || p.permission === `${section}:manage`)
@@ -293,12 +292,9 @@ const StaffAccessManager = () => {
       await from('employee_permissions').delete().eq('id', p.id);
     }
 
+    // Always cycle: Off → View → Edit → Off (no manage)
     let nextLevel: PermissionLevel;
-    if (isThreeLevel) {
-      nextLevel = current === 'off' ? 'view' : current === 'view' ? 'edit' : current === 'edit' ? 'manage' : 'off';
-    } else {
-      nextLevel = current === 'off' ? 'view' : current === 'view' ? 'edit' : 'off';
-    }
+    nextLevel = current === 'off' ? 'view' : current === 'view' ? 'edit' : 'off';
     if (nextLevel !== 'off') {
       await from('employee_permissions').insert({ employee_id: empId, permission: `${section}:${nextLevel}` });
     }
