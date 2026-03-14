@@ -1157,7 +1157,8 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const unpaidOrdersSCTotal = unpaidOrders.reduce((s: number, o: any) => s + (o.service_charge || 0), 0);
   const unpaidOrdersSubtotal = unpaidOrdersTotal - unpaidOrdersSCTotal;
   const activeToursTotal = [...completedTours, ...pendingTours].reduce((s: number, t: any) => s + Number(t.price || 0), 0);
-  const balance = totalCharges - totalPayments + unpaidOrdersTotal + activeToursTotal;
+  const activeRequestsTotal = [...completedRequests, ...pendingRequests].reduce((s: number, r: any) => s + Number(r.price || 0), 0);
+  const balance = totalCharges - totalPayments + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
   const hasPending = pendingTours.length > 0 || pendingRequests.length > 0;
 
   // Separate room charges (accommodation, room_charge, adjustment) for clear display

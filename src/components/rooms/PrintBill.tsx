@@ -37,7 +37,10 @@ const PrintBill = ({ unitName, guestName, booking, transactions, roomOrders = []
     const activeRequests = requests.filter((r: any) => r.status !== 'cancelled');
 
     // Balance includes everything
-    const balance = totalCharges - totalPayments + fnbTotal + toursTotal;
+    // Active requests total (transport, rentals — those with a price)
+    const requestsTotal = activeRequests.reduce((s: number, r: any) => s + Number(r.price || 0), 0);
+
+    const balance = totalCharges - totalPayments + fnbTotal + toursTotal + requestsTotal;
 
     const staffNames = [...new Set(transactions.map(t => t.staff_name))].join(', ');
 
