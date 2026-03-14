@@ -1071,21 +1071,33 @@ const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, weekDates,
   saveShift: (keepOpen?: boolean) => void; addBrokenShift: () => void; onClose: () => void; onDelete?: () => void; onDuplicate?: () => void;
 }) => {
   const isAdd = shiftModal?.mode === 'add';
-  const allDays = weekDates.map(d => format(d, 'yyyy-MM-dd'));
   const selectedDays: string[] = shiftForm.selected_days || [];
   const selectedEmps: string[] = shiftForm.selected_employees || [];
-  const allDaysChecked = allDays.every(d => selectedDays.includes(d));
   const allEmpsChecked = employees.length > 0 && employees.every(e => selectedEmps.includes(e.id));
+
+  // Month calendar state - default to current month
+  const [calMonth, setCalMonth] = useState(() => new Date());
+
+  // Generate all days of the displayed month
+  const monthDays = useMemo(() => {
+    const year = calMonth.getFullYear();
+    const month = calMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const days: Date[] = [];
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      days.push(new Date(year, month, d));
+    }
+    // Pad start to align with day-of-week grid
+    const startPad = firstDay.getDay(); // 0=Sun
+    return { days, startPad, year, month };
+  }, [calMonth]);
 
   const toggleDay = (dateStr: string) => {
     setShiftForm((p: any) => {
       const days = p.selected_days || [];
       return { ...p, selected_days: days.includes(dateStr) ? days.filter((d: string) => d !== dateStr) : [...days, dateStr] };
     });
-  };
-
-  const toggleAllDays = () => {
-    setShiftForm((p: any) => ({ ...p, selected_days: allDaysChecked ? [] : [...allDays] }));
   };
 
   const toggleEmp = (empId: string) => {
@@ -1105,15 +1117,78 @@ const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, weekDates,
     }
   };
 
+  // Quick-select helpers for day-of-week patterns
+  const selectByDayOfWeek = (dow: number) => {
+    const dates = monthDays.days.filter(d => d.getDay() === dow && d >= new Date(new Date().setHours(0,0,0,0)));
+    const dateStrs = dates.map(d => format(d, 'yyyy-MM-dd'));
+    setShiftForm((p: any) => {
+      const existing = new Set(p.selected_days || []);
+      const allAlreadySelected = dateStrs.every(d => existing.has(d));
+      if (allAlreadySelected) {
+        dateStrs.forEach(d => existing.delete(d));
+      } else {
+        dateStrs.forEach(d => existing.add(d));
+      }
+      return { ...p, selected_days: Array.from(existing) };
+    });
+  };
+
+  const selectWeekdays = () => {
+    const dates = monthDays.days.filter(d => d.getDay() >= 1 && d.getDay() <= 5 && d >= new Date(new Date().setHours(0,0,0,0)));
+    const dateStrs = dates.map(d => format(d, 'yyyy-MM-dd'));
+    setShiftForm((p: any) => {
+      const existing = new Set(p.selected_days || []);
+      const allAlreadySelected = dateStrs.every(d => existing.has(d));
+      if (allAlreadySelected) {
+        dateStrs.forEach(d => existing.delete(d));
+      } else {
+        dateStrs.forEach(d => existing.add(d));
+      }
+      return { ...p, selected_days: Array.from(existing) };
+    });
+  };
+
+  const selectAllMonth = () => {
+    const dates = monthDays.days.filter(d => d >= new Date(new Date().setHours(0,0,0,0)));
+    const dateStrs = dates.map(d => format(d, 'yyyy-MM-dd'));
+    setShiftForm((p: any) => {
+      const existing = new Set(p.selected_days || []);
+      const allAlreadySelected = dateStrs.every(d => existing.has(d));
+      return { ...p, selected_days: allAlreadySelected ? [] : dateStrs };
+    });
+  };
+
+  const clearDays = () => {
+    setShiftForm((p: any) => ({ ...p, selected_days: [] }));
+  };
+
+  // This-week shortcut
+  const selectThisWeek = () => {
+    const dateStrs = weekDates.map(d => format(d, 'yyyy-MM-dd'));
+    setShiftForm((p: any) => {
+      const existing = new Set(p.selected_days || []);
+      const allAlreadySelected = dateStrs.every(d => existing.has(d));
+      if (allAlreadySelected) {
+        dateStrs.forEach(d => existing.delete(d));
+      } else {
+        dateStrs.forEach(d => existing.add(d));
+      }
+      return { ...p, selected_days: Array.from(existing) };
+    });
+  };
+
   const totalShifts = isAdd ? (selectedEmps.length || (shiftForm.employee_id ? 1 : 0)) * (selectedDays.length || 1) : 1;
+  const DOW_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const DOW_FULL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
     <Dialog open={!!shiftModal} onOpenChange={() => onClose()}>
-      <DialogContent className="bg-card border-border max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-card border-border max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-display text-foreground">{isAdd ? 'Add Shifts' : 'Edit Shift'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
+          {/* EMPLOYEES */}
           {isAdd ? (
             <div>
               <div className="flex items-center justify-between mb-1.5">
@@ -1122,7 +1197,7 @@ const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, weekDates,
                   {allEmpsChecked ? 'Clear All' : 'Select All'}
                 </button>
               </div>
-              <div className="grid grid-cols-3 gap-1 max-h-[120px] overflow-y-auto">
+              <div className="grid grid-cols-3 gap-1 max-h-[100px] overflow-y-auto">
                 {employees.map(e => {
                   const checked = selectedEmps.includes(e.id);
                   return (
@@ -1144,7 +1219,7 @@ const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, weekDates,
                 })}
               </div>
               {selectedEmps.length > 0 && (
-                <p className="font-body text-[10px] text-muted-foreground mt-1">{selectedEmps.length} employee(s) selected</p>
+                <p className="font-body text-[10px] text-muted-foreground mt-1">{selectedEmps.length} employee(s)</p>
               )}
             </div>
           ) : (
@@ -1158,30 +1233,71 @@ const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, weekDates,
               </Select>
             </div>
           )}
+
+          {/* DAYS - CALENDAR */}
           {isAdd ? (
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <Label className="font-body text-xs text-muted-foreground">Days</Label>
-                <button onClick={toggleAllDays} className="font-body text-[10px] text-accent hover:underline">
-                  {allDaysChecked ? 'Clear All' : 'All Week'}
+                <Label className="font-body text-xs text-muted-foreground">Days ({selectedDays.length} selected)</Label>
+                {selectedDays.length > 0 && (
+                  <button onClick={clearDays} className="font-body text-[10px] text-destructive hover:underline">Clear</button>
+                )}
+              </div>
+
+              {/* Quick-select row */}
+              <div className="flex gap-1 mb-2 flex-wrap">
+                <Button size="sm" variant="outline" className="font-body text-[10px] h-7 px-2" onClick={selectThisWeek}>This Week</Button>
+                <Button size="sm" variant="outline" className="font-body text-[10px] h-7 px-2" onClick={selectWeekdays}>Mon–Fri</Button>
+                <Button size="sm" variant="outline" className="font-body text-[10px] h-7 px-2" onClick={selectAllMonth}>Whole Month</Button>
+                {DOW_FULL.map((label, i) => (
+                  <Button key={i} size="sm" variant="outline" className="font-body text-[10px] h-7 px-1.5" onClick={() => selectByDayOfWeek(i)}>
+                    {label}s
+                  </Button>
+                ))}
+              </div>
+
+              {/* Month nav */}
+              <div className="flex items-center justify-between mb-1">
+                <button onClick={() => setCalMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                  className="p-1 hover:bg-secondary rounded text-muted-foreground">
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="font-body text-xs font-semibold text-foreground">
+                  {format(calMonth, 'MMMM yyyy')}
+                </span>
+                <button onClick={() => setCalMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                  className="p-1 hover:bg-secondary rounded text-muted-foreground">
+                  <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
-              <div className="grid grid-cols-7 gap-1">
-                {weekDates.map((d, i) => {
+
+              {/* Calendar grid */}
+              <div className="grid grid-cols-7 gap-0.5">
+                {DOW_LABELS.map((d, i) => (
+                  <div key={i} className="text-center font-body text-[9px] text-muted-foreground py-0.5">{d}</div>
+                ))}
+                {/* Empty padding cells */}
+                {Array.from({ length: monthDays.startPad }).map((_, i) => (
+                  <div key={`pad-${i}`} />
+                ))}
+                {monthDays.days.map(d => {
                   const dateStr = format(d, 'yyyy-MM-dd');
                   const checked = selectedDays.includes(dateStr);
+                  const today = isToday(d);
+                  const past = d < new Date(new Date().setHours(0,0,0,0));
                   return (
                     <button
-                      key={i}
-                      onClick={() => toggleDay(dateStr)}
-                      className={`flex flex-col items-center py-1.5 px-1 rounded text-xs font-body transition-colors border
-                        ${checked
-                          ? 'bg-accent/20 border-accent/50 text-accent'
-                          : 'bg-secondary border-border text-muted-foreground hover:bg-secondary/80'
+                      key={dateStr}
+                      onClick={() => !past && toggleDay(dateStr)}
+                      disabled={past}
+                      className={`py-1 rounded text-xs font-body transition-colors
+                        ${past ? 'text-muted-foreground/30 cursor-not-allowed' :
+                          checked ? 'bg-accent text-accent-foreground font-semibold' :
+                          today ? 'bg-accent/15 text-accent' :
+                          'hover:bg-secondary text-foreground'
                         }`}
                     >
-                      <span className="text-[10px]">{format(d, 'EEE')}</span>
-                      <span className="font-semibold">{format(d, 'd')}</span>
+                      {d.getDate()}
                     </button>
                   );
                 })}
@@ -1195,6 +1311,8 @@ const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, weekDates,
                 className="bg-secondary border-border text-foreground font-body" />
             </div>
           )}
+
+          {/* PRESETS & TIME */}
           <div className="flex gap-2">
             {PRESETS.map(p => (
               <Button key={p.label} size="sm" variant="outline" className="flex-1 font-body text-xs"
@@ -1235,7 +1353,7 @@ const ShiftModal = ({ shiftModal, shiftForm, setShiftForm, employees, weekDates,
           )}
           {isAdd && (
             <Button variant="outline" className="flex-1 font-display text-xs" onClick={() => saveShift(true)}>
-              Save & Add More
+              Save & More
             </Button>
           )}
           <Button className="flex-1 font-display text-xs" onClick={() => saveShift(false)}>
