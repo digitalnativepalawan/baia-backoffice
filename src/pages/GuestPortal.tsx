@@ -1174,6 +1174,25 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
     <div className="space-y-4">
       <h2 className="font-display text-lg text-foreground">My Bill</h2>
 
+      {/* Stay Details */}
+      {bookingRoomRate > 0 && (
+        <div className="bg-card border border-border rounded-lg p-4 space-y-1">
+          <p className="font-display text-xs tracking-wider text-muted-foreground uppercase">Stay Details</p>
+          <div className="flex justify-between">
+            <span className="font-body text-sm text-muted-foreground">Room Rate</span>
+            <span className="font-body text-sm text-foreground">₱{bookingRoomRate.toLocaleString()}/night</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="font-body text-sm text-muted-foreground">Duration</span>
+            <span className="font-body text-sm text-foreground">{bookingNights} night{bookingNights !== 1 ? 's' : ''}</span>
+          </div>
+          <div className="flex justify-between border-t border-border pt-1">
+            <span className="font-body text-sm text-muted-foreground font-medium">Room Total</span>
+            <span className="font-body text-sm text-foreground font-medium">₱{(bookingRoomRate * bookingNights).toLocaleString()}</span>
+          </div>
+        </div>
+      )}
+
       {/* Balance summary */}
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex justify-between mb-2">
@@ -1191,6 +1210,18 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
               <span className="font-body text-sm text-amber-400">₱{unpaidOrdersSCTotal.toLocaleString()}</span>
             </div>
           </>
+        )}
+        {activeToursTotal > 0 && (
+          <div className="flex justify-between mb-2">
+            <span className="font-body text-sm text-muted-foreground">Tours & Experiences</span>
+            <span className="font-body text-sm text-foreground">₱{activeToursTotal.toLocaleString()}</span>
+          </div>
+        )}
+        {activeRequestsTotal > 0 && (
+          <div className="flex justify-between mb-2">
+            <span className="font-body text-sm text-muted-foreground">Transport & Rentals</span>
+            <span className="font-body text-sm text-foreground">₱{activeRequestsTotal.toLocaleString()}</span>
+          </div>
         )}
         <div className="flex justify-between mb-2">
           <span className="font-body text-sm text-muted-foreground">Total Payments</span>
