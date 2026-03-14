@@ -1,37 +1,47 @@
 
 
-## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
+## Plan: Add Scheduled Orders View with Time Display
 
-### Issues Found
+### What Changes
 
-1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
+Modify `DepartmentOrdersView.tsx` to split orders in the "New" (pending) tab into two sections: **"Due Now"** and **"Scheduled for Later"**. Scheduled orders show their serve time, prep time (30 min before), and countdown. The "Start Preparing" button is disabled until within the prep window.
 
-2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
+### File: `src/components/DepartmentOrdersView.tsx`
 
-### Changes
+**1. Add helper functions:**
+- `isScheduledFuture(order)` — returns true if `scheduled_for` exists and is more than 30 minutes from now
+- `getPrepTime(scheduledFor)` — returns a Date 30 minutes before `scheduled_for`
+- `formatScheduledTime(date)` — formats as "7:00 AM" etc.
 
-**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
-- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
-- Increase touch target size for edit/delete buttons on shift blocks
-- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
+**2. Split filtered orders in the pending tab:**
+```typescript
+const nowOrders = filtered.filter(o => !isScheduledFuture(o));
+const scheduledOrders = filtered.filter(o => isScheduledFuture(o));
+```
 
-**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
-- Add an "Assign Task" button alongside "Add Shift" 
-- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
-- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
-- For other tasks: creates an `employee_tasks` entry with due date and description
-- Tasks appear as colored pills on the timeline (already partially implemented)
+Only applies to the `pending` tab. `preparing` and `ready` tabs show all orders normally.
 
-**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
-- In the task detail dialog, show who completed the task and when (`completed_at`)
-- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
-- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
+**3. Render two sections in the pending tab:**
+- "Due Now / ASAP" section header with lightning bolt icon, showing `nowOrders`
+- "Scheduled for Later" section header with clock icon, showing `scheduledOrders` sorted by `scheduled_for` ascending
 
-**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
-- Add edit capability: change title, description, due date, reassign to different employee
-- Add delete capability for tasks
-- Show completion audit trail
+**4. Enhanced scheduled order card:**
+- Replace the current generic "Scheduled" badge with a detailed one showing:
+  - Serve time: "🕒 7:00 PM"
+  - Prep time: "⏰ Prepare at 6:30 PM"  
+  - Countdown: "8 hours from now"
+- Disable "Start Preparing" button for scheduled orders not yet in prep window (>30 min before serve time), show "Not yet — prep at 6:30 PM" as disabled text instead
 
-### Files to Edit
-- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
+**5. Add a 1-minute interval** to re-evaluate `isScheduledFuture` so orders automatically move from "Scheduled" to "Due Now" when the prep window arrives (using existing `intervalRef`).
+
+**6. Update status counts** to show scheduled count separately in the pending tab badge (e.g., "3 + 2 scheduled").
+
+### No database changes needed
+The `scheduled_for` column already exists on the `orders` table.
+
+### Files to edit
+
+| File | Change |
+|------|--------|
+| `src/components/DepartmentOrdersView.tsx` | Split pending orders into now/scheduled sections, add time display, disable premature prep |
 
