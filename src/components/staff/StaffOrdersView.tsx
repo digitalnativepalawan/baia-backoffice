@@ -89,6 +89,7 @@ const StaffOrdersView = () => {
         .limit(200);
       return data || [];
     },
+    refetchInterval: 5000,
   });
 
   const [activeStatus, setActiveStatus] = useState('New');
