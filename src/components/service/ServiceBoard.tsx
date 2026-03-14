@@ -274,7 +274,7 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
                 {completedOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-3">
-                <div className={`grid gap-3 max-h-[40vh] overflow-y-auto ${department === 'reception' ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                <div className="grid gap-3 max-h-[40vh] overflow-y-auto grid-cols-3">
                   {columns.Completed.map(order => (
                     <ServiceOrderCard
                       key={order.id}
