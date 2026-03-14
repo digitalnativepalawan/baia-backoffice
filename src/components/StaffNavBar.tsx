@@ -158,9 +158,10 @@ const StaffNavBar = ({ activeDepartment }: StaffNavBarProps) => {
           <DeptBadge />
         </div>
 
-        {/* Right side - staff name + logout (desktop) */}
-        <div className="hidden sm:flex items-center gap-3">
+        {/* Right side - staff name + toggle + logout (desktop) */}
+        <div className="hidden sm:flex items-center gap-2">
           <span className="font-body text-xs text-muted-foreground">{displayName}</span>
+          <ThemeToggle />
           <Button
             variant="ghost"
             size="sm"
