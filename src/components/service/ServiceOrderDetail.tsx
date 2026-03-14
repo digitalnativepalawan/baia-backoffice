@@ -47,12 +47,13 @@ const ServiceOrderDetail = ({ order, open, onOpenChange, permissions, department
     } finally { setBusy(null); }
   };
 
+  const isViewOnlyDepartment = department === 'cashier';
   const canServe = canEdit(permissions, 'reception') || canEdit(permissions, 'kitchen') || canEdit(permissions, 'bar');
 
   // Build actions based on permissions + order state
   const actions: { label: string; action: string; icon: React.ReactNode; variant: 'default' | 'outline' }[] = [];
 
-  if (canEdit(permissions, 'kitchen') && foodItems.length > 0) {
+  if (!isViewOnlyDepartment && canEdit(permissions, 'kitchen') && foodItems.length > 0) {
     if (order.kitchen_status === 'pending') {
       actions.push({ label: 'Start Preparing (Kitchen)', action: 'kitchen-start', icon: <Flame className="w-5 h-5" />, variant: 'default' });
     } else if (order.kitchen_status === 'preparing') {
@@ -60,7 +61,7 @@ const ServiceOrderDetail = ({ order, open, onOpenChange, permissions, department
     }
   }
 
-  if (canEdit(permissions, 'bar') && barItems.length > 0) {
+  if (!isViewOnlyDepartment && canEdit(permissions, 'bar') && barItems.length > 0) {
     if (order.bar_status === 'pending') {
       actions.push({ label: 'Start Mixing (Bar)', action: 'bar-start', icon: <GlassWater className="w-5 h-5" />, variant: 'default' });
     } else if (order.bar_status === 'preparing') {
@@ -70,7 +71,7 @@ const ServiceOrderDetail = ({ order, open, onOpenChange, permissions, department
 
   const canMarkPaid = canEdit(permissions, 'reception') || canManage(permissions, 'orders');
 
-  if (canServe) {
+  if (!isViewOnlyDepartment && canServe) {
     if (order.status === 'Ready') {
       actions.push({
         label: isAutoPayable ? 'Serve & Close' : 'Mark Served',
@@ -80,7 +81,7 @@ const ServiceOrderDetail = ({ order, open, onOpenChange, permissions, department
       });
     }
   }
-  if (canMarkPaid && order.status === 'Served' && !isAutoPayable) {
+  if (!isViewOnlyDepartment && canMarkPaid && order.status === 'Served' && !isAutoPayable) {
     actions.push({ label: 'Mark Paid', action: 'mark-paid', icon: <CreditCard className="w-5 h-5" />, variant: 'default' });
   }
 
