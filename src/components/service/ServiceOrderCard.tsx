@@ -39,7 +39,7 @@ const ServiceOrderCard = ({ order, department, permissions, onAction, onOpenDeta
   const foodItems = items.filter((i: any) => { const d = i.department || 'kitchen'; return d === 'kitchen' || d === 'both'; });
   const barItems = items.filter((i: any) => i.department === 'bar' || i.department === 'both');
 
-  const deptItems = department === 'reception' ? items : items.filter((i: any) => {
+  const deptItems = (department === 'reception' || department === 'cashier') ? items : items.filter((i: any) => {
     const d = i.department || 'kitchen';
     return d === department || d === 'both';
   });
