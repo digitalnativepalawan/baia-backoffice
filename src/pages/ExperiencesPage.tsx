@@ -604,10 +604,18 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
       {/* Edit Tour Modal */}
       <EditTourModal
         open={!!editTour}
-        onOpenChange={(open) => !open && setEditTour(null)}
+        onOpenChange={(open) => { if (!open) { setEditTour(null); setEditTourSource('guest_tours'); } }}
         tour={editTour}
         unitName={editTour?.unit_name || ''}
         bookingId={editTour?.booking_id || null}
+        sourceTable={editTourSource}
+      />
+
+      {/* Edit Request Modal */}
+      <EditRequestModal
+        open={!!editRequest}
+        onOpenChange={(open) => !open && setEditRequest(null)}
+        request={editRequest}
       />
     </div>
   );
