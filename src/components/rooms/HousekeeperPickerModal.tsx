@@ -17,17 +17,26 @@ const HousekeeperPickerModal = ({ open, onOpenChange, onSelect }: HousekeeperPic
       const { data: perms } = await supabase.from('employee_permissions')
         .select('employee_id')
         .like('permission', 'housekeeping%');
-      const hkIds = new Set((perms || []).map((p: any) => p.employee_id));
+      const hkPermIds = new Set((perms || []).map((p: any) => p.employee_id));
+
+      // Also get employees with builtin:housekeeping role
+      const { data: roles } = await supabase.from('employee_roles')
+        .select('employee_id')
+        .eq('role_key', 'builtin:housekeeping');
+      const hkRoleIds = new Set((roles || []).map((r: any) => r.employee_id));
+
+      // Combine both sets
+      const allHkIds = new Set([...hkPermIds, ...hkRoleIds]);
+
+      if (allHkIds.size === 0) return [];
 
       const { data: emps } = await supabase.from('employees')
         .select('id, name, display_name')
         .eq('active', true)
         .order('name');
 
-      // Return housekeeping staff; if none tagged, return all active employees
-      const all = (emps || []) as { id: string; name: string; display_name: string }[];
-      const filtered = all.filter(e => hkIds.has(e.id));
-      return filtered.length > 0 ? filtered : all;
+      return ((emps || []) as { id: string; name: string; display_name: string }[])
+        .filter(e => allHkIds.has(e.id));
     },
   });
 
@@ -45,7 +54,7 @@ const HousekeeperPickerModal = ({ open, onOpenChange, onSelect }: HousekeeperPic
             </Button>
           ))}
           {employees.length === 0 && (
-            <p className="font-body text-xs text-muted-foreground text-center py-4">No staff found</p>
+            <p className="font-body text-xs text-muted-foreground text-center py-4">No housekeeping staff found. Assign the Housekeeping role to staff first.</p>
           )}
         </div>
       </DialogContent>
@@ -54,4 +63,3 @@ const HousekeeperPickerModal = ({ open, onOpenChange, onSelect }: HousekeeperPic
 };
 
 export default HousekeeperPickerModal;
-

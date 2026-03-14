@@ -9,6 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth } from 'date-fns';
 import PasswordConfirmModal from '@/components/housekeeping/PasswordConfirmModal';
 import HousekeepingInspection from '@/components/admin/HousekeepingInspection';
+import { getStaffSession } from '@/lib/session';
+import { hasAccess, canEdit } from '@/lib/permissions';
 
 const from = (table: string) => supabase.from(table as any);
 
@@ -69,6 +71,13 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   const empId = localStorage.getItem('emp_id');
   const empName = localStorage.getItem('emp_name') || 'Housekeeper';
+
+  // Determine if this user is a manager (admin/reception/assistantGM) who can see all orders
+  const session = getStaffSession();
+  const perms: string[] = session?.permissions || [];
+  const isManager = perms.includes('admin')
+    || canEdit(perms, 'reception')
+    || hasAccess(perms, 'rooms') && canEdit(perms, 'housekeeping');
 
   const { data: allOrders = [] } = useQuery({
     queryKey: ['housekeeping-orders-all'],
@@ -188,7 +197,8 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
         </div>
       )}
 
-      {/* New Assignments */}
+      {/* New Assignments — only visible to managers */}
+      {isManager && (
       <section className="mb-6">
         <h2 className="font-display text-sm tracking-wider text-muted-foreground uppercase mb-3 flex items-center gap-2">
           <ClipboardCheck className="w-4 h-4" /> Assignments ({pendingOrders.length})
@@ -240,6 +250,7 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
           </div>
         )}
       </section>
+      )}
 
       {/* In Progress */}
       <section className="mb-6">
