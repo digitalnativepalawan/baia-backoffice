@@ -1,37 +1,51 @@
 
 
-## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
+## Plan: Fix Orders Tab Not Reflecting Kitchen/Bar Status Changes in Real-Time
 
-### Issues Found
+### Root Cause
 
-1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
+When the Kitchen or Bar department view updates an order (e.g., marks it as "Preparing"), it only invalidates its own query cache key (`orders-kitchen` or `orders-bar`). The Orders tab in the admin page uses a separate query key (`orders-admin`). While all views have realtime subscriptions on the `orders` table, the realtime channel may not fire reliably across multiple simultaneous channels on the same table.
 
-2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
+The result: kitchen marks an order as "Preparing" → kitchen view updates instantly → Orders tab still shows "New" until a manual refresh.
 
-### Changes
+### Fix
 
-**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
-- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
-- Increase touch target size for edit/delete buttons on shift blocks
-- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
+**Cross-invalidate all order query keys** whenever any view updates an order, and add polling as a reliable fallback.
 
-**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
-- Add an "Assign Task" button alongside "Add Shift" 
-- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
-- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
-- For other tasks: creates an `employee_tasks` entry with due date and description
-- Tasks appear as colored pills on the timeline (already partially implemented)
+#### 1. `src/components/DepartmentOrdersView.tsx` — Cross-invalidate on status change
 
-**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
-- In the task detail dialog, show who completed the task and when (`completed_at`)
-- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
-- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
+In `advanceDeptStatus`, after updating the order, also invalidate `orders-admin` and `orders-staff`:
 
-**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
-- Add edit capability: change title, description, due date, reassign to different employee
-- Add delete capability for tasks
-- Show completion audit trail
+```typescript
+qc.invalidateQueries({ queryKey: [`orders-${department}`] });
+qc.invalidateQueries({ queryKey: ['orders-admin'] });
+qc.invalidateQueries({ queryKey: ['orders-staff'] });
+```
 
-### Files to Edit
-- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
+#### 2. `src/pages/AdminPage.tsx` — Cross-invalidate + add polling
+
+In `advanceOrder`, also invalidate kitchen/bar query keys:
+
+```typescript
+qc.invalidateQueries({ queryKey: ['orders-admin'] });
+qc.invalidateQueries({ queryKey: ['orders-kitchen'] });
+qc.invalidateQueries({ queryKey: ['orders-bar'] });
+qc.invalidateQueries({ queryKey: ['orders-staff'] });
+```
+
+Add `refetchInterval: 5000` to the `orders-admin` query as a reliable polling fallback.
+
+Also update the realtime handler to invalidate all order-related keys.
+
+#### 3. `src/components/staff/StaffOrdersView.tsx` — Same cross-invalidation
+
+In `advanceOrder`, also invalidate admin/kitchen/bar keys. Add `refetchInterval: 5000`.
+
+### Files to edit
+
+| File | Change |
+|------|--------|
+| `src/components/DepartmentOrdersView.tsx` | Add cross-invalidation of `orders-admin`, `orders-staff` in `advanceDeptStatus` |
+| `src/pages/AdminPage.tsx` | Add cross-invalidation + `refetchInterval: 5000` on `orders-admin` query |
+| `src/components/staff/StaffOrdersView.tsx` | Add cross-invalidation + `refetchInterval: 5000` on `orders-staff` query |
 
