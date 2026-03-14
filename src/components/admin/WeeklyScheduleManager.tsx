@@ -708,15 +708,17 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
     );
   };
 
+  const HEADER_HOURS = [...HOURS.filter(h => h % 3 === 0), 24];
+
   const TimelineHeader = ({ compact = false }: { compact?: boolean }) => (
     <div className="flex border-b border-border">
       <div className={`shrink-0 ${compact ? 'w-16' : 'w-28'} border-r border-border`} />
       <div className="flex-1 relative" style={{ height: '24px' }}>
-        {HOURS.filter(h => h % 3 === 0).map(h => (
+        {HEADER_HOURS.map(h => (
           <div key={h} className="absolute top-0 bottom-0 flex items-center"
-            style={{ left: `${((h - TIMELINE_START) / TIMELINE_HOURS) * 100}%` }}>
-            <span className={`font-body ${compact ? 'text-[7px]' : 'text-[9px]'} text-muted-foreground whitespace-nowrap pl-0.5`}>
-              {fmtHour(h)}
+            style={{ left: `${((h - TIMELINE_START) / TIMELINE_HOURS) * 100}%`, transform: h === 24 ? 'translateX(-100%)' : undefined }}>
+            <span className={`font-body ${compact ? 'text-[7px]' : 'text-[9px]'} text-muted-foreground whitespace-nowrap ${h === 24 ? 'pr-0.5' : 'pl-0.5'}`}>
+              {h === 24 ? '12AM' : fmtHour(h)}
             </span>
           </div>
         ))}
