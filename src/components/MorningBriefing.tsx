@@ -82,13 +82,19 @@ function useMorningBriefing() {
       const requests = (requestsRes.data as any[]) || [];
 
       // --- Stats ---
-      const unitStatusMap = new Map(units.map((u: any) => [u.id, u.status]));
+      const opsUnitNameById = new Map(opsUnits.map((u: any) => [u.id, u.name]));
+      const opsUnitIdByName = new Map(opsUnits.map((u: any) => [normalizeRoomName(u.name), u.id]));
+      const unitStatusMap = new Map<string, string>();
 
-      const occupiedRooms = units.filter((u) => {
-        if (u.status === 'occupied') return true;
-        return bookings.some(
-          (b: any) => b.unit_id === u.id && b.check_in <= today && b.check_out > today
-        );
+      units.forEach((u: any) => {
+        const opsUnitId = opsUnitIdByName.get(normalizeRoomName(u.unit_name || ''));
+        if (opsUnitId) unitStatusMap.set(opsUnitId, u.status);
+      });
+
+      const occupiedRooms = opsUnits.filter((unit: any) => {
+        const displayStatus = unitStatusMap.get(unit.id);
+        if (displayStatus === 'occupied') return true;
+        return bookings.some((b: any) => b.unit_id === unit.id && shouldTreatBookingAsOccupiedWithoutManualCheckIn(b, today));
       }).length;
 
       const roomsToClean = units.filter(
@@ -96,7 +102,7 @@ function useMorningBriefing() {
       ).length;
 
       const todayArrivals = bookings.filter((b: any) => b.check_in === today);
-      const todayDepartures = bookings.filter((b: any) => b.check_out === today);
+      const todayDepartures = bookings.filter((b: any) => b.check_out === today && doesBookingCoverOperationalDay(b, today));
 
       // --- Admin tasks ---
       const empMap = new Map(employees.map((e: any) => [e.id, e.display_name || e.name || 'Staff']));
