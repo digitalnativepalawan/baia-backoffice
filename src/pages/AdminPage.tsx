@@ -12,6 +12,7 @@ import { Plus, Eye, EyeOff, Receipt, Search, Download, Upload, Trash2, Minus } f
 import StaffNavBar from '@/components/StaffNavBar';
 import MenuBulkImportModal from '@/components/admin/MenuBulkImportModal';
 import ResortProfileForm from '@/components/admin/ResortProfileForm';
+import SetupExportCard from '@/components/admin/SetupExportCard';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import EditableRow from '@/components/admin/EditableRow';
 import TimePicker from '@/components/admin/TimePicker';
@@ -748,7 +749,8 @@ const AdminPage = () => {
           {(isAdmin || hasAccess(perms, 'setup')) && (
             <TabsContent value="settings" className="space-y-8">
               <div className={readOnly('setup') ? 'pointer-events-none opacity-70' : ''}>
-                <ResortProfileForm />
+                <SetupExportCard />
+                <div className="mt-8"><ResortProfileForm /></div>
 
                 <section className="mt-8">
                   <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Kitchen Settings</h3>
