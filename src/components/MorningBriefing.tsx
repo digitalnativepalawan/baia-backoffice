@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
-import { doesBookingCoverOperationalDay, shouldTreatBookingAsOccupiedWithoutManualCheckIn } from '@/lib/receptionOccupancy';
+import { resolveOperationalUnitWorkflow } from '@/lib/receptionOccupancy';
 import {
   Sun, BedDouble, LogIn, LogOut, Sparkles, UtensilsCrossed,
   ClipboardList, Zap, MapPin, Bell, Car,
@@ -91,23 +91,38 @@ function useMorningBriefing() {
         if (opsUnitId) unitStatusMap.set(opsUnitId, u.status);
       });
 
-      const occupiedRooms = opsUnits.filter((unit: any) => {
-        const displayStatus = unitStatusMap.get(unit.id);
-        if (displayStatus === 'occupied') return true;
-        return bookings.some((b: any) => b.unit_id === unit.id && shouldTreatBookingAsOccupiedWithoutManualCheckIn(b, today));
-      }).length;
+      const bookingsByUnitId = new Map<string, any[]>();
+      bookings.forEach((booking: any) => {
+        if (!booking.unit_id) return;
+        const current = bookingsByUnitId.get(booking.unit_id) || [];
+        current.push(booking);
+        bookingsByUnitId.set(booking.unit_id, current);
+      });
+
+      const unitWorkflowById = new Map(
+        opsUnits.map((unit: any) => [
+          unit.id,
+          resolveOperationalUnitWorkflow({
+            bookings: bookingsByUnitId.get(unit.id) || [],
+            rawStatus: unitStatusMap.get(unit.id),
+            today,
+          }),
+        ])
+      );
+
+      const occupiedRooms = opsUnits.filter((unit: any) => unitWorkflowById.get(unit.id)?.displayStatus === 'occupied').length;
 
       const roomsToClean = units.filter(
         (u) => u.status === 'dirty' || u.status === 'cleaning' || u.status === 'to_clean'
       ).length;
 
-      const todayArrivals = bookings.filter((b: any) => b.check_in === today);
-      const todayDepartures = bookings.filter((b: any) => b.check_out === today && doesBookingCoverOperationalDay(b, today));
+      const pendingArrivals = opsUnits
+        .map((unit: any) => unitWorkflowById.get(unit.id)?.pendingArrival)
+        .filter(Boolean);
 
-      const pendingArrivals = todayArrivals.filter((b: any) => {
-        const unitStatus = unitStatusMap.get(b.unit_id);
-        return unitStatus !== 'occupied';
-      });
+      const pendingDepartures = opsUnits
+        .map((unit: any) => unitWorkflowById.get(unit.id)?.pendingDeparture)
+        .filter(Boolean);
 
       // --- Admin tasks ---
       const empMap = new Map(employees.map((e: any) => [e.id, e.display_name || e.name || 'Staff']));
@@ -125,7 +140,7 @@ function useMorningBriefing() {
       };
       const getGuestName = (b: any) => b.resort_ops_guests?.full_name || 'Guest';
 
-      // Arrivals — only show if unit is NOT already occupied (guest hasn't checked in yet)
+      // Arrivals — only show guests not yet checked in
       pendingArrivals.forEach((b: any) => {
         opsTasks.push({
           label: `Prepare ${getUnitName(b)} for arrival — ${getGuestName(b)}`,
@@ -134,10 +149,8 @@ function useMorningBriefing() {
         });
       });
 
-      // Departures — only show if unit is still occupied (guest hasn't checked out yet)
-      todayDepartures.forEach((b: any) => {
-        const unitStatus = unitStatusMap.get(b.unit_id);
-        if (unitStatus !== 'occupied') return; // Already checked out, skip
+      // Departures — only show guests still in-house and pending checkout
+      pendingDepartures.forEach((b: any) => {
         opsTasks.push({
           label: `Checkout pending: ${getUnitName(b)} — ${getGuestName(b)}`,
           icon: 'departure',
@@ -182,6 +195,16 @@ function useMorningBriefing() {
         });
       }
 
+      opsUnits.forEach((unit: any) => {
+        const workflow = unitWorkflowById.get(unit.id);
+        if (!workflow?.isExtensionReview || !workflow.pendingArrival) return;
+        opsTasks.push({
+          label: `Review possible stay extension in ${unit.name} — ${getGuestName(workflow.pendingArrival)}`,
+          icon: 'request',
+          urgent: true,
+        });
+      });
+
       // If nothing, show all-clear
       if (opsTasks.length === 0) {
         opsTasks.push({ label: 'All clear — no pending operations', icon: 'kitchen' });
@@ -191,7 +214,7 @@ function useMorningBriefing() {
           occupiedRooms,
           totalRooms,
           arrivalsToday: pendingArrivals.length,
-          departuresToday: todayDepartures.length,
+          departuresToday: pendingDepartures.length,
           roomsToClean,
           pendingKitchenOrders: pendingKitchenCount,
         adminTasks,

@@ -23,7 +23,7 @@ import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { useRoomTransactions } from '@/hooks/useRoomTransactions';
 import { logAudit } from '@/lib/auditLog';
 import { canEdit, canManage, hasAccess } from '@/lib/permissions';
-import { doesBookingCoverOperationalDay, shouldTreatBookingAsOccupiedWithoutManualCheckIn } from '@/lib/receptionOccupancy';
+import { resolveOperationalUnitWorkflow } from '@/lib/receptionOccupancy';
 import ReceptionCalendar from '@/components/reception/ReceptionCalendar';
 import RoomBillingTab from '@/components/rooms/RoomBillingTab';
 import type { BookingWithGuest, ResortUnit } from '@/components/reception/calendarUtils';
@@ -280,44 +280,40 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const resolveResortUnit = (roomName: string) =>
     resortUnits.find((ru: any) => ru.name.toLowerCase().trim() === roomName.toLowerCase().trim());
 
-  const getDerivedOccupiedBooking = (unit: any) => {
+  const getUnitWorkflow = (unit: any) => {
     const resortUnit = resolveResortUnit(unit.name);
-    if (!resortUnit) return null;
-    return bookings.find((b: any) =>
-      b.unit_id === resortUnit.id && shouldTreatBookingAsOccupiedWithoutManualCheckIn(b, today)
-    ) || null;
+    const unitBookings = resortUnit
+      ? bookings.filter((b: any) => b.unit_id === resortUnit.id)
+      : [];
+
+    return resolveOperationalUnitWorkflow({
+      bookings: unitBookings,
+      rawStatus: unit.status,
+      today,
+    });
   };
 
-  const getUnitStatus = (unit: any): 'occupied' | 'to_clean' | 'ready' => {
-    const raw = (unit as any).status || 'ready';
-    if (raw === 'occupied') return 'occupied';
-    if (raw === 'to_clean') return 'to_clean';
-    return getDerivedOccupiedBooking(unit) ? 'occupied' : 'ready';
-  };
+  const getUnitStatus = (unit: any): 'occupied' | 'to_clean' | 'ready' =>
+    getUnitWorkflow(unit).displayStatus;
 
-  const getActiveBooking = (unit: any) => {
-    const resortUnit = resolveResortUnit(unit.name);
-    if (!resortUnit || getUnitStatus(unit) !== 'occupied') return null;
-    return bookings.find((b: any) =>
-      b.unit_id === resortUnit.id && doesBookingCoverOperationalDay(b, today)
-    ) || null;
-  };
+  const getActiveBooking = (unit: any) => getUnitWorkflow(unit).activeBooking;
+
+  const getTodayArrivalBooking = (unit: any) => getUnitWorkflow(unit).pendingArrival;
+
+  const getTodayDepartureBooking = (unit: any) => getUnitWorkflow(unit).pendingDeparture;
 
   // Today's arrivals
-  const todayArrivals = bookings.filter((b: any) => {
-    if (b.check_in !== today) return false;
-    const unit = units.find((u: any) => {
-      const ru = resolveResortUnit(u.name);
-      return ru && ru.id === b.unit_id;
-    });
-    return !unit || getUnitStatus(unit) !== 'occupied';
-  });
+  const todayArrivals = units
+    .map((unit: any) => getTodayArrivalBooking(unit))
+    .filter(Boolean);
 
   // Today's departures
-  const todayDepartures = units.filter((u: any) => {
-    const booking = getActiveBooking(u);
-    return booking && booking.check_out === today;
-  }).map(u => ({ unit: u, booking: getActiveBooking(u)! }));
+  const todayDepartures = units
+    .map((unit: any) => {
+      const booking = getTodayDepartureBooking(unit);
+      return booking ? { unit, booking } : null;
+    })
+    .filter(Boolean) as { unit: any; booking: any }[];
 
   // Week-ahead arrivals (tomorrow through +6 days)
   const tomorrow = addDays(new Date(), 1).toISOString().split('T')[0];
@@ -339,13 +335,6 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     const resortUnit = resolveResortUnit(unit.name);
     if (!resortUnit) return null;
     return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in > today && b.check_in <= weekEnd) || null;
-  };
-
-  // Helper: get TODAY's arrival booking for a unit (for room protection)
-  const getTodayArrivalBooking = (unit: any) => {
-    const resortUnit = resolveResortUnit(unit.name);
-    if (!resortUnit) return null;
-    return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in === today && getUnitStatus(unit) !== 'occupied') || null;
   };
 
   // Occupancy counts
@@ -420,22 +409,10 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     prevHasPendingRef.current = hasPendingAlerts;
   }, [hasPendingAlerts, playChime]);
 
-  // Auto-heal: sync units.status when a prior check-in should still be in-house
+  // Display-only mode: do not auto-sync stale occupied state from bookings here.
   useEffect(() => {
-    units.forEach((unit: any) => {
-      if (unit.status === 'ready') {
-        const ru = resolveResortUnit(unit.name);
-        if (
-          ru &&
-          bookings.some((b: any) => b.unit_id === ru.id && shouldTreatBookingAsOccupiedWithoutManualCheckIn(b, today))
-        ) {
-          from('units').update({ status: 'occupied' }).eq('id', unit.id).then(() => {
-            qc.invalidateQueries({ queryKey: ['rooms-units'] });
-          });
-        }
-      }
-    });
-  }, [units, bookings, resortUnits, today]);
+    return;
+  }, []);
 
   // Realtime subscriptions for guest_requests and tour_bookings
   useEffect(() => {
@@ -1046,10 +1023,12 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
           <h2 className="font-display text-xs tracking-wider text-foreground uppercase">🏨 Current Guests ({occupiedUnits.length})</h2>
           {occupiedUnits.map((unit: any) => {
             const booking = getActiveBooking(unit);
+            const workflow = getUnitWorkflow(unit);
             const guest = (booking as any)?.resort_ops_guests;
             const nights = booking ? Math.max(1, Math.ceil((new Date(booking.check_out).getTime() - new Date(booking.check_in).getTime()) / 86400000)) : 0;
             const roomOrders = recentOrders.filter((o: any) => o.location_detail === unit.name);
-            const isDepartingToday = booking?.check_out === today;
+            const isDepartingToday = Boolean(workflow.pendingDeparture);
+            const incomingArrival = workflow.pendingArrival;
 
             return (
               <div key={unit.id} className={`border rounded-lg p-3 space-y-2 ${isDepartingToday ? 'border-amber-500/40 bg-amber-500/5' : 'border-border'}`}>
@@ -1064,13 +1043,22 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                     {booking && Number(booking.room_rate) > 0 && (
                       <p className="font-body text-[10px] text-muted-foreground">₱{Number(booking.room_rate).toLocaleString()}/night · {booking.adults} adult{booking.adults > 1 ? 's' : ''}{booking.children > 0 ? `, ${booking.children} child` : ''}</p>
                     )}
+                    {incomingArrival && (
+                      <p className="font-body text-[10px] text-blue-400">
+                        Next arrival: {incomingArrival.resort_ops_guests?.full_name || 'Guest'}
+                        {workflow.isExtensionReview ? ' · Review extension' : ' · Ready for check-in after checkout'}
+                      </p>
+                    )}
                     {guest?.phone && <p className="font-body text-[10px] text-muted-foreground">📞 {guest.phone}</p>}
                     {guest?.email && <p className="font-body text-[10px] text-muted-foreground">✉️ {guest.email}</p>}
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <Badge className={`font-body text-[10px] ${isDepartingToday ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-red-500/20 text-red-400 border-red-500/40'}`}>
-                      {isDepartingToday ? 'Departing' : 'Occupied'}
+                      {isDepartingToday ? 'Departure Pending' : 'Occupied'}
                     </Badge>
+                    {workflow.isExtensionReview && (
+                      <Badge className="font-body text-[10px] bg-blue-500/20 text-blue-400 border-blue-500/40">Review</Badge>
+                    )}
                     {allDisputes.some((d: any) => d.unit_name === unit.name) && (
                       <Badge className="font-body text-[10px] bg-amber-500/20 text-amber-400 border-amber-500/40 flex items-center gap-0.5">
                         <AlertTriangle className="w-2.5 h-2.5" /> Dispute
@@ -1134,12 +1122,18 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
           {todayArrivals.map((b: any) => {
             const guest = b.resort_ops_guests;
             const unitName = getUnitNameForBooking(b);
+            const unit = units.find((u: any) => u.name === unitName);
+            const workflow = unit ? getUnitWorkflow(unit) : null;
             return (
-              <div key={b.id} className="border border-emerald-500/30 bg-emerald-500/5 rounded-lg p-3 flex justify-between items-center">
+              <div key={b.id} className="border border-emerald-500/30 bg-emerald-500/5 rounded-lg p-3 flex justify-between items-center gap-3">
                 <div>
                   <p className="font-display text-sm text-foreground tracking-wider">{unitName}</p>
                   <p className="font-body text-xs text-muted-foreground">{guest?.full_name || 'Guest'} · {b.adults} adult{b.adults > 1 ? 's' : ''}</p>
                   <p className="font-body text-xs text-muted-foreground">{b.platform} · ₱{Number(b.room_rate).toLocaleString()}/night</p>
+                  <p className="font-body text-[10px] text-emerald-400">Ready for Check-in</p>
+                  {workflow?.isExtensionReview && (
+                    <p className="font-body text-[10px] text-blue-400">Flag for review: possible duplicate / stay extension</p>
+                  )}
                 </div>
                 {canDoEdit && (
                   <Button size="sm" onClick={() => { setCheckInBooking(b); setCheckInModalOpen(true); }}

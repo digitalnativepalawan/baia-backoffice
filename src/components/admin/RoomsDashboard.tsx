@@ -18,7 +18,7 @@ import EditGuestModal from '@/components/rooms/EditGuestModal';
 import EditTourModal from '@/components/rooms/EditTourModal';
 import GuestActivityTimeline from '@/components/rooms/GuestActivityTimeline';
 import { compressImage } from '@/lib/imageCompress';
-import { doesBookingCoverOperationalDay, getManilaDateKey, shouldTreatBookingAsOccupiedWithoutManualCheckIn } from '@/lib/receptionOccupancy';
+import { getManilaDateKey, resolveOperationalUnitWorkflow } from '@/lib/receptionOccupancy';
 
 const from = (table: string) => supabase.from(table as any) as any;
 
@@ -206,28 +206,24 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
 
   const today = getManilaDateKey();
 
-  // Get unit status
-  const getUnitStatus = (unit: any): 'occupied' | 'to_clean' | 'ready' => {
-    const rawStatus = (unit as any).status || 'ready';
-    if (rawStatus === 'occupied') return 'occupied';
-    if (rawStatus === 'to_clean') return 'to_clean';
+  const getUnitWorkflow = (unit: any) => {
     const resortUnit = resolveResortUnit(unit.name);
-    if (!resortUnit) return 'ready';
-    const derivedOccupiedBooking = bookings.find((b: any) =>
-      b.unit_id === resortUnit.id && shouldTreatBookingAsOccupiedWithoutManualCheckIn(b, today)
-    );
-    return derivedOccupiedBooking ? 'occupied' : 'ready';
+    const unitBookings = resortUnit
+      ? bookings.filter((b: any) => b.unit_id === resortUnit.id)
+      : [];
+
+    return resolveOperationalUnitWorkflow({
+      bookings: unitBookings,
+      rawStatus: unit.status,
+      today,
+    });
   };
 
+  // Get unit status
+  const getUnitStatus = (unit: any): 'occupied' | 'to_clean' | 'ready' => getUnitWorkflow(unit).displayStatus;
+
   // Active booking
-  const getActiveBooking = (unit: any) => {
-    if (!unit || getUnitStatus(unit) !== 'occupied') return null;
-    const resortUnit = resolveResortUnit(unit.name);
-    if (!resortUnit) return null;
-    return bookings.find((b: any) =>
-      b.unit_id === resortUnit.id && doesBookingCoverOperationalDay(b, today)
-    ) || null;
-  };
+  const getActiveBooking = (unit: any) => getUnitWorkflow(unit).activeBooking;
 
   const currentBooking = getActiveBooking(selectedUnit);
   const guestId = (currentBooking as any)?.guest_id;
@@ -438,13 +434,12 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
 
   const getUnitGuest = (unitName: string) => {
     const unit = units.find((u: any) => u.name === unitName);
-    if (!unit || getUnitStatus(unit) !== 'occupied') return null;
-    const resortUnit = resolveResortUnit(unitName);
-    if (!resortUnit) return null;
-    return bookings.find((b: any) =>
-      b.unit_id === resortUnit.id && doesBookingCoverOperationalDay(b, today)
-    ) || null;
+    return unit ? getUnitWorkflow(unit).activeBooking : null;
   };
+
+  const getTodayArrivalBooking = (unit: any) => getUnitWorkflow(unit).pendingArrival;
+
+  const getTodayDepartureBooking = (unit: any) => getUnitWorkflow(unit).pendingDeparture;
 
   const getUnitVibeRisk = (unitName: string) => {
     const records = vibeRecords.filter((v: any) => v.unit_name === unitName && !v.checked_out);
@@ -648,7 +643,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           </Button>
           <h3 className="font-display text-lg tracking-wider text-foreground">{selectedUnit.name}</h3>
           <Badge variant={booking ? 'default' : 'secondary'} className="font-body text-xs">
-            {booking ? 'Occupied' : getUnitStatus(selectedUnit) === 'to_clean' ? 'To Clean' : 'Vacant'}
+            {booking ? 'Occupied' : getTodayArrivalBooking(selectedUnit) ? 'Arrival Today' : getUnitStatus(selectedUnit) === 'to_clean' ? 'To Clean' : 'Ready'}
           </Badge>
         </div>
 
@@ -1490,8 +1485,11 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           const guest = (booking as any)?.resort_ops_guests;
           const isHighRisk = getUnitVibeRisk(unit.name);
           const status = getUnitStatus(unit);
-          const borderColor = status === 'occupied' ? 'border-red-500/40' : status === 'to_clean' ? 'border-amber-500/40' : 'border-emerald-500/40';
-          const statusBg = status === 'occupied' ? 'bg-red-500/5' : status === 'to_clean' ? 'bg-amber-500/5' : '';
+          const arrivalBooking = getTodayArrivalBooking(unit);
+          const departureBooking = getTodayDepartureBooking(unit);
+          const workflow = getUnitWorkflow(unit);
+          const borderColor = status === 'occupied' ? 'border-red-500/40' : status === 'to_clean' ? 'border-amber-500/40' : arrivalBooking ? 'border-blue-500/40' : 'border-emerald-500/40';
+          const statusBg = status === 'occupied' ? 'bg-red-500/5' : status === 'to_clean' ? 'bg-amber-500/5' : arrivalBooking ? 'bg-blue-500/5' : '';
           const isFnF = booking?.platform === 'Friends & Family';
           const isVip = (booking?.notes || '').includes('[VIP]');
 
@@ -1501,11 +1499,22 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
               <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
               {booking ? (
                 <div className="mt-2">
-                  <Badge className="font-body text-xs bg-red-500/20 text-red-400 border-red-500/40">Occupied</Badge>
+                  <Badge className="font-body text-xs bg-red-500/20 text-red-400 border-red-500/40">
+                    {departureBooking ? 'Departure Pending' : 'Occupied'}
+                  </Badge>
                   <p className="font-body text-xs text-foreground mt-1">{guest?.full_name || 'Guest'}</p>
                   <p className="font-body text-xs text-muted-foreground">
                     {format(new Date(booking.check_in + 'T00:00:00'), 'MMM d')} – {format(new Date(booking.check_out + 'T00:00:00'), 'MMM d')}
                   </p>
+                  {arrivalBooking && (
+                    <p className="font-body text-[10px] text-blue-400 mt-1 truncate">
+                      Next: {arrivalBooking.resort_ops_guests?.full_name || 'Guest'}
+                      {workflow.isExtensionReview ? ' · Review extension' : ' · Arrival today'}
+                    </p>
+                  )}
+                  {workflow.isExtensionReview && (
+                    <Badge variant="outline" className="font-body text-[10px] mt-1 border-blue-500/40 text-blue-400">Review extension</Badge>
+                  )}
                   <div className="flex flex-wrap gap-1 mt-1">
                     {isFnF && <Badge variant="outline" className="font-body text-[10px] border-emerald-500/40 text-emerald-400">F&F</Badge>}
                     {isVip && <Badge variant="outline" className="font-body text-[10px] border-amber-500/40 text-amber-400">⭐ VIP</Badge>}
@@ -1513,6 +1522,17 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                 </div>
               ) : status === 'to_clean' ? (
                 <Badge className="font-body text-xs mt-2 bg-amber-500/20 text-amber-400 border-amber-500/40">To Clean</Badge>
+              ) : arrivalBooking ? (
+                <div className="mt-2">
+                  <Badge className="font-body text-xs bg-blue-500/20 text-blue-400 border-blue-500/40">Ready for Check-in</Badge>
+                  <p className="font-body text-xs text-foreground mt-1">{arrivalBooking.resort_ops_guests?.full_name || 'Guest'}</p>
+                  <p className="font-body text-xs text-muted-foreground">
+                    {format(new Date(arrivalBooking.check_in + 'T00:00:00'), 'MMM d')} – {format(new Date(arrivalBooking.check_out + 'T00:00:00'), 'MMM d')}
+                  </p>
+                  {workflow.isExtensionReview && (
+                    <Badge variant="outline" className="font-body text-[10px] mt-1 border-blue-500/40 text-blue-400">Review duplicate / extension</Badge>
+                  )}
+                </div>
               ) : (
                 <div className="mt-2">
                   <Badge className="font-body text-xs bg-emerald-500/20 text-emerald-400 border-emerald-500/40">Ready</Badge>
