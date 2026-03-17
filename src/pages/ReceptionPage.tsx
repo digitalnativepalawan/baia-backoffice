@@ -280,44 +280,40 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const resolveResortUnit = (roomName: string) =>
     resortUnits.find((ru: any) => ru.name.toLowerCase().trim() === roomName.toLowerCase().trim());
 
-  const getDerivedOccupiedBooking = (unit: any) => {
+  const getUnitWorkflow = (unit: any) => {
     const resortUnit = resolveResortUnit(unit.name);
-    if (!resortUnit) return null;
-    return bookings.find((b: any) =>
-      b.unit_id === resortUnit.id && shouldTreatBookingAsOccupiedWithoutManualCheckIn(b, today)
-    ) || null;
+    const unitBookings = resortUnit
+      ? bookings.filter((b: any) => b.unit_id === resortUnit.id)
+      : [];
+
+    return resolveOperationalUnitWorkflow({
+      bookings: unitBookings,
+      rawStatus: unit.status,
+      today,
+    });
   };
 
-  const getUnitStatus = (unit: any): 'occupied' | 'to_clean' | 'ready' => {
-    const raw = (unit as any).status || 'ready';
-    if (raw === 'occupied') return 'occupied';
-    if (raw === 'to_clean') return 'to_clean';
-    return getDerivedOccupiedBooking(unit) ? 'occupied' : 'ready';
-  };
+  const getUnitStatus = (unit: any): 'occupied' | 'to_clean' | 'ready' =>
+    getUnitWorkflow(unit).displayStatus;
 
-  const getActiveBooking = (unit: any) => {
-    const resortUnit = resolveResortUnit(unit.name);
-    if (!resortUnit || getUnitStatus(unit) !== 'occupied') return null;
-    return bookings.find((b: any) =>
-      b.unit_id === resortUnit.id && doesBookingCoverOperationalDay(b, today)
-    ) || null;
-  };
+  const getActiveBooking = (unit: any) => getUnitWorkflow(unit).activeBooking;
+
+  const getTodayArrivalBooking = (unit: any) => getUnitWorkflow(unit).pendingArrival;
+
+  const getTodayDepartureBooking = (unit: any) => getUnitWorkflow(unit).pendingDeparture;
 
   // Today's arrivals
-  const todayArrivals = bookings.filter((b: any) => {
-    if (b.check_in !== today) return false;
-    const unit = units.find((u: any) => {
-      const ru = resolveResortUnit(u.name);
-      return ru && ru.id === b.unit_id;
-    });
-    return !unit || getUnitStatus(unit) !== 'occupied';
-  });
+  const todayArrivals = units
+    .map((unit: any) => getTodayArrivalBooking(unit))
+    .filter(Boolean);
 
   // Today's departures
-  const todayDepartures = units.filter((u: any) => {
-    const booking = getActiveBooking(u);
-    return booking && booking.check_out === today;
-  }).map(u => ({ unit: u, booking: getActiveBooking(u)! }));
+  const todayDepartures = units
+    .map((unit: any) => {
+      const booking = getTodayDepartureBooking(unit);
+      return booking ? { unit, booking } : null;
+    })
+    .filter(Boolean) as { unit: any; booking: any }[];
 
   // Week-ahead arrivals (tomorrow through +6 days)
   const tomorrow = addDays(new Date(), 1).toISOString().split('T')[0];
@@ -339,13 +335,6 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     const resortUnit = resolveResortUnit(unit.name);
     if (!resortUnit) return null;
     return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in > today && b.check_in <= weekEnd) || null;
-  };
-
-  // Helper: get TODAY's arrival booking for a unit (for room protection)
-  const getTodayArrivalBooking = (unit: any) => {
-    const resortUnit = resolveResortUnit(unit.name);
-    if (!resortUnit) return null;
-    return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in === today && getUnitStatus(unit) !== 'occupied') || null;
   };
 
   // Occupancy counts
