@@ -627,6 +627,8 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       await from('resort_ops_bookings').update({
         room_password: roomPassword,
         password_expires_at: expiresAt.toISOString(),
+        checked_in_at: new Date().toISOString(),
+        checked_out_at: null,
       }).eq('id', checkInBooking.id);
 
       await supabase.from('units').update({ status: 'occupied' } as any).eq('id', unit.id);

@@ -516,6 +516,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       const { error: bErr } = await from('resort_ops_bookings').insert({
         guest_id: gId, unit_id: resortUnit.id, platform: checkInForm.platform,
         check_in: checkInForm.checkIn, check_out: checkInForm.checkOut,
+        checked_in_at: new Date().toISOString(),
         adults: parseInt(checkInForm.adults) || 1, children: parseInt(checkInForm.children) || 0,
         room_rate: parseFloat(checkInForm.roomRate) || 0, notes: checkInForm.notes || '',
         special_requests: checkInForm.specialRequests || '',
