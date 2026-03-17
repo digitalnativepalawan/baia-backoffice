@@ -1485,8 +1485,11 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           const guest = (booking as any)?.resort_ops_guests;
           const isHighRisk = getUnitVibeRisk(unit.name);
           const status = getUnitStatus(unit);
-          const borderColor = status === 'occupied' ? 'border-red-500/40' : status === 'to_clean' ? 'border-amber-500/40' : 'border-emerald-500/40';
-          const statusBg = status === 'occupied' ? 'bg-red-500/5' : status === 'to_clean' ? 'bg-amber-500/5' : '';
+          const arrivalBooking = getTodayArrivalBooking(unit);
+          const departureBooking = getTodayDepartureBooking(unit);
+          const workflow = getUnitWorkflow(unit);
+          const borderColor = status === 'occupied' ? 'border-red-500/40' : status === 'to_clean' ? 'border-amber-500/40' : arrivalBooking ? 'border-blue-500/40' : 'border-emerald-500/40';
+          const statusBg = status === 'occupied' ? 'bg-red-500/5' : status === 'to_clean' ? 'bg-amber-500/5' : arrivalBooking ? 'bg-blue-500/5' : '';
           const isFnF = booking?.platform === 'Friends & Family';
           const isVip = (booking?.notes || '').includes('[VIP]');
 
@@ -1496,11 +1499,16 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
               <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
               {booking ? (
                 <div className="mt-2">
-                  <Badge className="font-body text-xs bg-red-500/20 text-red-400 border-red-500/40">Occupied</Badge>
+                  <Badge className="font-body text-xs bg-red-500/20 text-red-400 border-red-500/40">
+                    {departureBooking ? 'Departure Pending' : 'Occupied'}
+                  </Badge>
                   <p className="font-body text-xs text-foreground mt-1">{guest?.full_name || 'Guest'}</p>
                   <p className="font-body text-xs text-muted-foreground">
                     {format(new Date(booking.check_in + 'T00:00:00'), 'MMM d')} – {format(new Date(booking.check_out + 'T00:00:00'), 'MMM d')}
                   </p>
+                  {workflow.isExtensionReview && (
+                    <Badge variant="outline" className="font-body text-[10px] mt-1 border-blue-500/40 text-blue-400">Review extension</Badge>
+                  )}
                   <div className="flex flex-wrap gap-1 mt-1">
                     {isFnF && <Badge variant="outline" className="font-body text-[10px] border-emerald-500/40 text-emerald-400">F&F</Badge>}
                     {isVip && <Badge variant="outline" className="font-body text-[10px] border-amber-500/40 text-amber-400">⭐ VIP</Badge>}
@@ -1508,6 +1516,17 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                 </div>
               ) : status === 'to_clean' ? (
                 <Badge className="font-body text-xs mt-2 bg-amber-500/20 text-amber-400 border-amber-500/40">To Clean</Badge>
+              ) : arrivalBooking ? (
+                <div className="mt-2">
+                  <Badge className="font-body text-xs bg-blue-500/20 text-blue-400 border-blue-500/40">Ready for Check-in</Badge>
+                  <p className="font-body text-xs text-foreground mt-1">{arrivalBooking.resort_ops_guests?.full_name || 'Guest'}</p>
+                  <p className="font-body text-xs text-muted-foreground">
+                    {format(new Date(arrivalBooking.check_in + 'T00:00:00'), 'MMM d')} – {format(new Date(arrivalBooking.check_out + 'T00:00:00'), 'MMM d')}
+                  </p>
+                  {workflow.isExtensionReview && (
+                    <Badge variant="outline" className="font-body text-[10px] mt-1 border-blue-500/40 text-blue-400">Review duplicate / extension</Badge>
+                  )}
+                </div>
               ) : (
                 <div className="mt-2">
                   <Badge className="font-body text-xs bg-emerald-500/20 text-emerald-400 border-emerald-500/40">Ready</Badge>
