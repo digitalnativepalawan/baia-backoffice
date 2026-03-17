@@ -18,7 +18,7 @@ import EditGuestModal from '@/components/rooms/EditGuestModal';
 import EditTourModal from '@/components/rooms/EditTourModal';
 import GuestActivityTimeline from '@/components/rooms/GuestActivityTimeline';
 import { compressImage } from '@/lib/imageCompress';
-import { doesBookingCoverOperationalDay, getManilaDateKey, shouldTreatBookingAsOccupiedWithoutManualCheckIn } from '@/lib/receptionOccupancy';
+import { getManilaDateKey, resolveOperationalUnitWorkflow } from '@/lib/receptionOccupancy';
 
 const from = (table: string) => supabase.from(table as any) as any;
 
