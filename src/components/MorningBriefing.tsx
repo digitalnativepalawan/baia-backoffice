@@ -104,6 +104,11 @@ function useMorningBriefing() {
       const todayArrivals = bookings.filter((b: any) => b.check_in === today);
       const todayDepartures = bookings.filter((b: any) => b.check_out === today && doesBookingCoverOperationalDay(b, today));
 
+      const pendingArrivals = todayArrivals.filter((b: any) => {
+        const unitStatus = unitStatusMap.get(b.unit_id);
+        return unitStatus !== 'occupied';
+      });
+
       // --- Admin tasks ---
       const empMap = new Map(employees.map((e: any) => [e.id, e.display_name || e.name || 'Staff']));
       const adminTasks = ((tasksRes.data as any[]) || []).map((t: any) => ({
@@ -121,9 +126,7 @@ function useMorningBriefing() {
       const getGuestName = (b: any) => b.resort_ops_guests?.full_name || 'Guest';
 
       // Arrivals — only show if unit is NOT already occupied (guest hasn't checked in yet)
-      todayArrivals.forEach((b: any) => {
-        const unitStatus = unitStatusMap.get(b.unit_id);
-        if (unitStatus === 'occupied') return; // Already checked in, skip
+      pendingArrivals.forEach((b: any) => {
         opsTasks.push({
           label: `Prepare ${getUnitName(b)} for arrival — ${getGuestName(b)}`,
           icon: 'arrival',
