@@ -116,8 +116,7 @@ function useMorningBriefing() {
 
       const getUnitName = (b: any) => {
         if (b.resort_ops_units?.name) return b.resort_ops_units.name;
-        const u = opsUnits.find((ou: any) => ou.id === b.unit_id);
-        return u?.name || 'Room';
+        return opsUnitNameById.get(b.unit_id) || 'Room';
       };
       const getGuestName = (b: any) => b.resort_ops_guests?.full_name || 'Guest';
 
