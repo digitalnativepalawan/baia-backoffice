@@ -545,7 +545,10 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     if (readOnly) { toast.error('View-only access'); return; }
     if (!currentBooking) return;
     const today = new Date().toISOString().split('T')[0];
-    const { error } = await from('resort_ops_bookings').update({ check_out: today }).eq('id', currentBooking.id);
+    const { error } = await from('resort_ops_bookings').update({
+      check_out: today,
+      checked_out_at: new Date().toISOString(),
+    }).eq('id', currentBooking.id);
     if (error) { toast.error('Checkout failed'); return; }
     await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', selectedUnit.id);
     const existingOrder = housekeepingOrders.find((o: any) => o.unit_name === selectedUnit.name);

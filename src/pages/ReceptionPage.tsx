@@ -905,7 +905,10 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
         await logAudit('created', 'room_transactions', checkOutUnit.id, `Late check-out fee: ₱${lateFee.toLocaleString()} for ${checkOutBooking.resort_ops_guests?.full_name} in ${checkOutUnit.name}`);
       }
 
-      await from('resort_ops_bookings').update({ check_out: today }).eq('id', checkOutBooking.id);
+      await from('resort_ops_bookings').update({
+        check_out: today,
+        checked_out_at: new Date().toISOString(),
+      }).eq('id', checkOutBooking.id);
       await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', checkOutUnit.id);
 
       const existing = activeHkOrders.find((o: any) => o.unit_name === checkOutUnit.name);
