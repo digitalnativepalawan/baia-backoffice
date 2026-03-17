@@ -187,13 +187,13 @@ function useMorningBriefing() {
         opsTasks.push({ label: 'All clear — no pending operations', icon: 'kitchen' });
       }
 
-      return {
-        occupiedRooms,
-        totalRooms,
-        arrivalsToday: todayArrivals.length,
-        departuresToday: todayDepartures.length,
-        roomsToClean,
-        pendingKitchenOrders: pendingKitchenCount,
+        return {
+          occupiedRooms,
+          totalRooms,
+          arrivalsToday: pendingArrivals.length,
+          departuresToday: todayDepartures.length,
+          roomsToClean,
+          pendingKitchenOrders: pendingKitchenCount,
         adminTasks,
         opsTasks,
       };
