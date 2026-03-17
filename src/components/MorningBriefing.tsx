@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
-import { doesBookingCoverOperationalDay, shouldTreatBookingAsOccupiedWithoutManualCheckIn } from '@/lib/receptionOccupancy';
+import { resolveOperationalUnitWorkflow } from '@/lib/receptionOccupancy';
 import {
   Sun, BedDouble, LogIn, LogOut, Sparkles, UtensilsCrossed,
   ClipboardList, Zap, MapPin, Bell, Car,
