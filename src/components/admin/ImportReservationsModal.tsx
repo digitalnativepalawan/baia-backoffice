@@ -329,6 +329,7 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [showOnlyIssues, setShowOnlyIssues] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const downloadTemplate = () => {
@@ -470,6 +471,7 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
         });
 
         setRows(validatedRows);
+        setShowOnlyIssues(validatedRows.some((row) => row.errors.length > 0));
         setResult(null);
       } catch (error: any) {
         toast.error(error?.message || 'Failed to parse CSV');
@@ -721,6 +723,7 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
   const reset = () => {
     setRows([]);
     setResult(null);
+    setShowOnlyIssues(false);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -730,10 +733,13 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
   };
 
   const validSelected = rows.filter((row) => row.selected && row.errors.length === 0).length;
-  const previewRows = rows.slice(0, 8);
-  const extraCount = Math.max(rows.length - previewRows.length, 0);
-  const validRowCount = rows.filter((row) => row.errors.length === 0).length;
-  const invalidRowCount = rows.length - validRowCount;
+  const issueRows = rows.filter((row) => row.errors.length > 0);
+  const validRows = rows.filter((row) => row.errors.length === 0);
+  const previewValidRows = showOnlyIssues ? [] : validRows.slice(0, 8);
+  const previewRows = showOnlyIssues ? issueRows : [...issueRows, ...previewValidRows];
+  const extraCount = showOnlyIssues ? Math.max(rows.length - issueRows.length, 0) : Math.max(validRows.length - previewValidRows.length, 0);
+  const validRowCount = validRows.length;
+  const invalidRowCount = issueRows.length;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -814,6 +820,32 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
                   </Button>
                 </div>
 
+                {invalidRowCount > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-muted/30 p-2.5">
+                    <p className="font-body text-xs text-foreground">
+                      {invalidRowCount} row{invalidRowCount !== 1 ? 's' : ''} need attention
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant={showOnlyIssues ? 'secondary' : 'ghost'}
+                        className="h-7 text-xs"
+                        onClick={() => setShowOnlyIssues(true)}
+                      >
+                        Show only issues
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={!showOnlyIssues ? 'secondary' : 'ghost'}
+                        className="h-7 text-xs"
+                        onClick={() => setShowOnlyIssues(false)}
+                      >
+                        Show issues first
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-2 max-h-[42vh] overflow-y-auto">
                   {previewRows.map((row) => (
                     <div
@@ -868,7 +900,9 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
                   ))}
                   {extraCount > 0 && (
                     <p className="font-body text-xs text-muted-foreground text-center py-2">
-                      + {extraCount} more row{extraCount !== 1 ? 's' : ''} (all selected valid rows will be imported)
+                      {showOnlyIssues
+                        ? `+ ${extraCount} valid row${extraCount !== 1 ? 's' : ''} hidden`
+                        : `+ ${extraCount} more valid row${extraCount !== 1 ? 's' : ''} (all selected valid rows will be imported)`}
                     </p>
                   )}
                 </div>
