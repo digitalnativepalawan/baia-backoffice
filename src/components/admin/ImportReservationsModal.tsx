@@ -471,6 +471,7 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
         });
 
         setRows(validatedRows);
+        setShowOnlyIssues(validatedRows.some((row) => row.errors.length > 0));
         setResult(null);
       } catch (error: any) {
         toast.error(error?.message || 'Failed to parse CSV');
