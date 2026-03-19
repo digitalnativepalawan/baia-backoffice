@@ -72,7 +72,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     enabled: open && !!bookingId,
     queryFn: async () => {
       const { data } = await (supabase.from('guest_tours') as any)
-        .select('id, tour_name, status')
+        .select('id, tour_name, status, price')
         .eq('booking_id', bookingId)
         .in('status', ['booked', 'confirmed']);
       return data || [];
