@@ -104,26 +104,8 @@ const CashierBoard = () => {
     },
   });
 
-  // Bucket orders — active only (completed fetched separately)
-  const isAutoPayable = useCallback((o: any) => o.payment_type === 'Charge to Room' || !!o.tab_id, []);
-
-  const buckets = useMemo(() => {
-    const active: any[] = [];
-    const billOut: any[] = [];
-
-    orders.forEach(o => {
-      if (o.status === 'Served') {
-        billOut.push(o);
-      } else if (o.status === 'Ready' && !isAutoPayable(o)) {
-        // Walk-in/dine-in Ready orders go to Bill Out for cashier to collect payment
-        billOut.push(o);
-      } else {
-        active.push(o);
-      }
-    });
-
-    return { active, billOut };
-  }, [orders, isAutoPayable]);
+  // All orders are Served = bill out. No bucket split needed.
+  const billOutOrders = orders;
 
   // Handle payment confirmation
   const handleConfirmPayment = async () => {
