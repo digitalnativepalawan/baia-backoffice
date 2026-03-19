@@ -55,7 +55,8 @@ const OrderType = () => {
         .from('resort_ops_bookings')
         .select('id, check_in, check_out, unit_id, resort_ops_guests(full_name), resort_ops_units(name)')
         .lte('check_in', today)
-        .gt('check_out', today);
+        .gte('check_out', today)
+        .is('checked_out_at', null);
 
       if (!bookings || bookings.length === 0) return [];
 
