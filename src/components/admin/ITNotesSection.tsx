@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Check, X, ExternalLink, Globe, Lock } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, X, ExternalLink, Globe, Lock, Monitor } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ITNote {
