@@ -191,10 +191,29 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
   };
 
   const handleCompleteTour = async (tourId: string) => {
+    const tour = tours.find((t: any) => t.id === tourId);
     await from('guest_tours').update({ status: 'completed' }).eq('id', tourId);
+    // Post tour charge to room ledger
+    if (tour && Number(tour.price) > 0 && booking?.id) {
+      await (supabase.from('room_transactions' as any) as any).insert({
+        unit_id: unit.id,
+        unit_name: unit.name,
+        guest_name: guestName,
+        booking_id: booking.id,
+        transaction_type: 'tour',
+        amount: Number(tour.price),
+        tax_amount: 0,
+        service_charge_amount: 0,
+        total_amount: Number(tour.price),
+        payment_method: '',
+        staff_name: staffName,
+        notes: `Tour: ${tour.tour_name}`,
+      });
+      qc.invalidateQueries({ queryKey: ['room-transactions', unit.id] });
+    }
     await logAudit('updated', 'guest_tours', tourId, `Marked tour completed by ${staffName}`);
     qc.invalidateQueries({ queryKey: ['billing-tours'] });
-    toast.success('Tour marked completed');
+    toast.success('Tour completed & charged to room');
   };
 
   const handleEditTourSave = async (tourId: string) => {
