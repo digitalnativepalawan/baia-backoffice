@@ -79,9 +79,10 @@ const OrderType = () => {
             unitId: unit.id,
             unitName: unit.unit_name,
             guestName: (b.resort_ops_guests as any)?.full_name || '',
+            isDeparting: b.check_out === today,
           };
         })
-        .filter(Boolean) as { unitId: string; unitName: string; guestName: string }[];
+        .filter(Boolean) as { unitId: string; unitName: string; guestName: string; isDeparting: boolean }[];
     },
     refetchInterval: 30000,
   });
