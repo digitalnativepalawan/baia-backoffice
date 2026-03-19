@@ -60,8 +60,6 @@ const CashierBoard = () => {
         .from('orders')
         .select('*')
         .in('status', ['New', 'Preparing', 'Ready', 'Served'])
-        .is('room_id', null)
-        .neq('payment_type', 'Charge to Room')
         .gte('created_at', start.toISOString())
         .order('created_at', { ascending: true })
         .limit(300);
