@@ -17,6 +17,7 @@ import RoomBillingTab from '@/components/rooms/RoomBillingTab';
 import EditGuestModal from '@/components/rooms/EditGuestModal';
 import EditTourModal from '@/components/rooms/EditTourModal';
 import GuestActivityTimeline from '@/components/rooms/GuestActivityTimeline';
+import ClosedCheckoutsPanel from '@/components/rooms/ClosedCheckoutsPanel';
 import { compressImage } from '@/lib/imageCompress';
 import { getManilaDateKey, resolveOperationalUnitWorkflow } from '@/lib/receptionOccupancy';
 
@@ -1480,6 +1481,9 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           })}
         </div>
       )}
+
+      {/* ── Closed Checkouts (admin can reopen) ── */}
+      <ClosedCheckoutsPanel isAdmin={!readOnly} />
 
       {/* Room grid */}
       <h4 className="font-display text-xs tracking-wider text-muted-foreground uppercase">All Rooms</h4>

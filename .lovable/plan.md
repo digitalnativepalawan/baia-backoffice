@@ -1,42 +1,37 @@
 
 
-## Plan: Fix Checkout Flow & Add Reopen Closed Checkouts
+## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
 
-### Problem
-1. **CheckoutModal** (rooms dashboard) doesn't set `checked_out_at` timestamp — guests appear auto-checked-out or stuck
-2. No way to view or reopen completed checkouts if admin needs to make billing adjustments
-3. Need a "Closed Checkouts" section where admin/reception can select a past checkout, reopen it (clear `checked_out_at`), make changes, then close again
+### Issues Found
+
+1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
+
+2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
 
 ### Changes
 
-**1. `src/components/rooms/CheckoutModal.tsx` — Set `checked_out_at`**
-- Line 200-203: Add `checked_out_at: new Date().toISOString()` to the booking update (currently only sets `check_out` date, missing the timestamp)
+**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
+- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
+- Increase touch target size for edit/delete buttons on shift blocks
+- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
 
-**2. `src/pages/ReceptionPage.tsx` — Add "Closed Checkouts" panel**
-- Add a new collapsible section in the Reception departures area showing today's completed checkouts (bookings where `checked_out_at` is set and `check_out` = today)
-- Each entry shows guest name, unit, checkout time
-- **Admin only**: "Reopen" button that clears `checked_out_at` on the booking, sets unit status back to `occupied`, and logs an audit entry
-- After admin makes adjustments, they can re-run checkout normally
-- Use `usePermissions` to gate the reopen button to admin-level staff only
+**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
+- Add an "Assign Task" button alongside "Add Shift" 
+- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
+- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
+- For other tasks: creates an `employee_tasks` entry with due date and description
+- Tasks appear as colored pills on the timeline (already partially implemented)
 
-**3. `src/components/admin/RoomsDashboard.tsx` — Same closed checkouts visibility**
-- Add matching "Closed Checkouts" section with reopen capability (admin dashboard already has admin access)
+**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
+- In the task detail dialog, show who completed the task and when (`completed_at`)
+- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
+- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
 
-### Data flow
-```text
-Checkout completed → checked_out_at = timestamp, unit = to_clean
-    ↓
-"Closed Checkouts" section shows booking
-    ↓
-Admin clicks "Reopen" → checked_out_at = null, unit status = occupied
-    ↓
-Admin/reception makes billing adjustments on folio
-    ↓
-Re-checkout via normal flow → checked_out_at set again
-```
+**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
+- Add edit capability: change title, description, due date, reassign to different employee
+- Add delete capability for tasks
+- Show completion audit trail
 
-### Files changed
-- `src/components/rooms/CheckoutModal.tsx` (~1 line added)
-- `src/pages/ReceptionPage.tsx` (~40 lines added — closed checkouts query + UI + reopen handler)
-- `src/components/admin/RoomsDashboard.tsx` (~30 lines added — same closed checkouts section)
+### Files to Edit
+- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
 

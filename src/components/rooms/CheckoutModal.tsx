@@ -199,7 +199,10 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
 
       if (bookingId) {
         const today = new Date().toISOString().split('T')[0];
-        await supabase.from('resort_ops_bookings').update({ check_out: today } as any).eq('id', bookingId);
+        await supabase.from('resort_ops_bookings').update({
+          check_out: today,
+          checked_out_at: new Date().toISOString(),
+        } as any).eq('id', bookingId);
       }
 
       await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', unitId);
