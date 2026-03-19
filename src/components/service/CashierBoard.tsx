@@ -605,7 +605,7 @@ const BillOutPanel = ({
               {activeBookings.map((b: any) => (
                 <button
                   key={b.id}
-                  onClick={() => onSelectBooking(b)}
+                  onClick={() => onSelectBooking(b.id)}
                   className={`w-full text-left rounded-xl border-2 p-3 transition-all ${
                     selectedBooking === b.id
                       ? 'border-gold bg-gold/10 text-gold'
