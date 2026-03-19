@@ -13,6 +13,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/component
 import { ArrowLeft, LogIn, LogOut, DollarSign, BedDouble, MapPin, Car, Bike, Palmtree, UtensilsCrossed, ClipboardList, Sparkles, Receipt, ChevronDown, ChevronUp, CheckCircle, Clock, ShieldCheck, Eye, AlertTriangle, MessageSquare } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import RoomsDashboard from '@/components/admin/RoomsDashboard';
+import ClosedCheckoutsPanel from '@/components/rooms/ClosedCheckoutsPanel';
 import AddPaymentModal from '@/components/rooms/AddPaymentModal';
 import HousekeeperPickerModal from '@/components/rooms/HousekeeperPickerModal';
 import PasswordConfirmModal from '@/components/housekeeping/PasswordConfirmModal';
