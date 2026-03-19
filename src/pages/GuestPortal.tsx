@@ -530,6 +530,9 @@ const RentalsView = ({ session, qc }: { session: GuestPortalSession; qc: any }) 
       details: detail,
       status: 'pending',
     });
+    import('@/lib/telegram').then(({ notifyTelegram }) => {
+      notifyTelegram('tours,managers', `🚐 New Booking\n${session.guest_name}\nRental: ${detail}`);
+    });
     qc.invalidateQueries({ queryKey: ['guest-requests-admin'] });
     toast.success('Rental request submitted! Staff will confirm shortly.');
     setSelectedType(null);
