@@ -40,7 +40,10 @@ const PrintBill = ({ unitName, guestName, booking, transactions, roomOrders = []
     // Active requests total (transport, rentals — those with a price)
     const requestsTotal = activeRequests.reduce((s: number, r: any) => s + Number(r.price || 0), 0);
 
-    const balance = totalCharges - totalPayments + fnbTotal + toursTotal + requestsTotal;
+    const otaPrepayment = Number(booking?.paid_amount || 0);
+    const isOtaPlatform = booking?.platform && !['Direct', 'Website', 'direct', 'website'].includes(booking.platform);
+    const effectivePrepayment = isOtaPlatform ? otaPrepayment : 0;
+    const balance = totalCharges - totalPayments - effectivePrepayment + fnbTotal + toursTotal + requestsTotal;
 
     const staffNames = [...new Set(transactions.map(t => t.staff_name))].join(', ');
 
