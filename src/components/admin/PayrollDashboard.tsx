@@ -632,6 +632,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
           { key: 'summary' as SubView, label: 'Payroll', icon: DollarSign },
           { key: 'payments' as SubView, label: 'Payments', icon: Banknote },
           { key: 'tasks' as SubView, label: 'Tasks', icon: ListTodo },
+          { key: 'it' as SubView, label: 'IT', icon: Monitor },
           { key: 'settings' as SubView, label: 'Settings', icon: Settings },
         ]).map(({ key, label, icon: Icon }) => (
           <Button key={key} size="sm" variant={subView === key ? 'default' : 'outline'}
