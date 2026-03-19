@@ -15,7 +15,7 @@ import { buildTeamWhatsAppMessage, openWhatsApp } from '@/lib/messenger';
 import { useResortProfile } from '@/hooks/useResortProfile';
 
 type DateFilter = 'today' | 'yesterday' | 'week' | 'month' | 'all';
-type SubView = 'employees' | 'shifts' | 'summary' | 'payments' | 'tasks' | 'settings';
+type SubView = 'employees' | 'shifts' | 'summary' | 'payments' | 'tasks' | 'settings' | 'it';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
