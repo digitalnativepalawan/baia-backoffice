@@ -431,13 +431,17 @@ const TransportView = ({ session, qc }: { session: GuestPortalSession; qc: any }
     setSubmitting(true);
     const label = `${selectedRate.origin} → ${selectedRate.destination}`;
     // Create pending request — NO room charge yet
+    const transportDetail = `${label} — ₱${selectedRate.price} — ${pickupDate} ${pickupTime}`;
     await supabase.from('guest_requests').insert({
       booking_id: session.booking_id,
       room_id: session.room_id,
       guest_name: session.guest_name,
       request_type: 'Transport',
-      details: `${label} — ₱${selectedRate.price} — ${pickupDate} ${pickupTime}`,
+      details: transportDetail,
       status: 'pending',
+    });
+    import('@/lib/telegram').then(({ notifyTelegram }) => {
+      notifyTelegram('tours,managers', `🚐 New Booking\n${session.guest_name}\nTransport: ${transportDetail}`);
     });
     qc.invalidateQueries({ queryKey: ['guest-requests-admin'] });
     toast.success('Transport request submitted! Staff will confirm shortly.');
