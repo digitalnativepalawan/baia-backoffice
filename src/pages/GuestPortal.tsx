@@ -283,6 +283,9 @@ const MessageReceptionView = ({ session, qc, onDone }: { session: GuestPortalSes
       details: message.trim(),
       status: 'pending',
     });
+    import('@/lib/telegram').then(({ notifyTelegram }) => {
+      notifyTelegram('reception,managers', `🛎️ Guest Request\n${session.guest_name}\nMessage: ${message.trim()}`);
+    });
     qc.invalidateQueries({ queryKey: ['guest-requests-admin'] });
     setSubmitting(false);
     setSent(true);
