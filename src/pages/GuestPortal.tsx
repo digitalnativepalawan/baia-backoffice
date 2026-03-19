@@ -1003,7 +1003,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const { data: bookingData, refetch: refetchBooking } = useQuery({
     queryKey: ['guest-bill-agreement', session.booking_id],
     queryFn: async () => {
-      const { data } = await supabase.from('resort_ops_bookings').select('bill_agreed_at, room_rate, check_in, check_out').eq('id', session.booking_id).maybeSingle();
+      const { data } = await supabase.from('resort_ops_bookings').select('bill_agreed_at, room_rate, check_in, check_out, platform, paid_amount').eq('id', session.booking_id).maybeSingle();
       return data as any;
     },
   });
@@ -1189,7 +1189,10 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const unpaidOrdersSubtotal = unpaidOrdersTotal - unpaidOrdersSCTotal;
   const activeToursTotal = [...completedTours, ...pendingTours].reduce((s: number, t: any) => s + Number(t.price || 0), 0);
   const activeRequestsTotal = [...completedRequests, ...pendingRequests].reduce((s: number, r: any) => s + Number(r.price || 0), 0);
-  const balance = totalCharges - totalPayments + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
+  const guestOtaPrepayment = Number(bookingData?.paid_amount || 0);
+  const guestIsOta = bookingData?.platform && !['Direct', 'Website', 'direct', 'website'].includes(bookingData.platform);
+  const guestEffectivePrepayment = guestIsOta ? guestOtaPrepayment : 0;
+  const balance = totalCharges - totalPayments - guestEffectivePrepayment + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
   const hasPending = pendingTours.length > 0 || pendingRequests.length > 0;
 
   // Separate room charges (accommodation, room_charge, adjustment) for clear display
@@ -1252,6 +1255,12 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
           <span className="font-body text-sm text-muted-foreground">Total Payments</span>
           <span className="font-body text-sm text-green-400">₱{totalPayments.toLocaleString()}</span>
         </div>
+        {guestEffectivePrepayment > 0 && (
+          <div className="flex justify-between mb-2">
+            <span className="font-body text-sm text-muted-foreground">Paid via {bookingData.platform}</span>
+            <span className="font-body text-sm text-green-400">₱{guestEffectivePrepayment.toLocaleString()}</span>
+          </div>
+        )}
         <div className="border-t border-border pt-2 flex justify-between">
           <span className="font-body text-sm text-foreground font-medium">Balance</span>
           <span className={`font-body text-sm font-medium ${balance > 0 ? 'text-amber-400' : 'text-green-400'}`}>₱{balance.toLocaleString()}</span>
