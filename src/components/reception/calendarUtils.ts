@@ -14,6 +14,8 @@ export interface BookingWithGuest {
   children: number;
   notes: string | null;
   paid_amount: number;
+  checked_in_at?: string | null;
+  checked_out_at?: string | null;
   resort_ops_guests?: { id: string; full_name: string; email: string | null; phone: string | null } | null;
 }
 
@@ -45,12 +47,16 @@ export const getDateRange = (refDate: Date, view: CalendarView): { start: Date; 
 export const getDaysInRange = (start: Date, end: Date): Date[] =>
   eachDayOfInterval({ start, end });
 
-/** Check if a booking overlaps with a specific date */
+/**
+ * Check if a booking overlaps with a specific date.
+ * Includes the checkout day so turnover cells show both departing and arriving guests.
+ */
 export const bookingOverlapsDate = (booking: BookingWithGuest, date: Date): boolean => {
   const checkIn = parseISO(booking.check_in);
   const checkOut = parseISO(booking.check_out);
-  // Booking is active on check_in day up to (but not including) check_out day
-  return (isSameDay(date, checkIn) || isAfter(date, checkIn)) && isBefore(date, checkOut);
+  // Active from check_in day through check_out day (inclusive on both ends for calendar display)
+  return (isSameDay(date, checkIn) || isAfter(date, checkIn)) &&
+         (isSameDay(date, checkOut) || isBefore(date, checkOut));
 };
 
 /** Check if a booking overlaps with a date range */
@@ -95,15 +101,42 @@ export const findAvailableRooms = (
   });
 };
 
-/** Get booking status for color coding based on real occupancy */
+/**
+ * Get booking status for color coding based on real occupancy.
+ * On checkout day, guest is still "occupied" until they actually check out (checked_out_at).
+ * This reflects resort reality: guests check out before noon, not at midnight.
+ */
 export const getBookingStatus = (
   booking: BookingWithGuest,
-  unitStatus?: string,
-): 'occupied' | 'upcoming' | 'checked_out' | 'blocked' => {
+  date?: Date,
+): 'occupied' | 'upcoming' | 'checked_out' | 'blocked' | 'departing' | 'arriving' => {
   if (booking.platform === 'Maintenance') return 'blocked';
-  const today = new Date().toISOString().split('T')[0];
-  if (booking.check_out <= today) return 'checked_out';
-  if (unitStatus === 'occupied' && booking.check_in <= today) return 'occupied';
+
+  const today = date || new Date();
+  const todayStr = today.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+  const checkInDate = parseISO(booking.check_in);
+  const checkOutDate = parseISO(booking.check_out);
+
+  // Actually checked out (has checked_out_at timestamp)
+  if (booking.checked_out_at) return 'checked_out';
+
+  // Checkout day — guest is still in-house, departing
+  if (isSameDay(today, checkOutDate)) return 'departing';
+
+  // Past checkout date without checked_out_at — stale data, treat as checked out
+  if (booking.check_out < todayStr) return 'checked_out';
+
+  // Check-in day — arriving
+  if (isSameDay(today, checkInDate)) {
+    // Already checked in today
+    if (booking.checked_in_at) return 'occupied';
+    return 'arriving';
+  }
+
+  // Currently staying (between check-in and check-out)
+  if (booking.check_in <= todayStr && booking.check_out > todayStr) return 'occupied';
+
+  // Future booking
   return 'upcoming';
 };
 
@@ -113,4 +146,6 @@ export const statusColors: Record<string, { bg: string; text: string; border: st
   upcoming: { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/40' },
   checked_out: { bg: 'bg-muted/30', text: 'text-muted-foreground', border: 'border-border' },
   blocked: { bg: 'bg-destructive/20', text: 'text-destructive', border: 'border-destructive/40' },
+  departing: { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/40' },
+  arriving: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/40' },
 };

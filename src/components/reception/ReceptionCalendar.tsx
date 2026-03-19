@@ -35,23 +35,11 @@ const ReceptionCalendar = ({ bookings, rooms, units, canEdit, canManage }: Recep
   const { start, end } = useMemo(() => getDateRange(refDate, view), [refDate, view]);
   const days = useMemo(() => getDaysInRange(start, end), [start, end]);
 
-  // Build unit status lookup: resort_ops_unit_id → status from units table (by matching name)
-  const unitStatusMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const room of rooms) {
-      const matchingUnit = units.find(u => (u.name || u.unit_name || '') === room.name);
-      if (matchingUnit?.status) map[room.id] = matchingUnit.status;
-    }
-    return map;
-  }, [rooms, units]);
-
   // Filter bookings that overlap the visible range
   const visibleBookings = useMemo(() =>
     bookings.filter(b => bookingOverlapsRange(b, start, end)),
     [bookings, start, end]
   );
-
-  const getUnitStatusForBooking = (b: BookingWithGuest) => b.unit_id ? unitStatusMap[b.unit_id] : undefined;
 
   const navigate = (dir: 'prev' | 'next') => {
     setRefDate(d => {
@@ -62,9 +50,6 @@ const ReceptionCalendar = ({ bookings, rooms, units, canEdit, canManage }: Recep
   };
 
   const goToday = () => setRefDate(new Date());
-
-  const getBookingsForDay = (date: Date) =>
-    visibleBookings.filter(b => bookingOverlapsDate(b, date));
 
   const getRoomName = (unitId: string | null) => {
     if (!unitId) return '—';
@@ -77,12 +62,17 @@ const ReceptionCalendar = ({ bookings, rooms, units, canEdit, canManage }: Recep
     setAddOpen(true);
   };
 
-  const renderBookingChip = (b: BookingWithGuest, showRoom = true) => {
-    const status = getBookingStatus(b, getUnitStatusForBooking(b));
+  /** Render a booking chip with status-aware coloring for a specific day */
+  const renderBookingChip = (b: BookingWithGuest, day: Date, showRoom = true) => {
+    const status = getBookingStatus(b, day);
     const colors = statusColors[status];
-    const isCheckIn = (date: Date) => isSameDay(date, parseISO(b.check_in));
-    const isCheckOut = (date: Date) => isSameDay(date, parseISO(b.check_out));
     const guestName = b.platform === 'Maintenance' ? '🔧 Maintenance' : (b.resort_ops_guests?.full_name || 'No name');
+
+    const isCI = isSameDay(day, parseISO(b.check_in));
+    const isCO = isSameDay(day, parseISO(b.check_out));
+
+    // For turnover cells on desktop, show a compact tag
+    const tag = isCO ? 'OUT' : isCI ? 'IN' : null;
 
     return (
       <button
@@ -92,6 +82,7 @@ const ReceptionCalendar = ({ bookings, rooms, units, canEdit, canManage }: Recep
       >
         <span className="truncate block">
           {guestName}
+          {tag && <span className="text-[9px] opacity-60 ml-0.5">({tag})</span>}
           {showRoom && <span className="text-[10px] opacity-70 ml-1">• {getRoomName(b.unit_id)}</span>}
         </span>
       </button>
@@ -102,7 +93,7 @@ const ReceptionCalendar = ({ bookings, rooms, units, canEdit, canManage }: Recep
   const renderMobileView = () => (
     <div className="space-y-2 md:hidden">
       {days.map(day => {
-        const dayBookings = getBookingsForDay(day);
+        const dayBookings = visibleBookings.filter(b => bookingOverlapsDate(b, day));
         const isToday = isSameDay(day, new Date());
         return (
           <div
@@ -117,7 +108,7 @@ const ReceptionCalendar = ({ bookings, rooms, units, canEdit, canManage }: Recep
               <p className="text-[11px] text-muted-foreground font-body italic">No bookings</p>
             )}
             {dayBookings.map(b => {
-              const status = getBookingStatus(b, getUnitStatusForBooking(b));
+              const status = getBookingStatus(b, day);
               const colors = statusColors[status];
               const guestName = b.platform === 'Maintenance' ? '🔧 Maintenance' : (b.resort_ops_guests?.full_name || 'No name');
               const isCI = isSameDay(day, parseISO(b.check_in));
@@ -131,8 +122,8 @@ const ReceptionCalendar = ({ bookings, rooms, units, canEdit, canManage }: Recep
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-body text-sm truncate">{guestName}</span>
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      {isCI && <Badge variant="outline" className="text-[9px] py-0 border-blue-500/40 text-blue-400">IN</Badge>}
-                      {isCO && <Badge variant="outline" className="text-[9px] py-0 border-muted-foreground/40 text-muted-foreground">OUT</Badge>}
+                      {isCO && <Badge variant="outline" className="text-[9px] py-0 border-orange-500/40 text-orange-400">OUT</Badge>}
+                      {isCI && <Badge variant="outline" className="text-[9px] py-0 border-emerald-500/40 text-emerald-400">IN</Badge>}
                     </div>
                   </div>
                   <p className="font-body text-[11px] opacity-70 mt-0.5">
@@ -186,12 +177,31 @@ const ReceptionCalendar = ({ bookings, rooms, units, canEdit, canManage }: Recep
                 b.unit_id === room.id && bookingOverlapsDate(b, day)
               );
               const isToday = isSameDay(day, new Date());
+
+              // Detect turnover: one booking checking out + another checking in on same day
+              const departingBooking = dayBookings.find(b => isSameDay(day, parseISO(b.check_out)) && !b.checked_out_at);
+              const arrivingBooking = dayBookings.find(b => isSameDay(day, parseISO(b.check_in)));
+              const isTurnover = Boolean(departingBooking && arrivingBooking && departingBooking.id !== arrivingBooking.id);
+
+              if (isTurnover && departingBooking && arrivingBooking) {
+                // Split cell: departing on top, arriving on bottom
+                return (
+                  <div
+                    key={day.toISOString()}
+                    className={`px-0.5 py-0.5 border-r border-border last:border-r-0 min-h-[32px] flex flex-col gap-0.5 ${isToday ? 'bg-primary/5' : ''}`}
+                  >
+                    {renderBookingChip(departingBooking, day, false)}
+                    {renderBookingChip(arrivingBooking, day, false)}
+                  </div>
+                );
+              }
+
               return (
                 <div
                   key={day.toISOString()}
                   className={`px-0.5 py-0.5 border-r border-border last:border-r-0 min-h-[32px] ${isToday ? 'bg-primary/5' : ''}`}
                 >
-                  {dayBookings.map(b => renderBookingChip(b, false))}
+                  {dayBookings.map(b => renderBookingChip(b, day, false))}
                 </div>
               );
             })}
@@ -221,7 +231,6 @@ const ReceptionCalendar = ({ bookings, rooms, units, canEdit, canManage }: Recep
               onClick={() => {
                 setEditBooking(null);
                 setAddOpen(true);
-                // Will auto-set platform to Maintenance via default — user picks it
               }}
               className="font-display text-xs tracking-wider text-destructive border-destructive/40 hover:bg-destructive/10"
             >
@@ -258,6 +267,8 @@ const ReceptionCalendar = ({ bookings, rooms, units, canEdit, canManage }: Recep
       {/* Legend */}
       <div className="flex flex-wrap gap-3 text-[10px] font-body text-muted-foreground">
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-500/50" /> Occupied</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-orange-500/50" /> Departing</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500/50" /> Arriving</span>
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500/50" /> Upcoming</span>
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-muted/50" /> Checked Out</span>
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-destructive/50" /> Blocked</span>
