@@ -654,10 +654,12 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
         await logAudit('created', 'room_transactions', unit.id, `Early check-in fee: ₱${earlyFee.toLocaleString()} for ${guestFullName} in ${unitName}`);
       }
 
-      // ── Auto-post accommodation charge ──
+      // ── Auto-post accommodation charge (skip for OTA-prepaid bookings) ──
       const roomRate = Number(checkInBooking.room_rate) || 0;
       const nights = Math.max(1, Math.ceil((new Date(checkInBooking.check_out).getTime() - new Date(checkInBooking.check_in).getTime()) / 86400000));
-      if (roomRate > 0) {
+      const otaPlatforms = ['booking.com', 'airbnb', 'agoda', 'expedia', 'hostelworld', 'trip.com'];
+      const isOtaBooking = checkInBooking.platform && otaPlatforms.includes(checkInBooking.platform.toLowerCase());
+      if (roomRate > 0 && !isOtaBooking) {
         const accomTotal = nights * roomRate;
         await (from('room_transactions') as any).insert({
           unit_id: unit.id,
@@ -760,8 +762,10 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
 
       await supabase.from('units').update({ status: 'occupied' } as any).eq('id', walkInUnit.id);
 
-      // ── Auto-post accommodation charge for walk-in ──
+      // ── Auto-post accommodation charge for walk-in (skip for OTA platforms) ──
       const walkInRate = parseFloat(walkInForm.roomRate) || 0;
+      const walkInOtaPlatforms = ['booking.com', 'airbnb', 'agoda', 'expedia', 'hostelworld', 'trip.com'];
+      const isWalkInOta = walkInForm.platform && walkInOtaPlatforms.includes(walkInForm.platform.toLowerCase());
       const walkInNights = Math.max(1, Math.ceil((new Date(walkInForm.checkOut).getTime() - new Date(walkInForm.checkIn).getTime()) / 86400000));
       const { data: newBookings } = await from('resort_ops_bookings')
         .select('id')
@@ -772,7 +776,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
         .limit(1) as any;
       const newBookingId = newBookings?.[0]?.id || null;
 
-      if (walkInRate > 0 && newBookingId) {
+      if (walkInRate > 0 && newBookingId && !isWalkInOta) {
         const accomTotal = walkInNights * walkInRate;
         await (from('room_transactions') as any).insert({
           unit_id: walkInUnit.id,

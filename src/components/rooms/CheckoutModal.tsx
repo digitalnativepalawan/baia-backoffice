@@ -150,16 +150,16 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     },
   });
 
-  const charges = transactions.filter(t => t.total_amount > 0);
-  const payments = transactions.filter(t => t.total_amount < 0);
+  const otaPlatforms = ['booking.com', 'airbnb', 'agoda', 'expedia', 'hostelworld', 'trip.com'];
+  const isOtaStay = booking?.platform && otaPlatforms.includes(booking.platform.toLowerCase());
+  const visibleTransactions = isOtaStay ? transactions.filter(t => t.transaction_type !== 'accommodation') : transactions;
+  const charges = visibleTransactions.filter(t => t.total_amount > 0);
+  const payments = visibleTransactions.filter(t => t.total_amount < 0);
   const totalCharges = charges.reduce((s, t) => s + t.total_amount, 0);
   const totalPayments = Math.abs(payments.reduce((s, t) => s + t.total_amount, 0));
   const paidFnbTotal = paidOrders.reduce((s, o: any) => s + (o.total || 0), 0);
   const unpaidTotal = unpaidOrders.reduce((s, o: any) => s + (o.total || 0), 0);
-  const otaPrepayment = Number(booking?.paid_amount || 0);
-  const isOtaPlatform = booking?.platform && !['Direct', 'Website', 'direct', 'website'].includes(booking.platform);
-  const effectivePrepayment = isOtaPlatform ? otaPrepayment : 0;
-  const balance = totalCharges - totalPayments - effectivePrepayment + unpaidTotal;
+  const balance = totalCharges - totalPayments + unpaidTotal;
 
   const nights = booking ? Math.max(1, Math.ceil((new Date(booking.check_out).getTime() - new Date(booking.check_in).getTime()) / 86400000)) : 0;
   const roomRate = booking ? Number(booking.room_rate) : 0;
@@ -408,15 +408,9 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
                 <span className="text-emerald-400">₱{Math.abs(t.total_amount).toLocaleString()}</span>
               </div>
             ))}
-            {effectivePrepayment > 0 && (
-              <div className="flex justify-between font-body text-sm">
-                <span className="text-muted-foreground">Paid via {booking.platform}</span>
-                <span className="text-emerald-400">₱{effectivePrepayment.toLocaleString()}</span>
-              </div>
-            )}
             <div className="flex justify-between font-display text-sm">
               <span className="text-foreground">Total Paid</span>
-              <span className="text-emerald-400">₱{(totalPayments + effectivePrepayment).toLocaleString()}</span>
+              <span className="text-emerald-400">₱{totalPayments.toLocaleString()}</span>
             </div>
           </div>
 

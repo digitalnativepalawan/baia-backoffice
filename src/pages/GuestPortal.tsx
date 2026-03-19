@@ -1180,8 +1180,12 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
     return () => { supabase.removeChannel(channel); };
   }, [session.booking_id, session.room_id, qc]);
 
-  const charges = transactions.filter((t: any) => (t.total_amount || 0) > 0);
-  const payments = transactions.filter((t: any) => (t.total_amount || 0) < 0);
+  const otaPlatforms = ['booking.com', 'airbnb', 'agoda', 'expedia', 'hostelworld', 'trip.com'];
+  const guestIsOta = bookingData?.platform && otaPlatforms.includes(bookingData.platform.toLowerCase());
+  // Filter out accommodation rows for OTA stays
+  const visibleTransactions = guestIsOta ? transactions.filter((t: any) => t.transaction_type !== 'accommodation') : transactions;
+  const charges = visibleTransactions.filter((t: any) => (t.total_amount || 0) > 0);
+  const payments = visibleTransactions.filter((t: any) => (t.total_amount || 0) < 0);
   const totalCharges = charges.reduce((s: number, t: any) => s + (t.total_amount || 0), 0);
   const totalPayments = Math.abs(payments.reduce((s: number, t: any) => s + (t.total_amount || 0), 0));
   const unpaidOrdersTotal = unpaidOrders.reduce((s: number, o: any) => s + (o.total || 0) + (o.service_charge || 0), 0);
@@ -1189,21 +1193,18 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const unpaidOrdersSubtotal = unpaidOrdersTotal - unpaidOrdersSCTotal;
   const activeToursTotal = [...completedTours, ...pendingTours].reduce((s: number, t: any) => s + Number(t.price || 0), 0);
   const activeRequestsTotal = [...completedRequests, ...pendingRequests].reduce((s: number, r: any) => s + Number(r.price || 0), 0);
-  const guestOtaPrepayment = Number(bookingData?.paid_amount || 0);
-  const guestIsOta = bookingData?.platform && !['Direct', 'Website', 'direct', 'website'].includes(bookingData.platform);
-  const guestEffectivePrepayment = guestIsOta ? guestOtaPrepayment : 0;
-  const balance = totalCharges - totalPayments - guestEffectivePrepayment + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
+  const balance = totalCharges - totalPayments + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
   const hasPending = pendingTours.length > 0 || pendingRequests.length > 0;
 
-  // Separate room charges (accommodation, room_charge, adjustment) for clear display
+  // Separate room charges for clear display (accommodation already filtered for OTA)
   const roomCharges = charges.filter((t: any) => ['accommodation', 'room_charge', 'adjustment', 'charge'].includes(t.transaction_type));
 
   return (
     <div className="space-y-4">
       <h2 className="font-display text-lg text-foreground">My Bill</h2>
 
-      {/* Stay Details */}
-      {bookingRoomRate > 0 && (
+      {/* Stay Details — hide for OTA stays since accommodation is prepaid */}
+      {bookingRoomRate > 0 && !guestIsOta && (
         <div className="bg-card border border-border rounded-lg p-4 space-y-1">
           <p className="font-display text-xs tracking-wider text-muted-foreground uppercase">Stay Details</p>
           <div className="flex justify-between">
@@ -1218,6 +1219,12 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
             <span className="font-body text-sm text-muted-foreground font-medium">Room Total</span>
             <span className="font-body text-sm text-foreground font-medium">₱{(bookingRoomRate * bookingNights).toLocaleString()}</span>
           </div>
+        </div>
+      )}
+      {guestIsOta && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3">
+          <p className="font-body text-sm text-emerald-400">✓ Accommodation paid via {bookingData.platform}</p>
+          <p className="font-body text-xs text-muted-foreground">Only incidentals (food, tours, etc.) appear on your bill below.</p>
         </div>
       )}
 
@@ -1255,12 +1262,6 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
           <span className="font-body text-sm text-muted-foreground">Total Payments</span>
           <span className="font-body text-sm text-green-400">₱{totalPayments.toLocaleString()}</span>
         </div>
-        {guestEffectivePrepayment > 0 && (
-          <div className="flex justify-between mb-2">
-            <span className="font-body text-sm text-muted-foreground">Paid via {bookingData.platform}</span>
-            <span className="font-body text-sm text-green-400">₱{guestEffectivePrepayment.toLocaleString()}</span>
-          </div>
-        )}
         <div className="border-t border-border pt-2 flex justify-between">
           <span className="font-body text-sm text-foreground font-medium">Balance</span>
           <span className={`font-body text-sm font-medium ${balance > 0 ? 'text-amber-400' : 'text-green-400'}`}>₱{balance.toLocaleString()}</span>

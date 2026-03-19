@@ -120,8 +120,12 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
     },
   });
 
-  const charges = transactions.filter(t => t.total_amount > 0);
-  const payments = transactions.filter(t => t.total_amount < 0);
+  const otaPlatforms = ['booking.com', 'airbnb', 'agoda', 'expedia', 'hostelworld', 'trip.com'];
+  const isOtaStay = booking?.platform && otaPlatforms.includes(booking.platform.toLowerCase());
+  // Filter out accommodation rows for OTA stays (backward compat for old bad entries)
+  const visibleTransactions = isOtaStay ? transactions.filter(t => t.transaction_type !== 'accommodation') : transactions;
+  const charges = visibleTransactions.filter(t => t.total_amount > 0);
+  const payments = visibleTransactions.filter(t => t.total_amount < 0);
   const totalCharges = charges.reduce((s, t) => s + t.total_amount, 0);
   const totalPayments = Math.abs(payments.reduce((s, t) => s + t.total_amount, 0));
   const unpaidOrdersTotal = unpaidOrders
@@ -133,10 +137,7 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
   const unpaidOrdersSubtotal = unpaidOrdersTotal - unpaidOrdersSCTotal;
   const activeToursTotal = tours.filter((t: any) => t.status !== 'cancelled').reduce((s: number, t: any) => s + Number(t.price || 0), 0);
   const activeRequestsTotal = requests.filter((r: any) => r.status !== 'cancelled').reduce((s: number, r: any) => s + Number(r.price || 0), 0);
-  const otaPrepayment = Number(booking?.paid_amount || 0);
-  const isOtaPlatform = booking?.platform && !['Direct', 'Website', 'direct', 'website'].includes(booking.platform);
-  const effectivePrepayment = isOtaPlatform ? otaPrepayment : 0;
-  const balance = totalCharges - totalPayments - effectivePrepayment + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
+  const balance = totalCharges - totalPayments + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
 
   const staffName = localStorage.getItem('emp_display_name') || localStorage.getItem('emp_name') || 'Staff';
 
@@ -776,10 +777,10 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
         <p className="font-display text-xs tracking-wider text-muted-foreground uppercase flex items-center gap-1.5">
           <CreditCard className="w-3.5 h-3.5" /> Room Ledger
         </p>
-        {transactions.length === 0 ? (
+        {visibleTransactions.length === 0 ? (
           <p className="font-body text-sm text-muted-foreground text-center py-4">No transactions yet</p>
         ) : (
-          transactions.map(t => {
+          visibleTransactions.map(t => {
             const isEditingThisTx = editingTxId === t.id;
             return (
               <div key={t.id} className={`border rounded-lg p-3 space-y-1 ${t.transaction_type === 'accommodation' ? 'border-primary/30 bg-primary/5' : 'border-border'}`}>
@@ -863,12 +864,6 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
           <span className="text-muted-foreground">Total Payments</span>
           <span className="text-green-400">₱{totalPayments.toLocaleString()}</span>
         </div>
-        {effectivePrepayment > 0 && (
-          <div className="flex justify-between font-body text-sm">
-            <span className="text-muted-foreground">Paid via {booking.platform}</span>
-            <span className="text-green-400">₱{effectivePrepayment.toLocaleString()}</span>
-          </div>
-        )}
         <Separator />
         <div className="flex justify-between font-display text-lg tracking-wider">
           <span className="text-foreground">Balance</span>

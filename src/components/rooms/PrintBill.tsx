@@ -20,8 +20,11 @@ const PrintBill = ({ unitName, guestName, booking, transactions, roomOrders = []
   const { data: invoiceSettings } = useInvoiceSettings();
 
   const handlePrint = () => {
-    const charges = transactions.filter(t => t.total_amount > 0);
-    const payments = transactions.filter(t => t.total_amount < 0);
+    const otaPlatforms = ['booking.com', 'airbnb', 'agoda', 'expedia', 'hostelworld', 'trip.com'];
+    const isOtaStay = booking?.platform && otaPlatforms.includes(booking.platform.toLowerCase());
+    const visibleTransactions = isOtaStay ? transactions.filter(t => t.transaction_type !== 'accommodation') : transactions;
+    const charges = visibleTransactions.filter(t => t.total_amount > 0);
+    const payments = visibleTransactions.filter(t => t.total_amount < 0);
     const totalCharges = charges.reduce((s, t) => s + t.total_amount, 0);
     const totalPayments = Math.abs(payments.reduce((s, t) => s + t.total_amount, 0));
 
@@ -40,10 +43,7 @@ const PrintBill = ({ unitName, guestName, booking, transactions, roomOrders = []
     // Active requests total (transport, rentals — those with a price)
     const requestsTotal = activeRequests.reduce((s: number, r: any) => s + Number(r.price || 0), 0);
 
-    const otaPrepayment = Number(booking?.paid_amount || 0);
-    const isOtaPlatform = booking?.platform && !['Direct', 'Website', 'direct', 'website'].includes(booking.platform);
-    const effectivePrepayment = isOtaPlatform ? otaPrepayment : 0;
-    const balance = totalCharges - totalPayments - effectivePrepayment + fnbTotal + toursTotal + requestsTotal;
+    const balance = totalCharges - totalPayments + fnbTotal + toursTotal + requestsTotal;
 
     const staffNames = [...new Set(transactions.map(t => t.staff_name))].join(', ');
 
@@ -125,8 +125,7 @@ ${activeRequests.map((r: any) => `<div class="row"><span>${r.request_type}</span
 <div class="line"></div>
 <h3>PAYMENTS</h3>
 ${payments.map(t => `<div class="row"><span>${t.payment_method}${t.notes ? ` — ${t.notes}` : ''}</span><span>₱${Math.abs(t.total_amount).toLocaleString()}</span></div>`).join('')}
-${effectivePrepayment > 0 ? `<div class="row"><span>Paid via ${booking.platform}</span><span>₱${effectivePrepayment.toLocaleString()}</span></div>` : ''}
-<div class="row bold"><span>Total Paid</span><span>₱${(totalPayments + effectivePrepayment).toLocaleString()}</span></div>
+<div class="row bold"><span>Total Paid</span><span>₱${totalPayments.toLocaleString()}</span></div>
 <div class="line"></div>
 <div class="row bold" style="font-size:14px"><span>BALANCE</span><span>₱${balance.toLocaleString()}</span></div>
 <div class="line"></div>
