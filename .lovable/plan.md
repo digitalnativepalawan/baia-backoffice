@@ -1,56 +1,37 @@
 
 
-## Plan: Fix Tour/Request Billing Flow & Stale Checked-Out Guests
+## Plan: Fix Schedule Delete & Enhance Task/Assignment Scheduling
 
-### Two problems identified
+### Issues Found
 
-**Problem 1: Completed tours/requests still show as unpaid balance**
-- When a tour is marked "completed", the status changes but the tour price stays in the balance calculation (`activeToursTotal` includes everything except `cancelled`).
-- There's no mechanism to settle/charge the tour to the room ledger. A completed tour should either be posted as a room transaction (charge) or marked as paid — not left floating in the balance forever.
-- Same issue exists for `guest_requests` with prices.
-- Affects: `RoomBillingTab.tsx` (line 138), `CheckoutModal.tsx` (line 162 doesn't even include tours), `GuestPortal.tsx` (line 1194), and `PrintBill.tsx`.
+1. **Delete button bug**: The trash icon on shift blocks triggers `setDeleteId(s.id)`, but the parent div's `onClick={() => openEdit(s)}` fires simultaneously despite `stopPropagation`. On mobile, the tiny button (3x3 icon) is nearly impossible to tap. The AlertDialog `onOpenChange={() => setDeleteId(null)}` also races with the confirm action.
 
-**Problem 2: Checked-out guest (Peggy Lu) still visible in Order Type "Current Guests"**
-- The query on `OrderType.tsx` line 59 correctly filters `checked_out_at IS NULL`, but the query uses a 30-second stale time and the `occupied-guests` query key may not be invalidated when checkout happens.
-- The `CheckoutModal` checkout handler needs to invalidate the `occupied-guests` query key so the Order Type page refreshes immediately.
+2. **Missing scheduling features**: The schedule only manages time shifts. There's no way to assign tasks like housecleaning, reception duty, or track completion from within the schedule view.
 
 ### Changes
 
-**1. `src/components/rooms/RoomBillingTab.tsx` — Fix tour/request completion flow**
-- When "Complete" is clicked on a tour, also post a `room_transaction` with type `tour` for the tour price (charging it to the room ledger)
-- Change `activeToursTotal` to only count tours that are NOT `completed` and NOT `cancelled` (completed ones are now on the ledger)
-- Same logic for requests: completion posts a `service_request` transaction to the ledger
-- Change `activeRequestsTotal` to only count non-completed, non-cancelled requests
-- Show "completed" tours/requests with a "Paid" or "Charged" badge instead of "completed"
+**1. Fix Delete Button** (`WeeklyScheduleManager.tsx`)
+- Make `confirmDelete` capture `deleteId` before the dialog closes by saving it in a ref or local variable
+- Increase touch target size for edit/delete buttons on shift blocks
+- Prevent edit modal from opening when clicking edit/delete icons (the `stopPropagation` exists but the parent click handler on the entire timeline area also fires)
 
-**2. `src/pages/GuestPortal.tsx` — Match the same balance logic**
-- `activeToursTotal` should exclude completed tours (they're now on the room ledger)
-- `activeRequestsTotal` should exclude completed requests
-- Show completed tours/requests as "Charged to Room" in the guest view
+**2. Add Task/Assignment Creation from Schedule** (`WeeklyScheduleManager.tsx`)
+- Add an "Assign Task" button alongside "Add Shift" 
+- New modal to create a task assignment: select employee, pick type (Housecleaning, Reception, Custom), set date/time, add notes
+- For housecleaning: select a room/unit to clean, auto-creates a `housekeeping_orders` entry assigned to the selected employee
+- For other tasks: creates an `employee_tasks` entry with due date and description
+- Tasks appear as colored pills on the timeline (already partially implemented)
 
-**3. `src/components/rooms/CheckoutModal.tsx` — Include tours/requests in balance + fix query invalidation**
-- Add tours and requests totals to the checkout balance calculation (currently line 162 only uses `totalCharges - totalPayments + unpaidTotal`, missing tours/requests)
-- On successful checkout, invalidate `occupied-guests` query key
+**3. Show Completion Info on Task Detail** (`WeeklyScheduleManager.tsx`)
+- In the task detail dialog, show who completed the task and when (`completed_at`)
+- For housekeeping pills, show completion status (`cleaning_completed_at`, `completed_by_name`)
+- Make housekeeping pills clickable to show full details (room, status, who inspected/cleaned)
 
-**4. `src/components/rooms/PrintBill.tsx` — Same balance alignment**
-- Ensure printed bill balance excludes completed (already-charged) tours/requests
+**4. Enhance Task Detail Dialog** (`WeeklyScheduleManager.tsx`)
+- Add edit capability: change title, description, due date, reassign to different employee
+- Add delete capability for tasks
+- Show completion audit trail
 
-**5. `src/pages/ReceptionPage.tsx` — Invalidate `occupied-guests` on checkout**
-- After any checkout action, invalidate `occupied-guests` so the Order Type screen immediately drops the guest
-
-### Data flow after fix
-```text
-Tour booked → status: "booked" → shows in balance as pending
-Tour completed by staff → status: "completed" + room_transaction posted → moves to ledger
-Balance: tours only count booked/confirmed (not completed/cancelled)
-Checkout: settles remaining balance, invalidates occupied-guests query
-Order Type: immediately reflects checkout
-```
-
-### Files changed
-- `src/components/rooms/RoomBillingTab.tsx` (~20 lines — completion handlers + balance calc)
-- `src/pages/GuestPortal.tsx` (~5 lines — balance calc)
-- `src/components/rooms/CheckoutModal.tsx` (~10 lines — balance + invalidation)
-- `src/components/rooms/PrintBill.tsx` (~5 lines — balance alignment)
-- `src/pages/ReceptionPage.tsx` (~2 lines — invalidate occupied-guests on checkout)
+### Files to Edit
+- `src/components/admin/WeeklyScheduleManager.tsx` — all changes in this single file
 

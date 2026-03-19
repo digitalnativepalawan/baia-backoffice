@@ -936,6 +936,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       qc.invalidateQueries({ queryKey: ['reception-guest-requests'] });
       qc.invalidateQueries({ queryKey: ['reception-tour-bookings'] });
       qc.invalidateQueries({ queryKey: ['reception-tours-today'] });
+      qc.invalidateQueries({ queryKey: ['occupied-guests'] });
 
       setCheckOutOpen(false);
       setCheckOutBooking(null);

@@ -72,7 +72,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     enabled: open && !!bookingId,
     queryFn: async () => {
       const { data } = await (supabase.from('guest_tours') as any)
-        .select('id, tour_name, status')
+        .select('id, tour_name, status, price')
         .eq('booking_id', bookingId)
         .in('status', ['booked', 'confirmed']);
       return data || [];
@@ -85,7 +85,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     enabled: open && !!bookingId,
     queryFn: async () => {
       const { data } = await (supabase.from('guest_requests') as any)
-        .select('id, request_type, status')
+        .select('id, request_type, status, price')
         .eq('booking_id', bookingId)
         .in('status', ['pending', 'confirmed']);
       return data || [];
@@ -159,7 +159,10 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
   const totalPayments = Math.abs(payments.reduce((s, t) => s + t.total_amount, 0));
   const paidFnbTotal = paidOrders.reduce((s, o: any) => s + (o.total || 0), 0);
   const unpaidTotal = unpaidOrders.reduce((s, o: any) => s + (o.total || 0), 0);
-  const balance = totalCharges - totalPayments + unpaidTotal;
+  // Include pending tours/requests in balance (completed ones are already on the ledger)
+  const pendingToursTotal = incompleteTours.reduce((s: number, t: any) => s + Number(t.price || 0), 0);
+  const pendingRequestsTotal = incompleteRequests.reduce((s: number, r: any) => s + Number(r.price || 0), 0);
+  const balance = totalCharges - totalPayments + unpaidTotal + pendingToursTotal + pendingRequestsTotal;
 
   const nights = booking ? Math.max(1, Math.ceil((new Date(booking.check_out).getTime() - new Date(booking.check_in).getTime()) / 86400000)) : 0;
   const roomRate = booking ? Number(booking.room_rate) : 0;
@@ -269,6 +272,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
       qc.invalidateQueries({ queryKey: ['reception-guest-requests'] });
       qc.invalidateQueries({ queryKey: ['reception-tour-bookings'] });
       qc.invalidateQueries({ queryKey: ['reception-tours-today'] });
+      qc.invalidateQueries({ queryKey: ['occupied-guests'] });
       toast.success(`Checkout complete${hkEmployee ? ` — ${hkEmployee.display_name || hkEmployee.name} notified` : ''}`);
       onOpenChange(false);
     } catch {

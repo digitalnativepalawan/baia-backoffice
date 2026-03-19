@@ -135,8 +135,8 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
     .filter(o => o.payment_type !== 'Charge to Room')
     .reduce((s, o) => s + Number(o.service_charge || 0), 0);
   const unpaidOrdersSubtotal = unpaidOrdersTotal - unpaidOrdersSCTotal;
-  const activeToursTotal = tours.filter((t: any) => t.status !== 'cancelled').reduce((s: number, t: any) => s + Number(t.price || 0), 0);
-  const activeRequestsTotal = requests.filter((r: any) => r.status !== 'cancelled').reduce((s: number, r: any) => s + Number(r.price || 0), 0);
+  const activeToursTotal = tours.filter((t: any) => t.status !== 'cancelled' && t.status !== 'completed').reduce((s: number, t: any) => s + Number(t.price || 0), 0);
+  const activeRequestsTotal = requests.filter((r: any) => r.status !== 'cancelled' && r.status !== 'completed').reduce((s: number, r: any) => s + Number(r.price || 0), 0);
   const balance = totalCharges - totalPayments + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
 
   const staffName = localStorage.getItem('emp_display_name') || localStorage.getItem('emp_name') || 'Staff';
@@ -191,10 +191,29 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
   };
 
   const handleCompleteTour = async (tourId: string) => {
+    const tour = tours.find((t: any) => t.id === tourId);
     await from('guest_tours').update({ status: 'completed' }).eq('id', tourId);
+    // Post tour charge to room ledger
+    if (tour && Number(tour.price) > 0 && booking?.id) {
+      await (supabase.from('room_transactions' as any) as any).insert({
+        unit_id: unit.id,
+        unit_name: unit.name,
+        guest_name: guestName,
+        booking_id: booking.id,
+        transaction_type: 'tour',
+        amount: Number(tour.price),
+        tax_amount: 0,
+        service_charge_amount: 0,
+        total_amount: Number(tour.price),
+        payment_method: '',
+        staff_name: staffName,
+        notes: `Tour: ${tour.tour_name}`,
+      });
+      qc.invalidateQueries({ queryKey: ['room-transactions', unit.id] });
+    }
     await logAudit('updated', 'guest_tours', tourId, `Marked tour completed by ${staffName}`);
     qc.invalidateQueries({ queryKey: ['billing-tours'] });
-    toast.success('Tour marked completed');
+    toast.success('Tour completed & charged to room');
   };
 
   const handleEditTourSave = async (tourId: string) => {
@@ -221,10 +240,29 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
   };
 
   const handleCompleteRequest = async (reqId: string) => {
+    const req = requests.find((r: any) => r.id === reqId);
     await from('guest_requests').update({ status: 'completed' }).eq('id', reqId);
+    // Post request charge to room ledger if it has a price
+    if (req && Number(req.price) > 0 && booking?.id) {
+      await (supabase.from('room_transactions' as any) as any).insert({
+        unit_id: unit.id,
+        unit_name: unit.name,
+        guest_name: guestName,
+        booking_id: booking.id,
+        transaction_type: 'service_request',
+        amount: Number(req.price),
+        tax_amount: 0,
+        service_charge_amount: 0,
+        total_amount: Number(req.price),
+        payment_method: '',
+        staff_name: staffName,
+        notes: `${req.request_type}: ${req.details || ''}`.trim(),
+      });
+      qc.invalidateQueries({ queryKey: ['room-transactions', unit.id] });
+    }
     await logAudit('updated', 'guest_requests', reqId, `Marked request completed by ${staffName}`);
     qc.invalidateQueries({ queryKey: ['billing-requests'] });
-    toast.success('Request marked completed');
+    toast.success('Request completed & charged to room');
   };
 
   const handleDeleteTx = async (txId: string, txType: string, amount: number) => {
@@ -329,7 +367,7 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
     switch (s) {
       case 'booked': case 'pending': return 'bg-amber-500/20 text-amber-300 border-amber-500/30';
       case 'confirmed': return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
-      case 'completed': return 'bg-muted text-muted-foreground';
+      case 'completed': return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
       case 'cancelled': return 'bg-destructive/20 text-destructive';
       default: return 'bg-muted text-muted-foreground';
     }
@@ -660,7 +698,7 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
               <div key={t.id} className="border border-border rounded-lg p-3 space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-body text-sm text-foreground font-medium">{t.tour_name}</span>
-                  <Badge variant="outline" className={`text-[10px] ${tourStatusColor(t.status)}`}>{t.status}</Badge>
+                  <Badge variant="outline" className={`text-[10px] ${tourStatusColor(t.status)}`}>{t.status === 'completed' ? 'Charged' : t.status}</Badge>
                 </div>
                 <div className="flex gap-3 font-body text-xs text-muted-foreground">
                   <span>{t.tour_date}</span>
@@ -735,7 +773,7 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
                   <span className="font-body text-sm text-foreground font-medium flex items-center gap-1.5">
                     {icon} {r.request_type}
                   </span>
-                  <Badge variant="outline" className={`text-[10px] ${tourStatusColor(r.status)}`}>{r.status}</Badge>
+                  <Badge variant="outline" className={`text-[10px] ${tourStatusColor(r.status)}`}>{r.status === 'completed' ? 'Charged' : r.status}</Badge>
                 </div>
                 <p className="font-body text-xs text-muted-foreground">{r.details}</p>
                 <div className="flex items-center justify-between">
