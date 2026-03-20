@@ -12,7 +12,7 @@ import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 import { getStaffSession } from '@/lib/session';
 import { canManage, canEdit } from '@/lib/permissions';
 
-const STATUSES = ['New', 'Preparing', 'Served', 'Paid'];
+const STATUSES = ['New', 'Preparing', 'Ready', 'Served', 'Paid'];
 
 const StaffOrdersView = () => {
   const qc = useQueryClient();
