@@ -84,7 +84,7 @@ const StaffOrdersView = () => {
       const { data } = await supabase
         .from('orders')
         .select('*')
-        .in('status', ['New', 'Preparing', 'Served', 'Paid'])
+        .in('status', ['New', 'Preparing', 'Ready', 'Served', 'Paid'])
         .order('created_at', { ascending: false })
         .limit(200);
       return data || [];
