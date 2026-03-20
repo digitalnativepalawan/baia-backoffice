@@ -48,7 +48,7 @@ const CashierBoard = () => {
       const { data } = await supabase
         .from('orders')
         .select('*')
-        .eq('status', 'Served')
+        .in('status', ['Ready', 'Served'])
         .gte('created_at', start.toISOString())
         .order('created_at', { ascending: true })
         .limit(300);
@@ -170,7 +170,7 @@ const CashierBoard = () => {
         {/* Summary */}
         <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-card/50 flex-shrink-0">
           <span className="font-display text-sm text-foreground tracking-wider">
-            {orders.length} order{orders.length !== 1 ? 's' : ''} awaiting payment
+            {orders.length} order{orders.length !== 1 ? 's' : ''} awaiting settlement
           </span>
         </div>
 
@@ -188,7 +188,7 @@ const CashierBoard = () => {
               ))}
             </div>
           ) : (
-            <p className="font-body text-sm text-muted-foreground text-center py-12">No served orders awaiting payment</p>
+            <p className="font-body text-sm text-muted-foreground text-center py-12">No orders awaiting settlement</p>
           )}
 
           {/* Completed — date picker + stacked cards */}
@@ -262,6 +262,7 @@ const OrderRow = ({ order, selected, onSelect }: {
 }) => {
   const elapsed = formatDistanceToNow(new Date(order.created_at), { addSuffix: false });
   const isPaid = order.status === 'Paid';
+  const isReady = order.status === 'Ready';
   const isRoomCharge = order.payment_type === 'Charge to Room';
 
   return (
@@ -291,9 +292,10 @@ const OrderRow = ({ order, selected, onSelect }: {
         <Badge variant="outline" className={`font-body text-[10px] h-5 ${
           isRoomCharge && isPaid ? 'border-blue-400/50 text-blue-400' :
           isPaid ? 'border-emerald-400/50 text-emerald-400' :
+          isReady ? 'border-cyan-400/50 text-cyan-400' :
           'border-amber-400/50 text-amber-400'
         }`}>
-          {isRoomCharge && isPaid ? 'Room Charge' : isPaid ? 'Paid' : 'Pending Payment'}
+          {isRoomCharge && isPaid ? 'Room Charge' : isPaid ? 'Paid' : isReady ? 'Ready — Awaiting Serve' : 'Pending Payment'}
         </Badge>
         <span className="font-display text-sm text-gold tabular-nums">₱{order.total.toLocaleString()}</span>
       </div>

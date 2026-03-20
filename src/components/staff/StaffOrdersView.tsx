@@ -12,7 +12,7 @@ import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 import { getStaffSession } from '@/lib/session';
 import { canManage, canEdit } from '@/lib/permissions';
 
-const STATUSES = ['New', 'Preparing', 'Served', 'Paid'];
+const STATUSES = ['New', 'Preparing', 'Ready', 'Served', 'Paid'];
 
 const StaffOrdersView = () => {
   const qc = useQueryClient();
@@ -84,7 +84,7 @@ const StaffOrdersView = () => {
       const { data } = await supabase
         .from('orders')
         .select('*')
-        .in('status', ['New', 'Preparing', 'Served', 'Paid'])
+        .in('status', ['New', 'Preparing', 'Ready', 'Served', 'Paid'])
         .order('created_at', { ascending: false })
         .limit(200);
       return data || [];
@@ -95,7 +95,7 @@ const StaffOrdersView = () => {
   const [activeStatus, setActiveStatus] = useState('New');
 
   const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { New: 0, Preparing: 0, Served: 0, Paid: 0 };
+    const counts: Record<string, number> = { New: 0, Preparing: 0, Ready: 0, Served: 0, Paid: 0 };
     orders.forEach(o => { if (counts[o.status] !== undefined) counts[o.status]++; });
     return counts;
   }, [orders]);
