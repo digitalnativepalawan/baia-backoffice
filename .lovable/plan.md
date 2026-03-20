@@ -1,26 +1,34 @@
 
 
-## Plan: Simplify Cashier View
+## Plan: Add "Mark Served" and "Charge to Room" Buttons to Reception Room Orders
 
-### Current State
-The CashierBoard already filters to Served-only orders and has in-stay guest detection working. However, the UI still has visual clutter: grouped room collapsibles, status dots for kitchen/bar, "BILL OUT" headers, redundant summary strip text.
+### Problem
+Reception sees room orders with status "Ready" but has no way to mark them as "Served." Without this transition, orders don't count as sales, don't appear in the Cashier pipeline, and don't flow into reports. Reception needs two actions:
+1. **"Served · Charge to Room"** — marks order as Served and keeps it on the room folio for checkout settlement
+2. **"Served · Send to Cashier"** — marks order as Served so it appears in the Cashier view for immediate payment
 
 ### Changes
 
-**`src/components/service/CashierBoard.tsx`**
+**`src/pages/ReceptionPage.tsx`** — Reception Recent Room Orders section (lines ~1496-1511)
 
-1. **Remove `GroupedBillOut` component** — replace with a flat list of `OrderRow` cards. No room grouping, no collapsibles for the main order list.
+Add two new buttons alongside the existing "Mark Paid", "Comp", "Delete" actions, visible when `order.status === 'Ready'`:
 
-2. **Simplify `OrderRow`** — remove kitchen/bar status dots (Flame/GlassWater icons with colored dots). Cashier doesn't care about department prep status. Keep: guest name, location, elapsed time, total amount, and a simple "Pending Payment" badge.
+1. **"Served · Room Charge"** button (primary green style):
+   - Updates order status to `Served`, sets `payment_type: 'Charge to Room'`
+   - Creates a `room_transaction` record linking the order total to the guest's unit folio (using `order.room_id` and `order.guest_name`)
+   - Order stays on the guest's bill for checkout settlement
+   - Invalidates relevant query caches
 
-3. **Simplify summary strip** (line 188-197) — show just "{n} orders awaiting payment" instead of duplicating "X Served" and "X BILL OUT".
+2. **"Served · Pay Now"** button (secondary outline style):
+   - Updates order status to `Served` only (no payment_type set)
+   - Order flows into the Cashier view for immediate cash/card settlement
 
-4. **Remove "💰 BILL OUT — Awaiting Payment" header** (line 203) — unnecessary label. The whole view IS bill out.
+Both buttons also appear when status is `New` or `Preparing` (for edge cases where reception needs to override), but primarily target `Ready` orders.
 
-5. **Clean empty state** — keep the "No served orders awaiting payment" message as-is (already clean).
+Keep existing "Mark Paid", "Comp", "Delete" buttons as-is for backward compatibility.
 
-6. **BillOutPanel** — already correct with in-stay detection. No changes needed there.
+### Files changed
+- `src/pages/ReceptionPage.tsx` (~20 lines added in the corrective actions section)
 
-### Result
-- Clean flat list of served orders on the left
-- Tap an order → payment panel on right with smart Charge to Room / Pay Now
+No changes to Kitchen, Bar, Cashier, or ServiceBoard.
+
