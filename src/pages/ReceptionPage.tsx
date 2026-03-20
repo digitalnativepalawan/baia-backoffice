@@ -1492,6 +1492,46 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                     {/* Staff info */}
                     <p className="font-body text-[10px] text-muted-foreground">Staff: {order.staff_name || '—'} · Payment: {order.payment_type || 'Unpaid'}</p>
 
+                    {/* Serve & settle actions for Ready / New / Preparing orders */}
+                    {canDoEdit && ['New', 'Preparing', 'Ready'].includes(order.status) && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <Button size="sm" onClick={async () => {
+                          await supabase.from('orders').update({ status: 'Served', payment_type: 'Charge to Room' }).eq('id', order.id);
+                          if (order.room_id) {
+                            await (supabase.from('room_transactions') as any).insert({
+                              unit_id: order.room_id,
+                              unit_name: order.location_detail || '',
+                              guest_name: order.guest_name,
+                              booking_id: null,
+                              transaction_type: 'charge',
+                              order_id: order.id,
+                              amount: subtotal,
+                              tax_amount: 0,
+                              service_charge_amount: sc,
+                              total_amount: grandTotal,
+                              payment_method: 'Charge to Room',
+                              staff_name: staffName,
+                              notes: `F&B order charged to room`,
+                            });
+                          }
+                          logAudit('updated', 'orders', order.id, `Served & charged to room from reception`);
+                          qc.invalidateQueries({ queryKey: ['reception-recent-orders'] });
+                          qc.invalidateQueries({ queryKey: ['room-transactions', order.room_id] });
+                          toast.success('Served · Charged to Room');
+                        }} className="font-display text-[10px] tracking-wider min-h-[30px] bg-emerald-600 hover:bg-emerald-700 text-white">
+                          ✅ Served · Room Charge
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={async () => {
+                          await supabase.from('orders').update({ status: 'Served' }).eq('id', order.id);
+                          logAudit('updated', 'orders', order.id, `Marked Served & sent to cashier from reception`);
+                          qc.invalidateQueries({ queryKey: ['reception-recent-orders'] });
+                          toast.success('Served · Sent to Cashier for payment');
+                        }} className="font-display text-[10px] tracking-wider min-h-[30px]">
+                          💳 Served · Pay Now
+                        </Button>
+                      </div>
+                    )}
+
                     {/* Corrective actions */}
                     {canDoEdit && order.status !== 'Paid' && order.status !== 'Cancelled' && (
                       <div className="flex flex-wrap gap-1.5 pt-1">
