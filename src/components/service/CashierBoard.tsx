@@ -170,7 +170,7 @@ const CashierBoard = () => {
         {/* Summary */}
         <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-card/50 flex-shrink-0">
           <span className="font-display text-sm text-foreground tracking-wider">
-            {orders.length} order{orders.length !== 1 ? 's' : ''} awaiting payment
+            {orders.length} order{orders.length !== 1 ? 's' : ''} awaiting settlement
           </span>
         </div>
 
