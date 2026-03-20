@@ -297,7 +297,6 @@ const OrderRow = ({ order, selected, onSelect }: {
         }`}>
           {isRoomCharge && isPaid ? 'Room Charge' : isPaid ? 'Paid' : isReady ? 'Ready — Awaiting Serve' : 'Pending Payment'}
         </Badge>
-        </Badge>
         <span className="font-display text-sm text-gold tabular-nums">₱{order.total.toLocaleString()}</span>
       </div>
     </div>
