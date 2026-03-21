@@ -217,31 +217,38 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
 
     setSubmitting(true);
     try {
-      const { data: existingTabs } = await supabase
-        .from('tabs')
-        .select('*')
-        .eq('location_type', selectedOrderType)
-        .eq('location_detail', selectedLocation)
-        .eq('status', 'Open')
-        .limit(1);
+      // If a specific tabId was passed via URL (e.g. from WaitstaffBoard "+ Add Order"), use it directly
+      const urlTabId = searchParams.get('tabId');
 
       let tabId: string;
 
-      if (existingTabs && existingTabs.length > 0) {
-        tabId = existingTabs[0].id;
+      if (urlTabId) {
+        tabId = urlTabId;
       } else {
-        const { data: newTab, error: tabError } = await supabase
+        const { data: existingTabs } = await supabase
           .from('tabs')
-          .insert({
-            location_type: selectedOrderType,
-            location_detail: selectedLocation,
-            status: 'Open',
-          })
-          .select('id')
-          .single();
+          .select('*')
+          .eq('location_type', selectedOrderType)
+          .eq('location_detail', selectedLocation)
+          .eq('status', 'Open')
+          .limit(1);
 
-        if (tabError || !newTab) throw new Error('Failed to create tab');
-        tabId = newTab.id;
+        if (existingTabs && existingTabs.length > 0) {
+          tabId = existingTabs[0].id;
+        } else {
+          const { data: newTab, error: tabError } = await supabase
+            .from('tabs')
+            .insert({
+              location_type: selectedOrderType,
+              location_detail: selectedLocation,
+              status: 'Open',
+            })
+            .select('id')
+            .single();
+
+          if (tabError || !newTab) throw new Error('Failed to create tab');
+          tabId = newTab.id;
+        }
       }
 
       // Determine which departments are involved
