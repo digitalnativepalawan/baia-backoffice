@@ -16,9 +16,10 @@ const DEPT_CONFIG: Record<string, { label: string; icon: React.ReactNode; gradie
 
 interface ServiceHeaderProps {
   department: 'kitchen' | 'bar' | 'reception' | 'cashier' | 'waitstaff';
+  onOpenTab?: () => void;
 }
 
-const ServiceHeader = ({ department }: ServiceHeaderProps) => {
+const ServiceHeader = ({ department, onOpenTab }: ServiceHeaderProps) => {
   const navigate = useNavigate();
   const config = DEPT_CONFIG[department];
 
@@ -60,6 +61,17 @@ const ServiceHeader = ({ department }: ServiceHeaderProps) => {
             >
               <Plus className="w-4 h-4" />
               <span>Order</span>
+            </Button>
+          )}
+          {canOrder && department === 'waitstaff' && onOpenTab && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onOpenTab}
+              className="gap-1.5 h-9 border-emerald-500 text-emerald-400 hover:bg-emerald-500/10 font-display text-xs tracking-wider"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Open Tab</span>
             </Button>
           )}
           <ThemeToggle />
