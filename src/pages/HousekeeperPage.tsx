@@ -169,6 +169,8 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   if (activeOrder) {
+    // Use pre_inspection mode for new pre_checkout_inspection task_type,
+    // and for legacy orders where status was set to pre_inspection directly.
     const hkMode = (activeOrder.task_type === 'pre_checkout_inspection' || activeOrder.status === 'pre_inspection') ? 'pre_inspection' : 'cleaning';
     return (
       <HousekeepingInspection

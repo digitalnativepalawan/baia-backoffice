@@ -1096,23 +1096,15 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                     )}
                   </div>
                 </div>
-                {canDoEdit && isDepartingToday && !unit.checkout_locked && (
-                  <Button size="sm" variant="destructive" onClick={() => {
-                    setCheckOutBooking(booking);
-                    setCheckOutUnit(unit);
-                    setCheckOutPayment('');
-                    setCheckOutAmount('');
-                    setCheckOutOpen(true);
-                  }} className="font-display text-xs tracking-wider min-h-[36px]">
-                    <LogOut className="w-4 h-4 mr-1" /> Check Out
-                  </Button>
-                )}
-                {canDoEdit && isDepartingToday && unit.checkout_locked && (() => {
-                  const preCheckoutHk = activeHkOrders.find((o: any) =>
-                    o.unit_name === unit.name && o.task_type === 'pre_checkout_inspection' && o.status !== 'completed'
-                  );
-                  const isCleared = preCheckoutHk?.inspection_status === 'cleared';
-                  if (isCleared) {
+                {canDoEdit && isDepartingToday && (() => {
+                    // Show Check Out button only when checkout is not locked, or when inspection is cleared
+                    const checkoutLocked = !!unit.checkout_locked;
+                    if (checkoutLocked) {
+                      const preCheckoutHk = activeHkOrders.find((o: any) =>
+                        o.unit_name === unit.name && o.task_type === 'pre_checkout_inspection' && o.status !== 'completed'
+                      );
+                      if (preCheckoutHk?.inspection_status !== 'cleared') return null;
+                    }
                     return (
                       <Button size="sm" variant="destructive" onClick={() => {
                         setCheckOutBooking(booking);
@@ -1124,9 +1116,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                         <LogOut className="w-4 h-4 mr-1" /> Check Out
                       </Button>
                     );
-                  }
-                  return null;
-                })()}
+                  })()}
                  <div className="flex flex-wrap gap-1.5">
                   {canDoEdit && booking && (
                     <Button size="sm" variant="outline" onClick={() => {
