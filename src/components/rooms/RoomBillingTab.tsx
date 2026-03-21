@@ -139,6 +139,29 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
   const activeRequestsTotal = requests.filter((r: any) => r.status !== 'cancelled' && r.status !== 'completed').reduce((s: number, r: any) => s + Number(r.price || 0), 0);
   const balance = totalCharges - totalPayments + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
 
+  // ── Pre-checkout inspection status ──
+  const { data: preCheckoutOrder } = useQuery({
+    queryKey: ['pre-checkout-inspection', unit?.name],
+    enabled: !!booking && !!unit?.name,
+    queryFn: async () => {
+      const { data } = await from('housekeeping_orders')
+        .select('id, status, inspection_status, task_type, inspection_by_name')
+        .eq('unit_name', unit.name)
+        .eq('task_type', 'pre_checkout_inspection')
+        .neq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data as any;
+    },
+    refetchInterval: 5000,
+  });
+
+  const checkoutLocked = !!(unit as any)?.checkout_locked;
+  const inspectionCleared = preCheckoutOrder?.inspection_status === 'cleared';
+  const inspectionFlagged = preCheckoutOrder?.inspection_status === 'issue_flagged';
+  const inspectionAwaiting = checkoutLocked && !inspectionCleared && !inspectionFlagged;
+
   const staffName = localStorage.getItem('emp_display_name') || localStorage.getItem('emp_name') || 'Staff';
 
   // ── Actions ──
@@ -504,12 +527,31 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
             Adjustment
           </Button>
           <PrintBill unitName={unit.name} guestName={guestName} booking={booking} transactions={transactions} roomOrders={roomOrders} tours={tours} requests={requests} />
-          {booking && (
+          {booking && (!checkoutLocked || inspectionCleared) && (
             <Button size="sm" variant="destructive" onClick={() => setShowCheckout(true)}
               className="font-display text-xs tracking-wider gap-1 min-h-[44px]">
               <LogOut className="w-3.5 h-3.5" /> Check Out
             </Button>
           )}
+        </div>
+      )}
+      {/* Inspection status banner */}
+      {booking && !readOnly && inspectionAwaiting && (
+        <div className="flex items-center gap-2 border border-amber-500/50 bg-amber-500/10 rounded-lg p-2">
+          <span className="text-base">⏳</span>
+          <span className="font-display text-xs tracking-wider text-amber-400">Awaiting Inspection — checkout locked</span>
+        </div>
+      )}
+      {booking && !readOnly && inspectionCleared && (
+        <div className="flex items-center gap-2 border border-emerald-500/50 bg-emerald-500/10 rounded-lg p-2">
+          <span className="text-base">✓</span>
+          <span className="font-display text-xs tracking-wider text-emerald-400">Inspection Cleared — ready for checkout</span>
+        </div>
+      )}
+      {booking && !readOnly && inspectionFlagged && (
+        <div className="flex items-center gap-2 border border-destructive/50 bg-destructive/10 rounded-lg p-2">
+          <span className="text-base">⚠</span>
+          <span className="font-display text-xs tracking-wider text-destructive">Issue Flagged — contact housekeeper before checkout</span>
         </div>
       )}
       {readOnly && (

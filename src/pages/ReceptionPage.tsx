@@ -1062,10 +1062,25 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                     {guest?.phone && <p className="font-body text-[10px] text-muted-foreground">📞 {guest.phone}</p>}
                     {guest?.email && <p className="font-body text-[10px] text-muted-foreground">✉️ {guest.email}</p>}
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <Badge className={`font-body text-[10px] ${isDepartingToday ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-red-500/20 text-red-400 border-red-500/40'}`}>
-                      {isDepartingToday ? 'Departure Pending' : 'Occupied'}
-                    </Badge>
+                <div className="flex flex-col items-end gap-1">
+                    {unit.checkout_locked ? (
+                      (() => {
+                        const preCheckoutHk = activeHkOrders.find((o: any) =>
+                          o.unit_name === unit.name && o.task_type === 'pre_checkout_inspection' && o.status !== 'completed'
+                        );
+                        if (preCheckoutHk?.inspection_status === 'issue_flagged') {
+                          return <Badge className="font-body text-[10px] bg-destructive/20 text-destructive border-destructive/40">⚠ Issue Flagged</Badge>;
+                        }
+                        if (preCheckoutHk?.inspection_status === 'cleared') {
+                          return <Badge className="font-body text-[10px] bg-emerald-500/20 text-emerald-400 border-emerald-500/40">✓ Inspection Cleared</Badge>;
+                        }
+                        return <Badge className="font-body text-[10px] bg-amber-500/20 text-amber-400 border-amber-500/40">⏳ Awaiting Inspection</Badge>;
+                      })()
+                    ) : (
+                      <Badge className={`font-body text-[10px] ${isDepartingToday ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-red-500/20 text-red-400 border-red-500/40'}`}>
+                        {isDepartingToday ? 'Departure Pending' : 'Occupied'}
+                      </Badge>
+                    )}
                     {workflow.isExtensionReview && (
                       <Badge className="font-body text-[10px] bg-blue-500/20 text-blue-400 border-blue-500/40">Review</Badge>
                     )}
@@ -1081,7 +1096,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                     )}
                   </div>
                 </div>
-                {canDoEdit && isDepartingToday && (
+                {canDoEdit && isDepartingToday && !unit.checkout_locked && (
                   <Button size="sm" variant="destructive" onClick={() => {
                     setCheckOutBooking(booking);
                     setCheckOutUnit(unit);
@@ -1092,6 +1107,26 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                     <LogOut className="w-4 h-4 mr-1" /> Check Out
                   </Button>
                 )}
+                {canDoEdit && isDepartingToday && unit.checkout_locked && (() => {
+                  const preCheckoutHk = activeHkOrders.find((o: any) =>
+                    o.unit_name === unit.name && o.task_type === 'pre_checkout_inspection' && o.status !== 'completed'
+                  );
+                  const isCleared = preCheckoutHk?.inspection_status === 'cleared';
+                  if (isCleared) {
+                    return (
+                      <Button size="sm" variant="destructive" onClick={() => {
+                        setCheckOutBooking(booking);
+                        setCheckOutUnit(unit);
+                        setCheckOutPayment('');
+                        setCheckOutAmount('');
+                        setCheckOutOpen(true);
+                      }} className="font-display text-xs tracking-wider min-h-[36px]">
+                        <LogOut className="w-4 h-4 mr-1" /> Check Out
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
                  <div className="flex flex-wrap gap-1.5">
                   {canDoEdit && booking && (
                     <Button size="sm" variant="outline" onClick={() => {

@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ArrowLeft, Upload, Trash2, Plus, Users, FileText, UtensilsCrossed, MapPin, StickyNote, Sparkles, LogIn, LogOut, Camera, Download, Link as LinkIcon, ClipboardCheck, DollarSign, Pencil, Clock, CalendarPlus, ArrowRightLeft, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Upload, Trash2, Plus, Users, FileText, UtensilsCrossed, MapPin, StickyNote, Sparkles, LogIn, LogOut, Camera, Download, Link as LinkIcon, ClipboardCheck, DollarSign, Pencil, Clock, CalendarPlus, ArrowRightLeft, Image as ImageIcon, Unlock } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, differenceInCalendarDays, addDays } from 'date-fns';
 import VibeCheckInForm from './vibe/VibeCheckInForm';
@@ -20,6 +20,8 @@ import GuestActivityTimeline from '@/components/rooms/GuestActivityTimeline';
 import ClosedCheckoutsPanel from '@/components/rooms/ClosedCheckoutsPanel';
 import { compressImage } from '@/lib/imageCompress';
 import { getManilaDateKey, resolveOperationalUnitWorkflow } from '@/lib/receptionOccupancy';
+import { getStaffSession } from '@/lib/session';
+import { canManage } from '@/lib/permissions';
 
 const from = (table: string) => supabase.from(table as any) as any;
 
@@ -60,6 +62,11 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const [editingVibeRecord, setEditingVibeRecord] = useState<any>(null);
   const [viewingVibeRecord, setViewingVibeRecord] = useState<any>(null);
   const [viewingHousekeepingOrder, setViewingHousekeepingOrder] = useState<any>(null);
+
+  // Determine if current user is GM/Admin (can override locked checkout)
+  const staffSession = getStaffSession();
+  const staffPerms: string[] = staffSession?.permissions || [];
+  const isAdminOrGM = canManage(staffPerms, 'rooms') || staffPerms.includes('admin');
 
   // Modals
   const [showEditGuest, setShowEditGuest] = useState(false);
@@ -569,6 +576,22 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     toast.success('Guest checked out — housekeeping order created');
   };
 
+  // --- OVERRIDE & UNLOCK CHECKOUT (GM/Admin only) ---
+  const handleUnlockCheckout = async () => {
+    if (!selectedUnit) return;
+    await supabase.from('units').update({ checkout_locked: false } as any).eq('id', selectedUnit.id);
+    // Also update any flagged pre_checkout_inspection orders for this unit
+    await from('housekeeping_orders').update({ inspection_status: 'cleared', status: 'inspection_cleared' })
+      .eq('unit_name', selectedUnit.name)
+      .eq('task_type', 'pre_checkout_inspection')
+      .eq('inspection_status', 'issue_flagged');
+    qc.invalidateQueries({ queryKey: ['rooms-units'] });
+    qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
+    qc.invalidateQueries({ queryKey: ['pre-checkout-inspection', selectedUnit.name] });
+    qc.invalidateQueries({ queryKey: ['checkout-hk-clearance', selectedUnit.name] });
+    toast.success(`Checkout unlocked for ${selectedUnit.name}`);
+  };
+
   // --- EXTEND STAY ---
   const handleExtendStay = async () => {
     if (!currentBooking || !extendDate) return;
@@ -691,15 +714,26 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
         {/* Housekeeping banner */}
         {unitHkOrder && !readOnly && (() => {
           const s = unitHkOrder.status;
-          const isCleared = s === 'inspection_cleared';
-          const isPreInspect = s === 'pre_inspection';
+          const inspStatus = unitHkOrder.inspection_status;
+          const taskType = unitHkOrder.task_type;
+          const isPreCheckout = taskType === 'pre_checkout_inspection';
+          const isCleared = s === 'inspection_cleared' || inspStatus === 'cleared';
+          const isFlagged = s === 'issue_flagged' || inspStatus === 'issue_flagged';
+          const isPreInspect = s === 'pre_inspection' && !isCleared && !isFlagged;
+          const isPendingInspect = s === 'pending_inspection' && !isCleared && !isFlagged;
           const isCleaning = s === 'cleaning';
-          const borderColor = isCleared ? 'border-emerald-500/50' : 'border-amber-500/50';
-          const bgColor = isCleared ? 'bg-emerald-500/10' : 'bg-amber-500/10';
-          const textColor = isCleared ? 'text-emerald-400' : 'text-amber-400';
-          const icon = isCleared ? '✅' : isPreInspect ? '🔍' : isCleaning ? '🧹' : '📋';
-          const label = isCleared ? 'Cleared for Checkout' : isPreInspect ? 'Pre-Checkout Inspection Needed' : isCleaning ? 'Cleaning in Progress' : s === 'pending_inspection' ? 'Pending Inspection' : s;
-          const clickable = !isCleared;
+          const borderColor = isCleared ? 'border-emerald-500/50' : isFlagged ? 'border-destructive/50' : 'border-amber-500/50';
+          const bgColor = isCleared ? 'bg-emerald-500/10' : isFlagged ? 'bg-destructive/10' : 'bg-amber-500/10';
+          const textColor = isCleared ? 'text-emerald-400' : isFlagged ? 'text-destructive' : 'text-amber-400';
+          const icon = isCleared ? '✅' : isFlagged ? '⚠' : isPreInspect ? '🔍' : isCleaning ? '🧹' : '📋';
+          const label = isCleared
+            ? (isPreCheckout ? '✓ Inspection Cleared — Ready for checkout' : 'Cleared for Checkout')
+            : isFlagged ? '⚠ Issue Flagged — Contact housekeeper'
+            : isPreInspect ? (isPreCheckout ? '⏳ Awaiting Pre-Checkout Inspection' : 'Pre-Checkout Inspection Needed')
+            : isPendingInspect ? 'Inspection in Progress'
+            : isCleaning ? 'Cleaning in Progress'
+            : s;
+          const clickable = !isCleared && !isFlagged;
 
           const content = (
             <>
@@ -737,7 +771,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
             <div className="flex items-center gap-2">
               <ClipboardCheck className="w-4 h-4 text-amber-400" />
               <span className="font-display text-sm text-amber-400 tracking-wider">
-                Housekeeping: {unitHkOrder.status === 'inspection_cleared' ? '✅ Cleared' : unitHkOrder.status === 'pre_inspection' ? '🔍 Pre-Inspection' : unitHkOrder.status === 'cleaning' ? '🧹 Cleaning' : unitHkOrder.status}
+                Housekeeping: {unitHkOrder.status === 'inspection_cleared' || unitHkOrder.inspection_status === 'cleared' ? '✅ Cleared' : unitHkOrder.inspection_status === 'issue_flagged' ? '⚠ Issue Flagged' : unitHkOrder.status === 'pre_inspection' ? '🔍 Pre-Inspection' : unitHkOrder.status === 'cleaning' ? '🧹 Cleaning' : unitHkOrder.status}
               </span>
             </div>
             {unitHkOrder.assigned_to && (
@@ -833,12 +867,35 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                     </div>
                   )}
                 </div>
-                {!readOnly && (
-                  <Button size="sm" variant="destructive" onClick={handleCheckOut}
-                    className="w-full font-display text-xs tracking-wider min-h-[44px]">
-                    <LogOut className="w-4 h-4 mr-2" /> Check Out Guest
-                  </Button>
-                )}
+                {!readOnly && (() => {
+                    const checkoutLocked = !!(selectedUnit as any)?.checkout_locked;
+                    const preCheckoutHk = housekeepingOrders.find((o: any) =>
+                      o.unit_name === selectedUnit.name && o.task_type === 'pre_checkout_inspection' && o.status !== 'completed'
+                    );
+                    const isFlagged = preCheckoutHk?.inspection_status === 'issue_flagged';
+                    return (
+                      <div className="space-y-2">
+                        {!checkoutLocked ? (
+                          <Button size="sm" variant="destructive" onClick={handleCheckOut}
+                            className="w-full font-display text-xs tracking-wider min-h-[44px]">
+                            <LogOut className="w-4 h-4 mr-2" /> Check Out Guest
+                          </Button>
+                        ) : (
+                          <>
+                            <Badge className="w-full justify-center py-2 text-sm font-display tracking-wider bg-amber-500/20 text-amber-400 border-amber-500/40">
+                              {isFlagged ? '⚠ Issue Flagged — Checkout Locked' : '⏳ Awaiting Inspection — Checkout Locked'}
+                            </Badge>
+                            {isAdminOrGM && (
+                              <Button size="sm" variant="outline" onClick={handleUnlockCheckout}
+                                className="w-full font-display text-xs tracking-wider min-h-[44px] border-amber-500/50 text-amber-400 hover:bg-amber-500/10">
+                                <Unlock className="w-3.5 h-3.5 mr-2" /> Override & Unlock Checkout
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
               </>
             ) : (
               <div className="space-y-3">
@@ -1499,8 +1556,15 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           const arrivalBooking = getTodayArrivalBooking(unit);
           const departureBooking = getTodayDepartureBooking(unit);
           const workflow = getUnitWorkflow(unit);
-          const borderColor = status === 'occupied' ? 'border-red-500/40' : status === 'to_clean' ? 'border-amber-500/40' : arrivalBooking ? 'border-blue-500/40' : 'border-emerald-500/40';
-          const statusBg = status === 'occupied' ? 'bg-red-500/5' : status === 'to_clean' ? 'bg-amber-500/5' : arrivalBooking ? 'bg-blue-500/5' : '';
+          const checkoutLocked = !!(unit as any).checkout_locked;
+          const preCheckoutHk = housekeepingOrders.find((o: any) =>
+            o.unit_name === unit.name && o.task_type === 'pre_checkout_inspection' && o.status !== 'completed'
+          );
+          const inspectionCleared = preCheckoutHk?.inspection_status === 'cleared';
+          const inspectionFlagged = preCheckoutHk?.inspection_status === 'issue_flagged';
+          const awaitingInspection = checkoutLocked && !inspectionCleared && !inspectionFlagged;
+          const borderColor = status === 'occupied' ? (checkoutLocked ? (inspectionFlagged ? 'border-destructive/60' : 'border-amber-500/60') : 'border-red-500/40') : status === 'to_clean' ? 'border-amber-500/40' : arrivalBooking ? 'border-blue-500/40' : 'border-emerald-500/40';
+          const statusBg = status === 'occupied' ? (checkoutLocked ? (inspectionFlagged ? 'bg-destructive/5' : 'bg-amber-500/5') : 'bg-red-500/5') : status === 'to_clean' ? 'bg-amber-500/5' : arrivalBooking ? 'bg-blue-500/5' : '';
           const isFnF = booking?.platform === 'Friends & Family';
           const isVip = (booking?.notes || '').includes('[VIP]');
 
@@ -1510,9 +1574,17 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
               <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
               {booking ? (
                 <div className="mt-2">
-                  <Badge className="font-body text-xs bg-red-500/20 text-red-400 border-red-500/40">
-                    {departureBooking ? 'Departure Pending' : 'Occupied'}
-                  </Badge>
+                  {awaitingInspection ? (
+                    <Badge className="font-body text-xs bg-amber-500/20 text-amber-400 border-amber-500/40">⏳ Awaiting Inspection</Badge>
+                  ) : inspectionFlagged ? (
+                    <Badge className="font-body text-xs bg-destructive/20 text-destructive border-destructive/40">⚠ Issue Flagged</Badge>
+                  ) : inspectionCleared ? (
+                    <Badge className="font-body text-xs bg-emerald-500/20 text-emerald-400 border-emerald-500/40">✓ Inspection Cleared</Badge>
+                  ) : (
+                    <Badge className="font-body text-xs bg-red-500/20 text-red-400 border-red-500/40">
+                      {departureBooking ? 'Departure Pending' : 'Occupied'}
+                    </Badge>
+                  )}
                   <p className="font-body text-xs text-foreground mt-1">{guest?.full_name || 'Guest'}</p>
                   <p className="font-body text-xs text-muted-foreground">
                     {format(new Date(booking.check_in + 'T00:00:00'), 'MMM d')} – {format(new Date(booking.check_out + 'T00:00:00'), 'MMM d')}

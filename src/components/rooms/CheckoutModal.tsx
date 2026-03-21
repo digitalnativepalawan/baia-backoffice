@@ -4,13 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { supabase } from '@/integrations/supabase/client';
 import { logAudit } from '@/lib/auditLog';
 import { openWhatsApp } from '@/lib/messenger';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Clock } from 'lucide-react';
 import type { RoomTransaction } from '@/hooks/useRoomTransactions';
 
 interface CheckoutModalProps {
@@ -92,33 +93,22 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     },
   });
 
-  // Check housekeeping clearance — also create pre_inspection order if none exists
+  // Check for existing pre_checkout_inspection order
   const { data: hkOrder, refetch: refetchHk } = useQuery({
     queryKey: ['checkout-hk-clearance', unitName],
     enabled: open && !!unitName,
     queryFn: async () => {
-      // Check for existing active HK order
-      const { data: existing } = await (supabase.from('housekeeping_orders') as any)
-        .select('id, status, damage_notes, inspection_by_name')
+      const { data } = await (supabase.from('housekeeping_orders') as any)
+        .select('id, status, inspection_status, task_type, damage_notes, inspection_by_name')
         .eq('unit_name', unitName)
+        .eq('task_type', 'pre_checkout_inspection')
         .neq('status', 'completed')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-
-      if (existing) return existing as any;
-
-      // Auto-create a pre_inspection order when checkout modal opens
-      const { data: newOrder } = await (supabase.from('housekeeping_orders') as any)
-        .insert({
-          unit_name: unitName,
-          room_type_id: roomTypeId || null,
-          status: 'pre_inspection',
-        })
-        .select('id, status, damage_notes, inspection_by_name')
-        .single();
-      return newOrder as any;
+      return data as any;
     },
+    refetchInterval: 5000,
   });
 
   // Check guest bill agreement
@@ -174,6 +164,42 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
   const guestAgreed = !!billAgreement?.bill_agreed_at;
   const checklistPassed = allOrdersServed && allToursCompleted && allRequestsCompleted;
 
+  const inspectionCleared = hkOrder?.inspection_status === 'cleared';
+  const inspectionPending = hkOrder && hkOrder.inspection_status !== 'cleared' && hkOrder.inspection_status !== 'issue_flagged';
+  const inspectionFlagged = hkOrder?.inspection_status === 'issue_flagged';
+
+  // Phase 1: Request inspection (creates HK task, locks checkout, closes modal)
+  const handleRequestInspection = async () => {
+    setSubmitting(true);
+    try {
+      await (supabase.from('housekeeping_orders' as any) as any).insert({
+        unit_name: unitName,
+        room_type_id: roomTypeId || null,
+        status: 'pre_inspection',
+        task_type: 'pre_checkout_inspection',
+        inspection_status: 'pending',
+      });
+
+      await supabase.from('units').update({ checkout_locked: true } as any).eq('id', unitId);
+
+      import('@/lib/telegram').then(({ notifyTelegram }) => {
+        notifyTelegram('housekeeping,managers', `🔍 Pre-checkout inspection needed\n${unitName} — ${guestName || 'Guest'}`);
+      });
+
+      qc.invalidateQueries({ queryKey: ['checkout-hk-clearance', unitName] });
+      qc.invalidateQueries({ queryKey: ['rooms-units'] });
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
+      qc.invalidateQueries({ queryKey: ['pre-checkout-inspection', unitName] });
+      toast.info(`⏳ Inspection requested for ${unitName} — housekeepers notified`);
+      onOpenChange(false);
+    } catch {
+      toast.error('Failed to request inspection');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleCheckout = async () => {
     setSubmitting(true);
     try {
@@ -211,36 +237,26 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
         } as any).eq('id', bookingId);
       }
 
-      await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', unitId);
+      await supabase.from('units').update({ status: 'to_clean', checkout_locked: false } as any).eq('id', unitId);
 
       // Telegram notification
       import('@/lib/telegram').then(({ notifyTelegram }) => {
         notifyTelegram('reception,managers', `🚪 Check-out\n${guestName || 'Guest'} - ${unitName}`);
       });
 
-      // Transition existing HK order to 'cleaning' (post-checkout phase)
+      // Create a new clean_room housekeeping task (post-checkout cleaning)
       const hkEmployee = hkEmployees.find((e: any) => e.id === selectedHousekeeper);
-
-      if (hkOrder?.id) {
-        await (supabase.from('housekeeping_orders' as any) as any).update({
-          status: 'cleaning',
-          assigned_to: selectedHousekeeper || hkOrder.assigned_to || null,
-          accepted_by: selectedHousekeeper || hkOrder.accepted_by || null,
-          accepted_by_name: hkEmployee ? (hkEmployee.display_name || hkEmployee.name) : (hkOrder.accepted_by_name || ''),
-          accepted_at: selectedHousekeeper ? new Date().toISOString() : (hkOrder.accepted_at || null),
-        }).eq('id', hkOrder.id);
-      } else {
-        // Fallback: create new cleaning order
-        await (supabase.from('housekeeping_orders' as any) as any).insert({
-          unit_name: unitName,
-          room_type_id: roomTypeId || null,
-          status: 'cleaning',
-          assigned_to: selectedHousekeeper || null,
-          accepted_by: selectedHousekeeper || null,
-          accepted_by_name: hkEmployee ? (hkEmployee.display_name || hkEmployee.name) : '',
-          accepted_at: selectedHousekeeper ? new Date().toISOString() : null,
-        });
-      }
+      await (supabase.from('housekeeping_orders' as any) as any).insert({
+        unit_name: unitName,
+        room_type_id: roomTypeId || null,
+        status: 'pending_inspection',
+        task_type: 'clean_room',
+        inspection_status: 'pending',
+        assigned_to: selectedHousekeeper || null,
+        accepted_by: selectedHousekeeper || null,
+        accepted_by_name: hkEmployee ? (hkEmployee.display_name || hkEmployee.name) : '',
+        accepted_at: selectedHousekeeper ? new Date().toISOString() : null,
+      });
 
       // Send WhatsApp notification to assigned housekeeper
       if (hkEmployee && hkEmployee.whatsapp_number) {
@@ -278,7 +294,9 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
       qc.invalidateQueries({ queryKey: ['reception-tour-bookings'] });
       qc.invalidateQueries({ queryKey: ['reception-tours-today'] });
       qc.invalidateQueries({ queryKey: ['occupied-guests'] });
-      toast.success(`Checkout complete${hkEmployee ? ` — ${hkEmployee.display_name || hkEmployee.name} notified` : ''}`);
+      qc.invalidateQueries({ queryKey: ['checkout-hk-clearance', unitName] });
+      qc.invalidateQueries({ queryKey: ['pre-checkout-inspection', unitName] });
+      toast.success(`Checkout complete${hkEmployee ? ` — ${hkEmployee.display_name || hkEmployee.name} notified for cleaning` : ''}`);
       onOpenChange(false);
     } catch {
       toast.error('Checkout failed');
@@ -303,16 +321,18 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
             <ChecklistItem ok={allRequestsCompleted} label="Guest requests completed" detail={!allRequestsCompleted ? `${incompleteRequests.length} request(s) still active` : undefined} />
             <ChecklistItem ok={guestAgreed} label="Guest reviewed & agreed to bill" detail={guestAgreed ? `Agreed ${new Date(billAgreement.bill_agreed_at).toLocaleString()}` : 'Not yet agreed on portal'} isWarning />
             <ChecklistItem
-              ok={hkOrder?.status === 'inspection_cleared'}
+              ok={inspectionCleared}
               label="Housekeeping pre-checkout inspection"
               detail={
-                hkOrder?.status === 'inspection_cleared'
+                inspectionCleared
                   ? `✅ Cleared by ${hkOrder.inspection_by_name || 'staff'}${hkOrder.damage_notes ? ` — Notes: ${hkOrder.damage_notes}` : ''}`
-                  : hkOrder?.status === 'pre_inspection'
+                  : inspectionFlagged
+                  ? `⚠ Issue flagged by ${hkOrder?.inspection_by_name || 'staff'} — contact housekeeper before checkout`
+                  : inspectionPending
                   ? '⏳ Waiting for housekeeper to inspect'
-                  : 'Pending'
+                  : 'Not yet requested'
               }
-              isWarning={hkOrder?.status === 'pre_inspection'}
+              isWarning={inspectionPending || !hkOrder}
             />
 
             {!checklistPassed && !overrideChecklist && (
@@ -322,6 +342,26 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
               </Button>
             )}
           </div>
+
+          {/* Inspection status alert */}
+          {inspectionFlagged && (
+            <div className="border border-destructive/50 bg-destructive/10 rounded-lg p-3 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-display text-xs tracking-wider text-destructive">⚠ Issue Flagged — Checkout Locked</p>
+                <p className="font-body text-xs text-muted-foreground mt-1">A housekeeper has flagged an issue in this room. Contact the housekeeper before proceeding.</p>
+              </div>
+            </div>
+          )}
+          {inspectionPending && (
+            <div className="border border-amber-500/50 bg-amber-500/10 rounded-lg p-3 flex items-start gap-2">
+              <Clock className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-display text-xs tracking-wider text-amber-400">⏳ Awaiting Inspection</p>
+                <p className="font-body text-xs text-muted-foreground mt-1">Inspection has been requested. Checkout will unlock once the housekeeper clears it.</p>
+              </div>
+            </div>
+          )}
 
           {/* Unpaid F&B Orders */}
           {unpaidOrders.length > 0 && (
@@ -479,14 +519,37 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} className="font-display text-xs tracking-wider">Cancel</Button>
-          <Button 
-            onClick={handleCheckout} 
-            disabled={submitting || (!checklistPassed && !overrideChecklist)} 
-            variant="destructive" 
-            className="font-display text-xs tracking-wider"
-          >
-            {submitting ? 'Processing...' : 'Confirm Checkout'}
-          </Button>
+          {inspectionCleared ? (
+            // Phase 2: inspection cleared — can complete actual checkout
+            <Button
+              onClick={handleCheckout}
+              disabled={submitting || (!checklistPassed && !overrideChecklist)}
+              variant="destructive"
+              className="font-display text-xs tracking-wider"
+            >
+              {submitting ? 'Processing...' : 'Confirm Checkout'}
+            </Button>
+          ) : inspectionFlagged ? (
+            // Inspection flagged — checkout blocked
+            <Button disabled variant="outline" className="font-display text-xs tracking-wider border-destructive text-destructive">
+              <AlertTriangle className="w-3.5 h-3.5 mr-1" /> Issue Flagged — Locked
+            </Button>
+          ) : inspectionPending ? (
+            // Inspection already requested but not yet cleared
+            <Button disabled variant="outline" className="font-display text-xs tracking-wider">
+              <Clock className="w-3.5 h-3.5 mr-1" /> Awaiting Inspection...
+            </Button>
+          ) : (
+            // Phase 1: no inspection yet — request it
+            <Button
+              onClick={handleRequestInspection}
+              disabled={submitting}
+              variant="destructive"
+              className="font-display text-xs tracking-wider"
+            >
+              {submitting ? 'Requesting...' : 'Confirm Checkout'}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

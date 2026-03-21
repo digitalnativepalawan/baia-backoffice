@@ -6,10 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, CheckCircle, Search, Sparkles } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Search, Sparkles, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { differenceInMinutes } from 'date-fns';
-import PasswordConfirmModal from '@/components/housekeeping/PasswordConfirmModal';
 
 const from = (table: string) => supabase.from(table as any);
 
@@ -31,15 +30,14 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
   );
 
   const isPreInspection = resolvedMode === 'pre_inspection';
+  // True when this is a pre-checkout inspection (uses two-button flow)
+  const isPreCheckoutInspection = order.task_type === 'pre_checkout_inspection';
 
   // For cleaning mode, derive step from order status
   const derivedStep = isPreInspection ? 'inspection' : (
     order.status === 'pending_inspection' || order.status === 'inspecting' ? 'inspection' : 'cleaning'
   );
   const [currentStep, setCurrentStep] = useState(derivedStep);
-
-  // PIN confirmation state
-  const [pinAction, setPinAction] = useState<'cleaning' | null>(null);
 
   // ── Checklist items for this room type ──
   const { data: checklistItems = [] } = useQuery({
@@ -109,6 +107,7 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
   const [damageNotes, setDamageNotes] = useState(order.damage_notes || '');
   const [assignedTo, setAssignedTo] = useState(order.assigned_to || '');
   const [inspecting, setInspecting] = useState(false);
+  const [flagging, setFlagging] = useState(false);
 
   // ── Cleaning state ──
   const [selectedPackageId, setSelectedPackageId] = useState(packages.length > 0 ? packages[0]?.id : '');
@@ -167,6 +166,83 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
     }
   };
 
+  // ── Pre-Checkout Inspection: All Good ──
+  const completePreCheckoutInspection = async () => {
+    setInspecting(true);
+    try {
+      const inspectionData = checklistItems.map((item: any) => ({
+        id: item.id,
+        label: item.item_label,
+        checked: !!checkedItems[item.id],
+        count: item.count_expected ? parseInt(itemCounts[item.id] || '0') : undefined,
+        required: item.is_required,
+      }));
+
+      const empName = localStorage.getItem('emp_display_name') || localStorage.getItem('emp_name') || '';
+
+      await from('housekeeping_orders').update({
+        status: 'inspection_cleared',
+        inspection_status: 'cleared',
+        inspection_data: inspectionData,
+        damage_notes: damageNotes,
+        inspection_completed_at: new Date().toISOString(),
+        inspection_by_name: empName,
+      } as any).eq('id', order.id);
+
+      // Unlock checkout on the unit
+      await supabase.from('units').update({ checkout_locked: false } as any)
+        .eq('unit_name', order.unit_name);
+
+      // Notify reception
+      import('@/lib/telegram').then(({ notifyTelegram }) => {
+        notifyTelegram('reception,managers', `✅ ${order.unit_name} Inspection Cleared ✓ — Ready for checkout`);
+      });
+
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
+      qc.invalidateQueries({ queryKey: ['checkout-hk-clearance'] });
+      qc.invalidateQueries({ queryKey: ['rooms-units'] });
+      qc.invalidateQueries({ queryKey: ['pre-checkout-inspection', order.unit_name] });
+      toast.success(`✅ ${order.unit_name} inspection cleared — Reception notified`, { duration: 5000 });
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to complete inspection');
+    } finally {
+      setInspecting(false);
+    }
+  };
+
+  // ── Pre-Checkout Inspection: Flag Issue ──
+  const flagPreCheckoutIssue = async () => {
+    setFlagging(true);
+    try {
+      const empName = localStorage.getItem('emp_display_name') || localStorage.getItem('emp_name') || '';
+
+      await from('housekeeping_orders').update({
+        status: 'issue_flagged',
+        inspection_status: 'issue_flagged',
+        inspection_by_name: empName,
+      } as any).eq('id', order.id);
+
+      // Notify reception with red alert
+      import('@/lib/telegram').then(({ notifyTelegram }) => {
+        notifyTelegram('reception,managers', `⚠️ Issue found in ${order.unit_name} — contact housekeeper before checkout`);
+      });
+
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
+      qc.invalidateQueries({ queryKey: ['checkout-hk-clearance'] });
+      qc.invalidateQueries({ queryKey: ['rooms-units'] });
+      qc.invalidateQueries({ queryKey: ['pre-checkout-inspection', order.unit_name] });
+      toast.warning(`⚠ Issue flagged for ${order.unit_name} — Reception alerted`, { duration: 5000 });
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to flag issue');
+    } finally {
+      setFlagging(false);
+    }
+  };
+
   // ── Complete Inspection (cleaning mode — step 1 → step 2) ──
   const completeInspection = async () => {
     setInspecting(true);
@@ -204,7 +280,8 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
   };
 
   // ── Complete Cleaning ──
-  const completeCleaning = async (confirmedBy: { id: string; name: string; display_name: string }) => {
+  const completeCleaning = async () => {
+    const empName = localStorage.getItem('emp_display_name') || localStorage.getItem('emp_name') || 'Housekeeper';
     setCleaning(true);
     try {
       // 1. Deduct inventory
@@ -244,8 +321,8 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
         cleaning_notes: cleaningNotes,
         supplies_used: suppliesUsed,
         cleaning_completed_at: now.toISOString(),
-        cleaning_by_name: confirmedBy.display_name || confirmedBy.name,
-        completed_by_name: confirmedBy.display_name || confirmedBy.name,
+        cleaning_by_name: empName,
+        completed_by_name: empName,
         time_to_complete_minutes: timeMinutes,
       } as any).eq('id', order.id);
 
@@ -264,11 +341,6 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
     } finally {
       setCleaning(false);
     }
-  };
-
-  const handlePinConfirm = (employee: { id: string; name: string; display_name: string }) => {
-    completeCleaning(employee);
-    setPinAction(null);
   };
 
   // ═══ PRE-INSPECTION MODE (simplified damage check) ═══
@@ -339,17 +411,57 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
             />
           </div>
 
-          <Button
-            onClick={completePreInspection}
-            disabled={inspecting}
-            className="w-full font-display tracking-wider min-h-[52px] bg-emerald-600 hover:bg-emerald-700 text-lg"
-          >
-            <CheckCircle className="w-5 h-5 mr-2" />
-            {inspecting ? 'Submitting...' : '✅ Clear for Checkout'}
-          </Button>
-          <p className="font-body text-xs text-muted-foreground text-center">
-            This will notify reception that the room is cleared for final checkout.
-          </p>
+          {isPreCheckoutInspection ? (
+            // ── New two-button flow for pre_checkout_inspection tasks ──
+            (() => {
+              const requiredItems = checklistItems.filter((i: any) => i.is_required);
+              const allRequiredChecked = requiredItems.length === 0 || requiredItems.every((i: any) => !!checkedItems[i.id]);
+              return (
+                <div className="space-y-2">
+                  <Button
+                    onClick={completePreCheckoutInspection}
+                    disabled={inspecting || flagging || !allRequiredChecked}
+                    className="w-full font-display tracking-wider min-h-[52px] bg-emerald-600 hover:bg-emerald-700 text-base"
+                  >
+                    <CheckCircle className="w-5 h-5 mr-2" />
+                    {inspecting ? 'Submitting...' : '✓ Inspection Done — All Good'}
+                  </Button>
+                  {!allRequiredChecked && (
+                    <p className="font-body text-xs text-amber-400 text-center">
+                      Tick all required (*) items to enable this button
+                    </p>
+                  )}
+                  <Button
+                    onClick={flagPreCheckoutIssue}
+                    disabled={inspecting || flagging}
+                    variant="outline"
+                    className="w-full font-display tracking-wider min-h-[52px] border-amber-500 text-amber-400 hover:bg-amber-500/10 text-base"
+                  >
+                    <AlertTriangle className="w-5 h-5 mr-2" />
+                    {flagging ? 'Flagging...' : '⚠ Flag Issue'}
+                  </Button>
+                  <p className="font-body text-xs text-muted-foreground text-center">
+                    "Flag Issue" will alert Reception and keep checkout locked.
+                  </p>
+                </div>
+              );
+            })()
+          ) : (
+            // ── Legacy single-button flow ──
+            <>
+              <Button
+                onClick={completePreInspection}
+                disabled={inspecting}
+                className="w-full font-display tracking-wider min-h-[52px] bg-emerald-600 hover:bg-emerald-700 text-lg"
+              >
+                <CheckCircle className="w-5 h-5 mr-2" />
+                {inspecting ? 'Submitting...' : '✅ Clear for Checkout'}
+              </Button>
+              <p className="font-body text-xs text-muted-foreground text-center">
+                This will notify reception that the room is cleared for final checkout.
+              </p>
+            </>
+          )}
         </div>
       </div>
     );
@@ -534,7 +646,7 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
           </div>
 
           <Button
-            onClick={() => setPinAction('cleaning')}
+            onClick={completeCleaning}
             disabled={cleaning}
             variant="default"
             className="w-full font-display tracking-wider min-h-[44px] bg-emerald-600 hover:bg-emerald-700"
@@ -544,15 +656,6 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
           </Button>
         </div>
       )}
-
-      {/* PIN Confirmation Modal */}
-      <PasswordConfirmModal
-        open={!!pinAction}
-        onClose={() => setPinAction(null)}
-        onConfirm={handlePinConfirm}
-        title="Confirm Cleaning Complete"
-        description="Enter your PIN to confirm cleaning is done and mark the room as ready."
-      />
     </div>
   );
 };
