@@ -107,14 +107,42 @@ const CashierBoard = () => {
         closed_at: new Date().toISOString(),
       };
 
+      let roomBooking: any = null;
       if (chargeToRoom && selectedBooking) {
-        const booking = activeBookings.find(b => b.id === selectedBooking);
-        if (booking?.unit_id) {
-          updateData.room_id = booking.unit_id;
+        roomBooking = activeBookings.find(b => b.id === selectedBooking);
+        if (roomBooking?.unit_id) {
+          updateData.room_id = roomBooking.unit_id;
         }
       }
 
       await supabase.from('orders').update(updateData).eq('id', selectedOrder.id);
+
+      // Create room_transaction so the charge appears on the guest's folio
+      if (chargeToRoom && roomBooking) {
+        const staffSession = getStaffSession();
+        const items = (selectedOrder.items as any[]) || [];
+        const subtotal = items.reduce((s: number, i: any) => s + i.price * (i.qty || i.quantity || 1), 0);
+        const taxDetails = (selectedOrder.tax_details as any) || {};
+        const taxAmount = Number(taxDetails.vat_amount ?? 0);
+        const serviceCharge = Number(selectedOrder.service_charge ?? 0);
+        const grandTotal = Number(selectedOrder.total ?? subtotal + taxAmount + serviceCharge);
+
+        await (supabase.from('room_transactions' as any) as any).insert({
+          unit_id: roomBooking.unit_id,
+          unit_name: roomBooking.resort_ops_units?.name || '',
+          booking_id: roomBooking.id,
+          guest_name: roomBooking.resort_ops_guests?.full_name || selectedOrder.guest_name || null,
+          transaction_type: 'room_charge',
+          order_id: selectedOrder.id,
+          amount: subtotal,
+          tax_amount: taxAmount,
+          service_charge_amount: serviceCharge,
+          total_amount: grandTotal,
+          payment_method: 'Charge to Room',
+          staff_name: staffSession?.name || 'Staff',
+          notes: `Room Folio – Order: ${items.map((i: any) => `${i.qty || i.quantity || 1}x ${i.name}`).join(', ')}`,
+        });
+      }
 
       setReceiptOrder({ ...selectedOrder, payment_type: paymentType });
       setSelectedOrder(null);
@@ -332,6 +360,11 @@ const BillOutPanel = ({
   const isInStay = !!inStayBooking;
   const canConfirm = chargeToRoom ? !!selectedBooking : !!selectedPayment;
 
+  const handleRoomFolioClick = () => {
+    onChargeToRoom();
+    onSelectBooking(inStayBooking?.id ?? null);
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -392,7 +425,7 @@ const BillOutPanel = ({
             <>
               {!chargeToRoom ? (
                 <button
-                  onClick={() => { onChargeToRoom(); onSelectBooking(inStayBooking.id); }}
+                  onClick={handleRoomFolioClick}
                   className="w-full min-h-[56px] rounded-xl border-2 border-blue-400 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 font-display text-sm tracking-wider transition-all flex items-center justify-center gap-2"
                 >
                   <BedDouble className="w-5 h-5" />
@@ -439,6 +472,19 @@ const BillOutPanel = ({
                 {m.name}
               </button>
             ))}
+            {isInStay && (
+              <button
+                onClick={handleRoomFolioClick}
+                className={`min-h-[52px] rounded-xl border-2 font-display text-sm tracking-wider transition-all flex items-center justify-center gap-2 ${
+                  chargeToRoom
+                    ? 'border-gold bg-gold/10 text-gold'
+                    : 'border-border bg-card text-foreground hover:border-accent/40'
+                }`}
+              >
+                <BedDouble className="w-4 h-4" />
+                Room Folio
+              </button>
+            )}
           </div>
         </div>
       </div>
