@@ -8,6 +8,7 @@ import WaitstaffOrderCard from './WaitstaffOrderCard';
 import ServiceOrderDetail from './ServiceOrderDetail';
 import { useResortProfile } from '@/hooks/useResortProfile';
 import { getStaffSession } from '@/lib/session';
+import { logAudit } from '@/lib/auditLog';
 
 const COL_COLORS: Record<string, string> = {
   New: 'border-t-gold',
@@ -112,14 +113,44 @@ const WaitstaffBoard = () => {
     prevReadyCountRef.current = columns.Ready.length;
   }, [columns.Ready.length, playChime]);
 
-  // Action handler — waitstaff can only mark orders as served (send to cashier)
+  // Action handler — waitstaff can send orders to cashier or charge to room
   const handleAction = async (orderId: string, action: string) => {
-    if (action !== 'mark-served') return;
     const order = orders.find((o: any) => o.id === orderId);
     if (!order) return;
-    await supabase.from('orders').update({ status: 'Served' }).eq('id', orderId);
-    qc.invalidateQueries({ queryKey: ['service-orders'] });
-    toast.success('Order sent to Cashier');
+
+    if (action === 'mark-served') {
+      await supabase.from('orders').update({ status: 'Served' }).eq('id', orderId);
+      logAudit('updated', 'orders', order.id, `Marked Served & sent to cashier from waitstaff`);
+      qc.invalidateQueries({ queryKey: ['service-orders'] });
+      toast.success('Order sent to Cashier');
+    } else if (action === 'room-charge') {
+      const subtotal = Number(order.total || 0);
+      const sc = Number(order.service_charge || 0);
+      const grandTotal = subtotal + sc;
+      const staffName = getStaffSession()?.name || localStorage.getItem('emp_name') || 'Staff';
+      await supabase.from('orders').update({ status: 'Served', payment_type: 'Charge to Room' }).eq('id', orderId);
+      if (order.room_id) {
+        await (supabase.from('room_transactions') as any).insert({
+          unit_id: order.room_id,
+          unit_name: order.location_detail || '',
+          guest_name: order.guest_name,
+          booking_id: null,
+          transaction_type: 'charge',
+          order_id: order.id,
+          amount: subtotal,
+          tax_amount: 0,
+          service_charge_amount: sc,
+          total_amount: grandTotal,
+          payment_method: 'Charge to Room',
+          staff_name: staffName,
+          notes: `F&B order charged to room`,
+        });
+      }
+      logAudit('updated', 'orders', order.id, `Served & charged to room from waitstaff`);
+      qc.invalidateQueries({ queryKey: ['service-orders'] });
+      qc.invalidateQueries({ queryKey: ['room-transactions', order.room_id] });
+      toast.success('Charged to Room');
+    }
   };
 
   const totalActive =

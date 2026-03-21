@@ -12,7 +12,8 @@ interface WaitstaffOrderCardProps {
 }
 
 const WaitstaffOrderCard = ({ order, onAction, onOpenDetail, compact }: WaitstaffOrderCardProps) => {
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const busy = busyAction !== null;
   const items = (order.items as any[]) || [];
   const elapsed = formatDistanceToNow(new Date(order.created_at), { addSuffix: false });
 
@@ -42,11 +43,11 @@ const WaitstaffOrderCard = ({ order, onAction, onOpenDetail, compact }: Waitstaf
   const handleAction = async (e: React.MouseEvent, action: string) => {
     e.stopPropagation();
     if (!onAction || busy) return;
-    setBusy(true);
+    setBusyAction(action);
     try {
       await onAction(order.id, action);
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   };
 
@@ -165,19 +166,31 @@ const WaitstaffOrderCard = ({ order, onAction, onOpenDetail, compact }: Waitstaf
 
       {/* Total + Actions */}
       <div className="pt-2.5 border-t border-border/50">
-        <div className="flex items-center justify-between">
-          <span className="font-display text-lg text-gold tabular-nums">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="font-display text-lg text-gold tabular-nums flex-shrink-0">
             ₱{order.total.toLocaleString()}
           </span>
           {isReady && onAction && (
-            <Button
-              onClick={(e) => handleAction(e, 'mark-served')}
-              disabled={busy}
-              size="lg"
-              className="font-display tracking-wider gap-2 text-sm min-h-[48px] px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
-            >
-              {busy ? 'Updating…' : <><Truck className="w-5 h-5" /> Send to Cashier</>}
-            </Button>
+            <div className="flex gap-1.5 flex-wrap justify-end">
+              {order.room_id && (
+                <Button
+                  onClick={(e) => handleAction(e, 'room-charge')}
+                  disabled={busy}
+                  size="sm"
+                  className="font-display tracking-wider gap-1.5 text-xs min-h-[44px] px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
+                >
+                  {busyAction === 'room-charge' ? 'Updating…' : <><Home className="w-4 h-4" /> Room Charge</>}
+                </Button>
+              )}
+              <Button
+                onClick={(e) => handleAction(e, 'mark-served')}
+                disabled={busy}
+                size="sm"
+                className="font-display tracking-wider gap-1.5 text-xs min-h-[44px] px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white"
+              >
+                {busyAction === 'mark-served' ? 'Updating…' : <><Truck className="w-4 h-4" /> Send to Cashier</>}
+              </Button>
+            </div>
           )}
         </div>
       </div>
