@@ -230,6 +230,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     queryFn: async () => {
       const { data } = await supabase.from('orders').select('*')
         .eq('order_type', 'Room')
+        .neq('status', 'Paid')
         .order('created_at', { ascending: false })
         .limit(20);
       return data || [];
@@ -1441,6 +1442,16 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
               toast.success('Order deleted');
             };
 
+            const handleRoomChargeDone = async () => {
+              const { error } = await supabase.from('orders').update({ status: 'Paid' }).eq('id', order.id);
+              if (error) { toast.error(`Failed to clear order: ${error.message}`); return; }
+              logAudit('updated', 'orders', order.id, `Room charge order marked as done from reception`);
+              qc.invalidateQueries({ queryKey: ['reception-recent-orders'] });
+              toast.success('Room charge order cleared');
+            };
+
+            const isRoomChargeDone = order.payment_type === 'Charge to Room' && order.status === 'Served';
+
             return (
               <div key={order.id} className="border border-border rounded-lg bg-card overflow-hidden">
                 <button onClick={toggleExpand} className="w-full p-3 text-left">
@@ -1532,8 +1543,18 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                       </div>
                     )}
 
+                    {/* ✓ Done — for Room Charge orders already served and charged to folio */}
+                    {canDoEdit && isRoomChargeDone && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <Button size="sm" onClick={handleRoomChargeDone}
+                          className="font-display text-[10px] tracking-wider min-h-[30px] bg-emerald-600 hover:bg-emerald-700 text-white">
+                          ✓ Done
+                        </Button>
+                      </div>
+                    )}
+
                     {/* Corrective actions */}
-                    {canDoEdit && order.status !== 'Paid' && order.status !== 'Cancelled' && (
+                    {canDoEdit && order.status !== 'Paid' && order.status !== 'Cancelled' && !isRoomChargeDone && (
                       <div className="flex flex-wrap gap-1.5 pt-1">
                         <Button size="sm" variant="outline" onClick={handleMarkPaid}
                           className="font-display text-[10px] tracking-wider min-h-[30px]">
