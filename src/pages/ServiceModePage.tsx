@@ -53,6 +53,17 @@ const departments = [
     statusField: null,
     permKeys: ['cashier'],
   },
+  {
+    key: 'waitstaff',
+    label: 'Waitstaff',
+    subtitle: 'Order & track service',
+    icon: <UtensilsCrossed className="w-7 h-7" />,
+    gradient: 'from-[hsl(145,60%,42%)] to-[hsl(155,55%,32%)]',
+    glow: 'shadow-[0_0_30px_-5px_hsl(145,60%,42%,0.3)]',
+    route: '/service/waitstaff',
+    statusField: null,
+    permKeys: ['orders'],
+  },
 ];
 
 const ServiceModePage = () => {
@@ -87,7 +98,7 @@ const ServiceModePage = () => {
   });
 
   const counts = useMemo(() => {
-    let kitchen = 0, bar = 0, reception = 0, cashier = 0;
+    let kitchen = 0, bar = 0, reception = 0, cashier = 0, waitstaff = 0;
     const isAutoPayable = (o: any) => o.payment_type === 'Charge to Room' || !!o.tab_id;
     orders.forEach((o: any) => {
       const items = (o.items as any[]) || [];
@@ -98,8 +109,10 @@ const ServiceModePage = () => {
       reception++;
       // Cashier count = served non-auto-payable (awaiting payment)
       if (o.status === 'Served' && !isAutoPayable(o)) cashier++;
+      // Waitstaff count = Ready orders waiting to be picked up
+      if (o.status === 'Ready') waitstaff++;
     });
-    return { kitchen, bar, reception, cashier };
+    return { kitchen, bar, reception, cashier, waitstaff };
   }, [orders]);
 
   return (
