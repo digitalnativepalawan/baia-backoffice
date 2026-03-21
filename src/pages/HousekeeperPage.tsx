@@ -134,7 +134,7 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
     const id = empId;
     const name = empName;
     if (!id) {
-      toast.error('Please identify yourself first — set your name in the app');
+      toast.error('Cannot identify you — please log out and log back in, or ask a manager to set up your profile');
       return;
     }
     try {

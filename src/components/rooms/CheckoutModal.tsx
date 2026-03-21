@@ -91,7 +91,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
   });
 
   // Check housekeeping clearance for pre-checkout inspection
-  const { data: hkOrder, refetch: refetchHk } = useQuery({
+  const { data: hkOrder } = useQuery({
     queryKey: ['checkout-hk-clearance', unitName],
     enabled: open && !!unitName,
     queryFn: async () => {
@@ -145,7 +145,6 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
 
   // Phase detection: if inspection exists and is cleared, we do actual checkout
   const inspectionCleared = hkOrder?.inspection_status === 'cleared';
-  void refetchHk; // keep refetchHk available for future use
 
   // Phase 1: initiate pre-checkout inspection (lock unit + create HK task)
   const handleInitiateInspection = async () => {

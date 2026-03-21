@@ -1692,7 +1692,10 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                     )}
                     {order.accepted_by_name && (
                       <Button size="sm" variant="ghost" onClick={() => {
-                        toast.info('No WhatsApp number lookup available — use the employee records');
+                        import('@/lib/telegram').then(({ notifyTelegram }) => {
+                          notifyTelegram('housekeeping', `📲 Reminder: Room ${order.unit_name} still needs cleaning. Please update status. — ${staffName}`);
+                        });
+                        toast.success('Reminder sent to housekeeping channel');
                       }} className="font-display text-[10px] tracking-wider min-h-[32px]">
                         📲 Remind
                       </Button>
