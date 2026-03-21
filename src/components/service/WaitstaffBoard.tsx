@@ -3,11 +3,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
 import WaitstaffOrderCard from './WaitstaffOrderCard';
 import ServiceOrderDetail from './ServiceOrderDetail';
 import { useResortProfile } from '@/hooks/useResortProfile';
 import { getStaffSession } from '@/lib/session';
+import { format, formatDistanceToNow } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 
 const COL_COLORS: Record<string, string> = {
   New: 'border-t-gold',
@@ -19,10 +21,12 @@ const KANBAN_COLS = ['New', 'Preparing', 'Ready'] as const;
 
 const WaitstaffBoard = () => {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { data: resortProfile } = useResortProfile();
   const audioCtxRef = useRef<AudioContext | null>(null);
   const [detailOrder, setDetailOrder] = useState<any | null>(null);
   const [servedOpen, setServedOpen] = useState(false);
+  const [closingTabId, setClosingTabId] = useState<string | null>(null);
 
   const permissions = useMemo(() => {
     const s = getStaffSession();
@@ -68,6 +72,10 @@ const WaitstaffBoard = () => {
       .channel('service-board-waitstaff')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: ['service-orders'] });
+        qc.invalidateQueries({ queryKey: ['tab-orders-waitstaff'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tabs' }, () => {
+        qc.invalidateQueries({ queryKey: ['open-tabs-waitstaff'] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -90,6 +98,71 @@ const WaitstaffBoard = () => {
     },
     refetchInterval: 5000,
   });
+
+  // Fetch open tabs
+  const { data: openTabs = [] } = useQuery({
+    queryKey: ['open-tabs-waitstaff'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('tabs')
+        .select('*')
+        .eq('status', 'Open')
+        .order('created_at', { ascending: true });
+      return data || [];
+    },
+    refetchInterval: 10000,
+  });
+
+  // Fetch orders for open tabs (for running totals + order counts)
+  const tabIds = useMemo(() => openTabs.map((t: any) => t.id), [openTabs]);
+  const { data: tabOrders = [] } = useQuery({
+    queryKey: ['tab-orders-waitstaff', tabIds],
+    enabled: tabIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('orders')
+        .select('id, tab_id, total, status, items')
+        .in('tab_id', tabIds);
+      return data || [];
+    },
+    refetchInterval: 5000,
+  });
+
+  // Running totals per tab
+  const tabStats = useMemo(() => {
+    const stats: Record<string, { total: number; orderCount: number }> = {};
+    tabOrders.forEach((o: any) => {
+      if (!o.tab_id) return;
+      if (!stats[o.tab_id]) stats[o.tab_id] = { total: 0, orderCount: 0 };
+      stats[o.tab_id].total += Number(o.total || 0);
+      stats[o.tab_id].orderCount += 1;
+    });
+    return stats;
+  }, [tabOrders]);
+
+  // Close tab → send to Cashier
+  const handleCloseTab = async (tabId: string) => {
+    setClosingTabId(tabId);
+    try {
+      // Mark all open orders on this tab as Served
+      const ordersOnTab = tabOrders.filter((o: any) => o.tab_id === tabId && o.status !== 'Paid');
+      if (ordersOnTab.length > 0) {
+        const orderIds = ordersOnTab.map((o: any) => o.id);
+        await supabase.from('orders').update({ status: 'Served' }).in('id', orderIds);
+      }
+      // Close the tab
+      await supabase.from('tabs').update({ status: 'Closed', closed_at: new Date().toISOString() }).eq('id', tabId);
+
+      qc.invalidateQueries({ queryKey: ['open-tabs-waitstaff'] });
+      qc.invalidateQueries({ queryKey: ['service-orders'] });
+      qc.invalidateQueries({ queryKey: ['cashier-orders'] });
+      toast.success('Tab closed — sent to Cashier');
+    } catch {
+      toast.error('Failed to close tab');
+    } finally {
+      setClosingTabId(null);
+    }
+  };
 
   // Bucket into columns — all orders visible across departments
   const columns = useMemo(() => {
@@ -127,6 +200,74 @@ const WaitstaffBoard = () => {
 
   return (
     <div className="h-full flex flex-col">
+      {/* Open Tabs section */}
+      {openTabs.length > 0 && (
+        <div className="flex-shrink-0 border-b border-border bg-card/30 px-4 py-3 space-y-2">
+          <p className="font-display text-xs tracking-wider text-muted-foreground">OPEN TABS ({openTabs.length})</p>
+          <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
+            {openTabs.map((tab: any) => {
+              const stats = tabStats[tab.id] || { total: 0, orderCount: 0 };
+              const isClosing = closingTabId === tab.id;
+              return (
+                <div
+                  key={tab.id}
+                  className="flex-shrink-0 w-56 rounded-xl border border-border bg-card/90 p-3 space-y-2"
+                >
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="min-w-0">
+                      <p className="font-display text-sm tracking-wider text-foreground truncate">
+                        🪑 {tab.location_detail}
+                      </p>
+                      <p className="font-body text-xs text-muted-foreground truncate">
+                        👤 {tab.guest_name || '—'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-0.5">
+                    {(() => {
+                      const openedAt = new Date(tab.created_at);
+                      return (
+                        <p className="font-body text-[11px] text-muted-foreground">
+                          🕐 {format(openedAt, 'h:mm a')} · {formatDistanceToNow(openedAt, { addSuffix: false })} ago
+                        </p>
+                      );
+                    })()}
+                    <div className="flex items-center justify-between">
+                      <span className="font-body text-xs text-muted-foreground">{stats.orderCount} order{stats.orderCount !== 1 ? 's' : ''}</span>
+                      <span className="font-display text-sm text-gold tabular-nums">₱{stats.total.toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5 pt-1">
+                    <button
+                      onClick={() => {
+                        const params = new URLSearchParams({
+                          mode: 'staff',
+                          orderType: tab.location_type,
+                          location: tab.location_detail,
+                          guestName: tab.guest_name || '',
+                          returnTo: '/service/waitstaff',
+                        });
+                        navigate(`/menu?${params.toString()}`);
+                      }}
+                      className="flex-1 min-h-[36px] rounded-lg bg-gold/10 border border-gold/40 text-gold font-display text-[11px] tracking-wider flex items-center justify-center gap-1 hover:bg-gold/20 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" /> Add Order
+                    </button>
+                    <button
+                      onClick={() => handleCloseTab(tab.id)}
+                      disabled={isClosing}
+                      className="flex-1 min-h-[36px] rounded-lg bg-emerald-500/10 border border-emerald-500/40 text-emerald-400 font-display text-[11px] tracking-wider flex items-center justify-center gap-1 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                    >
+                      {isClosing ? '…' : <><X className="w-3 h-3" /> Close Tab</>}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Summary strip */}
       <div className="flex items-center gap-4 px-4 py-2 border-b border-border bg-card/50 flex-shrink-0">
         <span className="font-display text-sm text-foreground tracking-wider">

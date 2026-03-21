@@ -9,7 +9,7 @@ import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Clock, Home, ChevronDown, ChevronUp, CreditCard, Check, ArrowLeft, Printer, CalendarIcon, BedDouble } from 'lucide-react';
+import { Clock, Home, ChevronDown, ChevronUp, CreditCard, Check, ArrowLeft, Printer, CalendarIcon, BedDouble, Receipt } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { formatDistanceToNow, format } from 'date-fns';
 import CashierReceipt from './CashierReceipt';
@@ -19,6 +19,7 @@ const CashierBoard = () => {
   const { data: resortProfile } = useResortProfile();
   const { data: paymentMethods = [] } = usePaymentMethods();
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [selectedTabBill, setSelectedTabBill] = useState<any | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<string>('');
   const [chargeToRoom, setChargeToRoom] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<string | null>(null);
@@ -34,12 +35,49 @@ const CashierBoard = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: ['cashier-orders'] });
         qc.invalidateQueries({ queryKey: ['cashier-completed'] });
+        qc.invalidateQueries({ queryKey: ['cashier-tab-orders'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tabs' }, () => {
+        qc.invalidateQueries({ queryKey: ['cashier-tab-bills'] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [qc]);
 
-  // Fetch today's Served orders only
+  // Fetch today's closed tab bills (unpaid)
+  const { data: tabBills = [] } = useQuery({
+    queryKey: ['cashier-tab-bills'],
+    queryFn: async () => {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const { data } = await supabase
+        .from('tabs')
+        .select('*')
+        .eq('status', 'Closed')
+        .is('payment_method', null)
+        .gte('closed_at', start.toISOString())
+        .order('closed_at', { ascending: true });
+      return data || [];
+    },
+    refetchInterval: 5000,
+  });
+
+  // Fetch orders for closed tab bills
+  const tabBillIds = useMemo(() => tabBills.map((t: any) => t.id), [tabBills]);
+  const { data: tabBillOrders = [] } = useQuery({
+    queryKey: ['cashier-tab-orders', tabBillIds],
+    enabled: tabBillIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('orders')
+        .select('*')
+        .in('tab_id', tabBillIds);
+      return data || [];
+    },
+    refetchInterval: 5000,
+  });
+
+  // Fetch today's Served orders — exclude those belonging to closed tab bills
   const { data: orders = [] } = useQuery({
     queryKey: ['cashier-orders'],
     queryFn: async () => {
@@ -158,13 +196,45 @@ const CashierBoard = () => {
     }
   };
 
+  // Filter individual orders: exclude those belonging to closed tab bills
+  const filteredOrders = useMemo(() => {
+    const closedTabIdSet = new Set(tabBillIds);
+    return orders.filter((o: any) => !o.tab_id || !closedTabIdSet.has(o.tab_id));
+  }, [orders, tabBillIds]);
+
   const activePaymentMethods = paymentMethods.filter(m => m.is_active && m.name !== 'Charge to Room');
+
+  // Handle tab bill payment
+  const handleConfirmTabPayment = async (tabBill: any, paymentMethod: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const ordersForTab = tabBillOrders.filter((o: any) => o.tab_id === tabBill.id);
+      if (ordersForTab.length > 0) {
+        const orderIds = ordersForTab.map((o: any) => o.id);
+        await supabase.from('orders').update({ status: 'Paid', payment_type: paymentMethod, closed_at: new Date().toISOString() }).in('id', orderIds);
+      }
+      await supabase.from('tabs').update({ payment_method: paymentMethod }).eq('id', tabBill.id);
+
+      qc.invalidateQueries({ queryKey: ['cashier-tab-bills'] });
+      qc.invalidateQueries({ queryKey: ['cashier-tab-orders'] });
+      qc.invalidateQueries({ queryKey: ['cashier-completed'] });
+      setSelectedTabBill(null);
+      setSelectedPayment('');
+      toast.success('Tab settled');
+    } catch {
+      toast.error('Failed to settle tab');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleOrderSelect = useCallback((order: any) => {
     if (order.status === 'Paid') {
       setReceiptOrder(order);
     } else {
       setSelectedOrder(order);
+      setSelectedTabBill(null);
       setChargeToRoom(false);
       setSelectedPayment('');
       setSelectedBooking(null);
@@ -199,15 +269,58 @@ const CashierBoard = () => {
         {/* Summary */}
         <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-card/50 flex-shrink-0">
           <span className="font-display text-sm text-foreground tracking-wider">
-            {orders.length} order{orders.length !== 1 ? 's' : ''} awaiting settlement
+            {filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} awaiting settlement
+            {tabBills.length > 0 && (
+              <span className="ml-2 text-emerald-400">· {tabBills.length} tab bill{tabBills.length !== 1 ? 's' : ''}</span>
+            )}
           </span>
         </div>
 
         <div className="flex-1 md:overflow-y-auto">
+          {/* Tab Bills section */}
+          {tabBills.length > 0 && (
+            <div className="p-3 space-y-2 border-b border-border/50">
+              <p className="font-display text-xs tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <Receipt className="w-3.5 h-3.5" /> TAB BILLS
+              </p>
+              {tabBills.map((tab: any) => {
+                const ordersForTab = tabBillOrders.filter((o: any) => o.tab_id === tab.id);
+                const allItems: any[] = ordersForTab.flatMap((o: any) => (o.items as any[]) || []);
+                const tabTotal = ordersForTab.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+                return (
+                  <div
+                    key={tab.id}
+                    onClick={() => { setSelectedTabBill(tab); setSelectedOrder(null); setSelectedPayment(''); }}
+                    className={`rounded-xl border p-3 cursor-pointer transition-all active:scale-[0.98] ${
+                      selectedTabBill?.id === tab.id
+                        ? 'ring-2 ring-emerald-500 bg-emerald-500/5 border-emerald-500/40'
+                        : 'border-emerald-500/20 bg-card/90 hover:bg-secondary/30'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-1">
+                      <div className="min-w-0">
+                        <p className="font-display text-sm text-foreground tracking-wider truncate">
+                          🪑 {tab.location_detail}
+                        </p>
+                        <p className="font-body text-xs text-muted-foreground">
+                          👤 {tab.guest_name || '—'} · 🕐 {tab.closed_at ? format(new Date(tab.closed_at), 'h:mm a') : '—'}
+                        </p>
+                      </div>
+                      <span className="font-display text-sm text-emerald-400 tabular-nums ml-2">₱{tabTotal.toLocaleString()}</span>
+                    </div>
+                    <p className="font-body text-[11px] text-muted-foreground">
+                      {ordersForTab.length} order{ordersForTab.length !== 1 ? 's' : ''} · {allItems.length} item{allItems.length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Flat list of served orders */}
-          {orders.length > 0 ? (
+          {filteredOrders.length > 0 ? (
             <div className="p-3 space-y-2">
-              {orders.map(order => (
+              {filteredOrders.map(order => (
                 <OrderRow
                   key={order.id}
                   order={order}
@@ -216,9 +329,9 @@ const CashierBoard = () => {
                 />
               ))}
             </div>
-          ) : (
+          ) : tabBills.length === 0 ? (
             <p className="font-body text-sm text-muted-foreground text-center py-12">No orders awaiting settlement</p>
-          )}
+          ) : null}
 
           {/* Completed — date picker + stacked cards */}
           <div className="px-3 pb-4">
@@ -258,7 +371,18 @@ const CashierBoard = () => {
 
       {/* Right: Payment Panel */}
       <div className="w-full md:w-[400px] lg:w-[440px] flex-shrink-0 bg-card/50 flex flex-col md:overflow-y-auto">
-        {selectedOrder ? (
+        {selectedTabBill ? (
+          <TabBillPanel
+            tab={selectedTabBill}
+            orders={tabBillOrders.filter((o: any) => o.tab_id === selectedTabBill.id)}
+            paymentMethods={activePaymentMethods}
+            selectedPayment={selectedPayment}
+            onSelectPayment={setSelectedPayment}
+            onConfirm={() => handleConfirmTabPayment(selectedTabBill, selectedPayment)}
+            busy={busy}
+            onBack={() => { setSelectedTabBill(null); setSelectedPayment(''); }}
+          />
+        ) : selectedOrder ? (
           <BillOutPanel
             order={selectedOrder}
             paymentMethods={activePaymentMethods}
@@ -278,6 +402,107 @@ const CashierBoard = () => {
         ) : (
           <DailySummary completed={completedOrders} />
         )}
+      </div>
+    </div>
+  );
+};
+
+/** Tab Bill payment panel */
+const TabBillPanel = ({
+  tab, orders: tabOrders, paymentMethods, selectedPayment, onSelectPayment, onConfirm, busy, onBack,
+}: {
+  tab: any;
+  orders: any[];
+  paymentMethods: any[];
+  selectedPayment: string;
+  onSelectPayment: (p: string) => void;
+  onConfirm: () => void;
+  busy: boolean;
+  onBack: () => void;
+}) => {
+  const allItems: any[] = tabOrders.flatMap((o: any) => (o.items as any[]) || []);
+  const tabTotal = tabOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+        <Button variant="ghost" size="icon" onClick={onBack} className="w-8 h-8 md:hidden">
+          <ArrowLeft className="w-4 h-4" />
+        </Button>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <Receipt className="w-4 h-4 text-emerald-400" />
+            <p className="font-display text-base tracking-wider text-foreground">
+              {tab.location_detail}
+            </p>
+          </div>
+          <p className="font-body text-xs text-muted-foreground">
+            {tab.guest_name || '—'} · Opened {tab.created_at ? format(new Date(tab.created_at), 'h:mm a') : '—'}
+          </p>
+        </div>
+        <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 font-body text-[10px]">
+          Tab Bill
+        </Badge>
+      </div>
+
+      {/* Itemized orders */}
+      <div className="flex-1 md:overflow-y-auto px-4 py-3 space-y-4">
+        <div className="space-y-1">
+          {allItems.map((item: any, idx: number) => (
+            <div key={idx} className="flex justify-between font-body text-sm">
+              <span className="text-foreground">{item.qty || item.quantity || 1}× {item.name}</span>
+              <span className="text-muted-foreground tabular-nums">₱{(item.price * (item.qty || item.quantity || 1)).toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t border-border/50 pt-3">
+          <div className="flex justify-between font-display text-2xl text-gold pt-2">
+            <span>Total</span>
+            <span className="tabular-nums">₱{tabTotal.toLocaleString()}</span>
+          </div>
+          <p className="font-body text-xs text-muted-foreground mt-1">
+            {tabOrders.length} order{tabOrders.length !== 1 ? 's' : ''} on this tab
+          </p>
+        </div>
+
+        {/* Payment Method */}
+        <div className="space-y-3">
+          <p className="font-display text-xs tracking-wider text-muted-foreground">SELECT PAYMENT METHOD</p>
+          <div className="grid grid-cols-2 gap-2">
+            {paymentMethods.map(m => (
+              <button
+                key={m.id}
+                onClick={() => onSelectPayment(m.name)}
+                className={`min-h-[52px] rounded-xl border-2 font-display text-sm tracking-wider transition-all ${
+                  selectedPayment === m.name
+                    ? 'border-gold bg-gold/10 text-gold'
+                    : 'border-border bg-card text-foreground hover:border-accent/40'
+                }`}
+              >
+                {m.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Confirm */}
+      <div className="p-4 border-t border-border flex-shrink-0">
+        <Button
+          onClick={onConfirm}
+          disabled={!selectedPayment || busy}
+          size="lg"
+          className="w-full min-h-[56px] font-display text-base tracking-wider gap-2 bg-emerald-600 text-white hover:bg-emerald-600/90"
+        >
+          {busy ? 'Processing…' : (
+            <>
+              <Check className="w-5 h-5" />
+              Settle Tab — ₱{tabTotal.toLocaleString()}
+            </>
+          )}
+        </Button>
       </div>
     </div>
   );
