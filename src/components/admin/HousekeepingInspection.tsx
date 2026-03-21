@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, CheckCircle, Search, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { differenceInMinutes } from 'date-fns';
-import PasswordConfirmModal from '@/components/housekeeping/PasswordConfirmModal';
+
 
 const from = (table: string) => supabase.from(table as any);
 
@@ -37,9 +37,6 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
     order.status === 'pending_inspection' || order.status === 'inspecting' ? 'inspection' : 'cleaning'
   );
   const [currentStep, setCurrentStep] = useState(derivedStep);
-
-  // PIN confirmation state
-  const [pinAction, setPinAction] = useState<'cleaning' | null>(null);
 
   // ── Checklist items for this room type ──
   const { data: checklistItems = [] } = useQuery({
@@ -320,9 +317,15 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
     }
   };
 
-  const handlePinConfirm = (employee: { id: string; name: string; display_name: string }) => {
-    completeCleaning(employee);
-    setPinAction(null);
+  const handleCleaningComplete = () => {
+    const id = localStorage.getItem('emp_id') || '';
+    const name = localStorage.getItem('emp_name') || '';
+    const display_name = localStorage.getItem('emp_display_name') || name;
+    if (!id) {
+      toast.error('Cannot identify you — please log out and log back in, or ask a manager to set up your profile');
+      return;
+    }
+    completeCleaning({ id, name, display_name });
   };
 
   // ═══ PRE-INSPECTION MODE (simplified damage check) ═══
@@ -607,7 +610,7 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
           </div>
 
           <Button
-            onClick={() => setPinAction('cleaning')}
+            onClick={handleCleaningComplete}
             disabled={cleaning}
             variant="default"
             className="w-full font-display tracking-wider min-h-[44px] bg-emerald-600 hover:bg-emerald-700"
@@ -618,14 +621,6 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
         </div>
       )}
 
-      {/* PIN Confirmation Modal */}
-      <PasswordConfirmModal
-        open={!!pinAction}
-        onClose={() => setPinAction(null)}
-        onConfirm={handlePinConfirm}
-        title="Confirm Cleaning Complete"
-        description="Enter your PIN to confirm cleaning is done and mark the room as ready."
-      />
     </div>
   );
 };
