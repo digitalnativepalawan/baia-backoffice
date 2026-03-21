@@ -149,19 +149,73 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
 
       await from('housekeeping_orders').update({
         status: 'inspection_cleared',
+        inspection_status: 'cleared',
         inspection_data: inspectionData,
         damage_notes: damageNotes,
         inspection_completed_at: new Date().toISOString(),
         inspection_by_name: empName,
       } as any).eq('id', order.id);
 
+      // Unlock checkout on the unit
+      await supabase.from('units').update({ checkout_locked: false } as any)
+        .eq('unit_name', order.unit_name);
+
+      // Notify Reception
+      import('@/lib/telegram').then(({ notifyTelegram }) => {
+        notifyTelegram('reception,managers', `✅ ${order.unit_name} Inspection Cleared ✓\nRoom is ready for checkout.`);
+      });
+
       qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
       qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
       qc.invalidateQueries({ queryKey: ['checkout-hk-clearance'] });
-      toast.success(`✅ ${order.unit_name} cleared for checkout — Reception notified`, { duration: 5000 });
+      qc.invalidateQueries({ queryKey: ['rooms-units'] });
+      toast.success(`✅ ${order.unit_name} inspection cleared — Reception notified`, { duration: 5000 });
       onClose();
     } catch (err: any) {
       toast.error(err.message || 'Failed to complete inspection');
+    } finally {
+      setInspecting(false);
+    }
+  };
+
+  // ── Pre-Inspection: Flag Issue ──
+  const flagPreInspectionIssue = async () => {
+    setInspecting(true);
+    try {
+      const inspectionData = checklistItems.map((item: any) => ({
+        id: item.id,
+        label: item.item_label,
+        checked: !!checkedItems[item.id],
+        count: item.count_expected ? parseInt(itemCounts[item.id] || '0') : undefined,
+        required: item.is_required,
+      }));
+
+      const empName = localStorage.getItem('emp_display_name') || localStorage.getItem('emp_name') || '';
+
+      await from('housekeeping_orders').update({
+        status: 'issue_flagged',
+        inspection_status: 'issue_flagged',
+        inspection_data: inspectionData,
+        damage_notes: damageNotes,
+        inspection_completed_at: new Date().toISOString(),
+        inspection_by_name: empName,
+      } as any).eq('id', order.id);
+
+      // Keep unit checkout_locked = true — do NOT unlock
+
+      // Send RED alert to Reception
+      import('@/lib/telegram').then(({ notifyTelegram }) => {
+        notifyTelegram('reception,managers', `⚠️ Issue found in ${order.unit_name} — contact housekeeper before checkout.\nNotes: ${damageNotes || '(none)'}`);
+      });
+
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
+      qc.invalidateQueries({ queryKey: ['checkout-hk-clearance'] });
+      qc.invalidateQueries({ queryKey: ['rooms-units'] });
+      toast.warning(`⚠ Issue flagged for ${order.unit_name} — Reception alerted`, { duration: 5000 });
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to flag issue');
     } finally {
       setInspecting(false);
     }
@@ -339,17 +393,36 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
             />
           </div>
 
-          <Button
-            onClick={completePreInspection}
-            disabled={inspecting}
-            className="w-full font-display tracking-wider min-h-[52px] bg-emerald-600 hover:bg-emerald-700 text-lg"
-          >
-            <CheckCircle className="w-5 h-5 mr-2" />
-            {inspecting ? 'Submitting...' : '✅ Clear for Checkout'}
-          </Button>
-          <p className="font-body text-xs text-muted-foreground text-center">
-            This will notify reception that the room is cleared for final checkout.
-          </p>
+          {/* Two action buttons */}
+          {(() => {
+            const requiredItems = checklistItems.filter((item: any) => item.is_required);
+            const allRequiredChecked = requiredItems.length === 0 || requiredItems.every((item: any) => !!checkedItems[item.id]);
+            return (
+              <div className="space-y-2">
+                <Button
+                  onClick={completePreInspection}
+                  disabled={inspecting || !allRequiredChecked}
+                  className="w-full font-display tracking-wider min-h-[52px] bg-emerald-600 hover:bg-emerald-700 text-base"
+                >
+                  <CheckCircle className="w-5 h-5 mr-2" />
+                  {inspecting ? 'Submitting...' : '✓ Inspection Done — All Good'}
+                </Button>
+                {!allRequiredChecked && requiredItems.length > 0 && (
+                  <p className="font-body text-xs text-amber-400 text-center">
+                    Tick all required items (*) to enable this button
+                  </p>
+                )}
+                <Button
+                  onClick={flagPreInspectionIssue}
+                  disabled={inspecting}
+                  variant="outline"
+                  className="w-full font-display tracking-wider min-h-[48px] border-amber-500 text-amber-400 hover:bg-amber-500/10 text-base"
+                >
+                  ⚠ Flag Issue
+                </Button>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
