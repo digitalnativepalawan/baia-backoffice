@@ -16,7 +16,6 @@ import RoomsDashboard from '@/components/admin/RoomsDashboard';
 import ClosedCheckoutsPanel from '@/components/rooms/ClosedCheckoutsPanel';
 import AddPaymentModal from '@/components/rooms/AddPaymentModal';
 import HousekeeperPickerModal from '@/components/rooms/HousekeeperPickerModal';
-import PasswordConfirmModal from '@/components/housekeeping/PasswordConfirmModal';
 import HousekeepingInspection from '@/components/admin/HousekeepingInspection';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
@@ -110,7 +109,8 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const [checkOutPayment, setCheckOutPayment] = useState('');
   const [checkOutAmount, setCheckOutAmount] = useState('');
   const [checkingOut, setCheckingOut] = useState(false);
-  // checkOutHousekeeper removed — broadcast mode
+  // checkoutPhase: 'initiate' = create inspection task, 'complete' = actual checkout
+  const [checkoutPhase, setCheckoutPhase] = useState<'initiate' | 'complete'>('initiate');
 
   // Add Payment modal state
   const [paymentUnit, setPaymentUnit] = useState<any>(null);
@@ -130,7 +130,6 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   // Housekeeping tracker state
   const [hkTrackerOpen, setHkTrackerOpen] = useState(true);
   const [activeHkOrder, setActiveHkOrder] = useState<any>(null);
-  const [acceptingHkOrderId, setAcceptingHkOrderId] = useState<string | null>(null);
   const [forcingReady, setForcingReady] = useState<string | null>(null);
 
   // Room detail sheet state
@@ -139,23 +138,6 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const hasDocAccess = isAdmin || hasAccess(perms, 'documents');
   const { data: paymentMethods = [] } = usePaymentMethods();
 
-  // Fetch housekeeping employees for checkout picker
-  const { data: hkEmployeesForCheckout = [] } = useQuery({
-    queryKey: ['housekeeping-employees'],
-    queryFn: async () => {
-      const { data: perms } = await supabase.from('employee_permissions')
-        .select('employee_id')
-        .like('permission', 'housekeeping%');
-      const hkIds = new Set((perms || []).map((p: any) => p.employee_id));
-      const { data: emps } = await supabase.from('employees')
-        .select('id, name, display_name, whatsapp_number')
-        .eq('active', true)
-        .order('name');
-      const all = (emps || []) as any[];
-      const filtered = all.filter(e => hkIds.has(e.id));
-      return filtered.length > 0 ? filtered : all;
-    },
-  });
   const activePM = paymentMethods.filter(m => m.is_active && m.name !== 'Charge to Room');
 
   // Compute balance for payment modal
@@ -207,9 +189,9 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     refetchInterval: 5000,
   });
 
-  // Derive latest active order per unit
+  // Derive latest active order per unit — exclude pre_checkout_inspection tasks (handled separately)
   const latestHkByUnit = new Map<string, any>();
-  allHkOrders.filter((o: any) => o.status !== 'completed').forEach((o: any) => {
+  allHkOrders.filter((o: any) => o.status !== 'completed' && o.task_type !== 'pre_checkout_inspection').forEach((o: any) => {
     if (!latestHkByUnit.has(o.unit_name)) latestHkByUnit.set(o.unit_name, o);
   });
   const activeHkOrders = Array.from(latestHkByUnit.values());
@@ -432,6 +414,9 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bill_disputes' }, () => {
         qc.invalidateQueries({ queryKey: ['reception-bill-disputes'] });
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'units' }, () => {
+        qc.invalidateQueries({ queryKey: ['rooms-units'] });
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [qc]);
@@ -590,27 +575,6 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       setForcingReady(null);
     }
   };
-
-  // ── HOUSEKEEPING ACCEPT (for multi-role staff) ──
-  const handleHkAccept = async (employee: { id: string; name: string; display_name: string }) => {
-    if (!acceptingHkOrderId) return;
-    try {
-      await from('housekeeping_orders').update({
-        accepted_by: employee.id,
-        accepted_by_name: employee.display_name || employee.name,
-        accepted_at: new Date().toISOString(),
-        status: 'pending_inspection',
-      } as any).eq('id', acceptingHkOrderId);
-      localStorage.setItem('emp_id', employee.id);
-      localStorage.setItem('emp_name', employee.name);
-      qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
-      toast.success(`Accepted — ${employee.display_name || employee.name}`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to accept');
-    }
-    setAcceptingHkOrderId(null);
-  };
-
 
   const handleReservationCheckIn = async () => {
     if (!checkInBooking) return;
@@ -858,7 +822,47 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     }
   };
 
-  // ── CHECK-OUT ──
+  // ── CHECK-OUT PHASE 1: Initiate Pre-Checkout Inspection ──
+
+  const handleInitiateInspection = async () => {
+    if (!checkOutBooking || !checkOutUnit) return;
+    setCheckingOut(true);
+    try {
+      // Lock the unit checkout
+      await supabase.from('units').update({ checkout_locked: true } as any).eq('id', checkOutUnit.id);
+
+      // Create pre_checkout_inspection HK task
+      await from('housekeeping_orders').insert({
+        unit_name: checkOutUnit.name,
+        room_type_id: (checkOutUnit as any).room_type_id || null,
+        status: 'pre_inspection',
+        task_type: 'pre_checkout_inspection',
+        inspection_status: 'pending',
+      });
+
+      // Notify all clocked-in housekeeping staff
+      import('@/lib/telegram').then(({ notifyTelegram }) => {
+        const gName = checkOutBooking.resort_ops_guests?.full_name || 'Guest';
+        notifyTelegram('housekeeping,managers', `🔍 Pre-Checkout Inspection Needed\n${checkOutUnit.name} — ${gName}\nPlease accept and inspect before checkout.`);
+      });
+
+      await logAudit('updated', 'units', checkOutUnit.id, `Pre-checkout inspection initiated for ${checkOutBooking.resort_ops_guests?.full_name} in ${checkOutUnit.name}`);
+
+      qc.invalidateQueries({ queryKey: ['rooms-units'] });
+      qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
+
+      setCheckOutOpen(false);
+      setCheckOutBooking(null);
+      setCheckOutUnit(null);
+      toast.success(`Inspection task created — housekeepers notified for ${checkOutUnit.name}`);
+    } catch {
+      toast.error('Failed to initiate inspection');
+    } finally {
+      setCheckingOut(false);
+    }
+  };
+
+  // ── CHECK-OUT PHASE 2: Complete Checkout (after inspection cleared) ──
 
   const handleCheckOut = async () => {
     if (!checkOutBooking || !checkOutUnit) return;
@@ -906,27 +910,29 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
         check_out: today,
         checked_out_at: new Date().toISOString(),
       }).eq('id', checkOutBooking.id);
-      await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', checkOutUnit.id);
 
-      // Telegram notification
+      // Set to_clean and remove checkout lock
+      await supabase.from('units').update({ status: 'to_clean', checkout_locked: false } as any).eq('id', checkOutUnit.id);
+
+      // Telegram checkout notification
       import('@/lib/telegram').then(({ notifyTelegram }) => {
         const gName = checkOutBooking.resort_ops_guests?.full_name || 'Guest';
         notifyTelegram('reception,managers', `🚪 Check-out\n${gName} - ${checkOutUnit.name}`);
       });
 
-      const existing = activeHkOrders.find((o: any) => o.unit_name === checkOutUnit.name);
+      // Create clean_room housekeeping task (broadcast to all clocked-in housekeepers)
+      await from('housekeeping_orders').insert({
+        unit_name: checkOutUnit.name,
+        room_type_id: (checkOutUnit as any).room_type_id || null,
+        status: 'pending_inspection',
+        task_type: 'clean_room',
+        inspection_status: 'pending',
+      });
 
-      if (!existing) {
-        await from('housekeeping_orders').insert({
-          unit_name: checkOutUnit.name,
-          room_type_id: (checkOutUnit as any).room_type_id || null,
-          status: 'pending_inspection',
-          assigned_to: null,
-          accepted_by: null,
-          accepted_by_name: '',
-          accepted_at: null,
-        });
-      }
+      // Notify housekeeping of cleaning task
+      import('@/lib/telegram').then(({ notifyTelegram }) => {
+        notifyTelegram('housekeeping,managers', `🧹 Room Ready for Cleaning\n${checkOutUnit.name} — guest has checked out.\nPlease accept and clean.`);
+      });
 
       // Cancel any pending guest requests & tours for this booking
       if (checkOutBooking.id) {
@@ -940,7 +946,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
           .eq('status', 'pending');
       }
 
-      await logAudit('updated', 'units', checkOutUnit.id, `Checkout: ${checkOutBooking.resort_ops_guests?.full_name} from ${checkOutUnit.name} — housekeeping broadcast`);
+      await logAudit('updated', 'units', checkOutUnit.id, `Checkout: ${checkOutBooking.resort_ops_guests?.full_name} from ${checkOutUnit.name}`);
 
       qc.invalidateQueries({ queryKey: ['room-transactions', checkOutUnit.id] });
       qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
@@ -965,6 +971,24 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     } finally {
       setCheckingOut(false);
     }
+  };
+
+  // Helper: get pre-checkout inspection state for a unit
+  const getPreCheckoutInspState = (unit: any): 'none' | 'pending' | 'cleared' | 'issue_flagged' => {
+    const orders = allHkOrders
+      .filter((o: any) => o.unit_name === unit.name && o.task_type === 'pre_checkout_inspection')
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    if (orders.length === 0) return 'none';
+    return (orders[0].inspection_status as any) || 'pending';
+  };
+
+  // Override & Unlock Checkout (GM/Admin only)
+  const handleOverrideUnlock = async (unit: any) => {
+    if (!isAdmin) { toast.error('Admin access required'); return; }
+    await supabase.from('units').update({ checkout_locked: false } as any).eq('id', unit.id);
+    await logAudit('updated', 'units', unit.id, `Checkout override-unlocked for ${unit.name} by ${staffName}`);
+    qc.invalidateQueries({ queryKey: ['rooms-units'] });
+    toast.info(`${unit.name} checkout unlocked`);
   };
 
   // Checkout billing
@@ -1079,17 +1103,48 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                         <UtensilsCrossed className="w-3 h-3" /> {roomOrders.length} order{roomOrders.length !== 1 ? 's' : ''}
                       </span>
                     )}
+                    {/* Pre-checkout inspection status badges */}
+                    {(() => {
+                      const inspState = getPreCheckoutInspState(unit);
+                      if (unit.checkout_locked && inspState === 'issue_flagged') {
+                        return <Badge className="font-body text-[10px] bg-red-500/20 text-red-400 border-red-500/40">⚠ Issue Flagged</Badge>;
+                      }
+                      if (unit.checkout_locked) {
+                        return <Badge className="font-body text-[10px] bg-amber-500/20 text-amber-400 border-amber-500/40">⏳ Awaiting Inspection</Badge>;
+                      }
+                      if (inspState === 'cleared') {
+                        return <Badge className="font-body text-[10px] bg-emerald-500/20 text-emerald-400 border-emerald-500/40">✓ Inspection Cleared</Badge>;
+                      }
+                      return null;
+                    })()}
                   </div>
                 </div>
-                {canDoEdit && isDepartingToday && (
-                  <Button size="sm" variant="destructive" onClick={() => {
-                    setCheckOutBooking(booking);
-                    setCheckOutUnit(unit);
-                    setCheckOutPayment('');
-                    setCheckOutAmount('');
-                    setCheckOutOpen(true);
-                  }} className="font-display text-xs tracking-wider min-h-[36px]">
-                    <LogOut className="w-4 h-4 mr-1" /> Check Out
+                {canDoEdit && isDepartingToday && (() => {
+                  const inspState = getPreCheckoutInspState(unit);
+                  // Hide Check Out button when unit is locked
+                  if (unit.checkout_locked) return null;
+                  // Hide when issue is flagged (must be overridden first)
+                  if (inspState === 'issue_flagged') return null;
+                  return (
+                    <Button size="sm" variant="destructive" onClick={() => {
+                      const phase = inspState === 'cleared' ? 'complete' : 'initiate';
+                      setCheckoutPhase(phase);
+                      setCheckOutBooking(booking);
+                      setCheckOutUnit(unit);
+                      setCheckOutPayment('');
+                      setCheckOutAmount('');
+                      setCheckOutOpen(true);
+                    }} className="font-display text-xs tracking-wider min-h-[36px]">
+                      <LogOut className="w-4 h-4 mr-1" />
+                      {inspState === 'cleared' ? 'Complete Checkout' : 'Check Out'}
+                    </Button>
+                  );
+                })()}
+                {/* Override & Unlock Checkout — GM/Admin only, when issue is flagged */}
+                {isAdmin && unit.checkout_locked && getPreCheckoutInspState(unit) === 'issue_flagged' && (
+                  <Button size="sm" variant="outline" onClick={() => handleOverrideUnlock(unit)}
+                    className="font-display text-xs tracking-wider min-h-[36px] border-red-500/40 text-red-400 hover:bg-red-500/10">
+                    <AlertTriangle className="w-3.5 h-3.5 mr-1" /> Override &amp; Unlock Checkout
                   </Button>
                 )}
                  <div className="flex flex-wrap gap-1.5">
@@ -1637,14 +1692,10 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                     )}
                     {order.accepted_by_name && (
                       <Button size="sm" variant="ghost" onClick={() => {
-                        const emp = hkEmployeesForCheckout.find((e: any) => e.id === order.accepted_by);
-                        if (emp?.whatsapp_number) {
-                          import('@/lib/messenger').then(({ openWhatsApp }) => {
-                            openWhatsApp(emp.whatsapp_number, `Reminder: Room ${order.unit_name} still needs cleaning. Please update status.`);
-                          });
-                        } else {
-                          toast.info('No WhatsApp number for this staff member');
-                        }
+                        import('@/lib/telegram').then(({ notifyTelegram }) => {
+                          notifyTelegram('housekeeping', `📲 Reminder: Room ${order.unit_name} still needs cleaning. Please update status. — ${staffName}`);
+                        });
+                        toast.success('Reminder sent to housekeeping channel');
                       }} className="font-display text-[10px] tracking-wider min-h-[32px]">
                         📲 Remind
                       </Button>
@@ -1657,9 +1708,25 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                       </Button>
                     )}
                     {hasHousekeepingAccess && !order.accepted_by && (
-                      <Button size="sm" onClick={() => setAcceptingHkOrderId(order.id)}
+                      <Button size="sm" onClick={async () => {
+                        const id = empId;
+                        const name = staffName;
+                        if (!id) { toast.error('Cannot identify user'); return; }
+                        try {
+                          await from('housekeeping_orders').update({
+                            accepted_by: id,
+                            accepted_by_name: name,
+                            accepted_at: new Date().toISOString(),
+                            status: 'pending_inspection',
+                          } as any).eq('id', order.id);
+                          qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
+                          toast.success(`Accepted — ${name}`);
+                        } catch (err: any) {
+                          toast.error(err.message || 'Failed to accept');
+                        }
+                      }}
                         className="font-display text-[10px] tracking-wider min-h-[32px]">
-                        Accept with PIN
+                        Accept
                       </Button>
                     )}
                     {hasHousekeepingAccess && isMyOrder && (
@@ -1795,7 +1862,9 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       <Dialog open={checkOutOpen} onOpenChange={setCheckOutOpen}>
         <DialogContent className="bg-card border-border max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-display tracking-wider">Checkout — {checkOutUnit?.name}</DialogTitle>
+            <DialogTitle className="font-display tracking-wider">
+              {checkoutPhase === 'initiate' ? `Pre-Checkout Inspection — ${checkOutUnit?.name}` : `Checkout — ${checkOutUnit?.name}`}
+            </DialogTitle>
           </DialogHeader>
           {checkOutBooking && (() => {
             const guest = checkOutBooking.resort_ops_guests;
@@ -1803,99 +1872,132 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
             const rate = Number(checkOutBooking.room_rate);
             return (
               <div className="space-y-4">
-                <div className="border border-border rounded-lg p-3 bg-secondary space-y-1">
-                  <p className="font-display text-sm text-foreground">{guest?.full_name || 'Guest'}</p>
-                  <p className="font-body text-xs text-muted-foreground">{nights} night{nights !== 1 ? 's' : ''} × ₱{rate.toLocaleString()}/night = ₱{(nights * rate).toLocaleString()}</p>
-                </div>
-
-                {charges.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="font-display text-xs tracking-wider text-muted-foreground uppercase">Charges</p>
-                    {charges.map(t => (
-                      <div key={t.id} className="flex justify-between font-body text-sm">
-                        <span className="text-muted-foreground truncate flex-1">{t.notes || t.transaction_type}</span>
-                        <span className="text-foreground">₱{t.total_amount.toLocaleString()}</span>
-                      </div>
-                    ))}
-                    <div className="flex justify-between font-display text-sm">
-                      <span className="text-foreground">Total Charges</span>
-                      <span className="text-foreground">₱{totalCharges.toLocaleString()}</span>
+                {checkoutPhase === 'initiate' ? (
+                  <>
+                    {/* Phase 1: Initiate inspection */}
+                    <div className="border border-border rounded-lg p-3 bg-secondary space-y-1">
+                      <p className="font-display text-sm text-foreground">{guest?.full_name || 'Guest'}</p>
+                      <p className="font-body text-xs text-muted-foreground">{nights} night{nights !== 1 ? 's' : ''} × ₱{rate.toLocaleString()}/night = ₱{(nights * rate).toLocaleString()}</p>
                     </div>
-                  </div>
-                )}
-
-                <Separator />
-
-                {payments.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="font-display text-xs tracking-wider text-muted-foreground uppercase">Payments Received</p>
-                    {payments.map(t => (
-                      <div key={t.id} className="flex justify-between font-body text-sm">
-                        <span className="text-muted-foreground truncate flex-1">{t.payment_method}</span>
-                        <span className="text-green-400">₱{Math.abs(t.total_amount).toLocaleString()}</span>
-                      </div>
-                    ))}
-                    <div className="flex justify-between font-display text-sm">
-                      <span className="text-foreground">Total Paid</span>
-                      <span className="text-green-400">₱{totalPayments.toLocaleString()}</span>
+                    <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3">
+                      <p className="font-display text-xs tracking-wider text-amber-400 uppercase">🧹 Housekeeping Inspection</p>
+                      <p className="font-body text-xs text-muted-foreground mt-1">
+                        All clocked-in housekeepers will be notified and can accept the inspection task.
+                      </p>
                     </div>
-                  </div>
-                )}
+                    <p className="font-body text-xs text-muted-foreground text-center">
+                      Confirming will lock checkout and send an inspection task to housekeeping. Checkout will resume after the room is cleared.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    {/* Phase 2: Actual checkout */}
+                    <div className="border border-emerald-500/30 bg-emerald-500/5 rounded-lg p-3">
+                      <p className="font-display text-xs tracking-wider text-emerald-400 uppercase">✓ Inspection Cleared</p>
+                      <p className="font-body text-xs text-muted-foreground mt-1">Room has been inspected and cleared. Proceed with checkout.</p>
+                    </div>
 
-                <Separator />
+                    <div className="border border-border rounded-lg p-3 bg-secondary space-y-1">
+                      <p className="font-display text-sm text-foreground">{guest?.full_name || 'Guest'}</p>
+                      <p className="font-body text-xs text-muted-foreground">{nights} night{nights !== 1 ? 's' : ''} × ₱{rate.toLocaleString()}/night = ₱{(nights * rate).toLocaleString()}</p>
+                    </div>
 
-                <div className="flex justify-between font-display text-lg tracking-wider">
-                  <span className="text-foreground">Balance</span>
-                  <span className={balance > 0 ? 'text-destructive' : 'text-green-400'}>
-                    ₱{Math.abs(balance).toLocaleString()}
-                  </span>
-                </div>
-
-                {balance > 0 && (
-                  <div className="space-y-3 border border-border rounded-lg p-3">
-                    <p className="font-display text-xs tracking-wider text-foreground uppercase">Final Payment</p>
-                    <Select onValueChange={setCheckOutPayment} value={checkOutPayment}>
-                      <SelectTrigger className="bg-secondary border-border text-foreground font-body">
-                        <SelectValue placeholder="Payment method" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-card border-border">
-                        {activePM.map(m => (
-                          <SelectItem key={m.id} value={m.name} className="text-foreground font-body">{m.name}</SelectItem>
+                    {charges.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="font-display text-xs tracking-wider text-muted-foreground uppercase">Charges</p>
+                        {charges.map(t => (
+                          <div key={t.id} className="flex justify-between font-body text-sm">
+                            <span className="text-muted-foreground truncate flex-1">{t.notes || t.transaction_type}</span>
+                            <span className="text-foreground">₱{t.total_amount.toLocaleString()}</span>
+                          </div>
                         ))}
-                      </SelectContent>
-                    </Select>
-                    <Input type="number" value={checkOutAmount} onChange={e => setCheckOutAmount(e.target.value)}
-                      placeholder={`₱${balance.toLocaleString()}`}
-                      className="bg-secondary border-border text-foreground font-body" />
-                  </div>
+                        <div className="flex justify-between font-display text-sm">
+                          <span className="text-foreground">Total Charges</span>
+                          <span className="text-foreground">₱{totalCharges.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <Separator />
+
+                    {payments.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="font-display text-xs tracking-wider text-muted-foreground uppercase">Payments Received</p>
+                        {payments.map(t => (
+                          <div key={t.id} className="flex justify-between font-body text-sm">
+                            <span className="text-muted-foreground truncate flex-1">{t.payment_method}</span>
+                            <span className="text-green-400">₱{Math.abs(t.total_amount).toLocaleString()}</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between font-display text-sm">
+                          <span className="text-foreground">Total Paid</span>
+                          <span className="text-green-400">₱{totalPayments.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <Separator />
+
+                    <div className="flex justify-between font-display text-lg tracking-wider">
+                      <span className="text-foreground">Balance</span>
+                      <span className={balance > 0 ? 'text-destructive' : 'text-green-400'}>
+                        ₱{Math.abs(balance).toLocaleString()}
+                      </span>
+                    </div>
+
+                    {balance > 0 && (
+                      <div className="space-y-3 border border-border rounded-lg p-3">
+                        <p className="font-display text-xs tracking-wider text-foreground uppercase">Final Payment</p>
+                        <Select onValueChange={setCheckOutPayment} value={checkOutPayment}>
+                          <SelectTrigger className="bg-secondary border-border text-foreground font-body">
+                            <SelectValue placeholder="Payment method" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-card border-border">
+                            {activePM.map(m => (
+                              <SelectItem key={m.id} value={m.name} className="text-foreground font-body">{m.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Input type="number" value={checkOutAmount} onChange={e => setCheckOutAmount(e.target.value)}
+                          placeholder={`₱${balance.toLocaleString()}`}
+                          className="bg-secondary border-border text-foreground font-body" />
+                      </div>
+                    )}
+                    {/* Late check-out fee */}
+                    {getManilaHour() >= 12 && checkOutBooking.check_out === today && (
+                      <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3 space-y-2">
+                        <p className="font-display text-xs tracking-wider text-amber-400 uppercase">⏰ Late Check-Out (after 12:00 PM)</p>
+                        <p className="font-body text-xs text-muted-foreground">Standard checkout is 12:00 PM noon. Add an optional late check-out fee.</p>
+                        <Input
+                          type="number"
+                          value={lateCheckOutFee}
+                          onChange={e => setLateCheckOutFee(e.target.value)}
+                          placeholder="₱0 (optional)"
+                          className="bg-secondary border-border text-foreground font-body"
+                        />
+                      </div>
+                    )}
+                    {/* Housekeeping broadcast notice */}
+                    <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3">
+                      <p className="font-display text-xs tracking-wider text-amber-400 uppercase">🧹 Housekeeping</p>
+                      <p className="font-body text-xs text-muted-foreground mt-1">All clocked-in housekeepers will be notified and can accept the cleaning assignment.</p>
+                    </div>
+                  </>
                 )}
-                {/* Late check-out fee */}
-                {getManilaHour() >= 12 && checkOutBooking.check_out === today && (
-                  <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3 space-y-2">
-                    <p className="font-display text-xs tracking-wider text-amber-400 uppercase">⏰ Late Check-Out (after 12:00 PM)</p>
-                    <p className="font-body text-xs text-muted-foreground">Standard checkout is 12:00 PM noon. Add an optional late check-out fee.</p>
-                    <Input
-                      type="number"
-                      value={lateCheckOutFee}
-                      onChange={e => setLateCheckOutFee(e.target.value)}
-                      placeholder="₱0 (optional)"
-                      className="bg-secondary border-border text-foreground font-body"
-                    />
-                  </div>
-                )}
-                {/* Housekeeping broadcast notice */}
-                <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg p-3">
-                  <p className="font-display text-xs tracking-wider text-amber-400 uppercase">🧹 Housekeeping</p>
-                  <p className="font-body text-xs text-muted-foreground mt-1">All on-duty housekeepers will be notified and can accept the assignment.</p>
-                </div>
               </div>
             );
           })()}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCheckOutOpen(false)} className="font-display text-xs tracking-wider">Cancel</Button>
-            <Button onClick={handleCheckOut} disabled={checkingOut} variant="destructive" className="font-display text-xs tracking-wider">
-              {checkingOut ? 'Processing...' : 'Confirm Checkout'}
-            </Button>
+            {checkoutPhase === 'initiate' ? (
+              <Button onClick={handleInitiateInspection} disabled={checkingOut} className="font-display text-xs tracking-wider bg-amber-600 hover:bg-amber-700 text-white">
+                {checkingOut ? 'Processing...' : '🔍 Confirm & Initiate Inspection'}
+              </Button>
+            ) : (
+              <Button onClick={handleCheckOut} disabled={checkingOut} variant="destructive" className="font-display text-xs tracking-wider">
+                {checkingOut ? 'Processing...' : 'Confirm Checkout'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1924,14 +2026,6 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
         }}
       />
 
-      {/* ══════ HOUSEKEEPING ACCEPT PIN MODAL ══════ */}
-      <PasswordConfirmModal
-        open={!!acceptingHkOrderId}
-        onClose={() => setAcceptingHkOrderId(null)}
-        onConfirm={handleHkAccept}
-        title="Accept Assignment"
-        description="Enter your name and PIN to accept this housekeeping assignment."
-      />
       {/* ══════ ROOM DETAIL SHEET ══════ */}
       <Sheet open={detailSheetOpen} onOpenChange={(open) => { setDetailSheetOpen(open); if (!open) setDetailUnit(null); }}>
         <SheetContent side="bottom" className="h-[90vh] overflow-y-auto p-0">

@@ -7,7 +7,6 @@ import { ArrowLeft, CheckCircle, Clock, ClipboardCheck, BarChart3, UserCheck } f
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth } from 'date-fns';
-import PasswordConfirmModal from '@/components/housekeeping/PasswordConfirmModal';
 import HousekeepingInspection from '@/components/admin/HousekeepingInspection';
 import { getStaffSession } from '@/lib/session';
 import { hasAccess, canEdit } from '@/lib/permissions';
@@ -18,7 +17,6 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const [acceptingOrderId, setAcceptingOrderId] = useState<string | null>(null);
   const [activeOrder, setActiveOrder] = useState<any>(null);
 
   // Unlock AudioContext on first interaction (mobile)
@@ -131,36 +129,38 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
     ? Math.round(myCompletedMonth.reduce((sum: number, o: any) => sum + (o.time_to_complete_minutes || 0), 0) / myCompletedMonth.length)
     : 0;
 
-  const handleAccept = async (employee: { id: string; name: string; display_name: string }) => {
-    if (!acceptingOrderId) return;
+  const handleAccept = async (orderId: string) => {
+    // Accept directly using the current employee from localStorage
+    const id = empId;
+    const name = empName;
+    if (!id) {
+      toast.error('Cannot identify you — please log out and log back in, or ask a manager to set up your profile');
+      return;
+    }
     try {
       // Race condition guard: re-check if already accepted
       const { data: current } = await from('housekeeping_orders')
         .select('accepted_by, accepted_by_name')
-        .eq('id', acceptingOrderId)
+        .eq('id', orderId)
         .single() as any;
 
       if (current?.accepted_by) {
         toast.error(`Already assigned to ${current.accepted_by_name || 'someone else'}`);
         qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
-        setAcceptingOrderId(null);
         return;
       }
 
       await from('housekeeping_orders').update({
-        accepted_by: employee.id,
-        accepted_by_name: employee.display_name || employee.name,
+        accepted_by: id,
+        accepted_by_name: name,
         accepted_at: new Date().toISOString(),
         status: 'pending_inspection',
-      } as any).eq('id', acceptingOrderId);
-      localStorage.setItem('emp_id', employee.id);
-      localStorage.setItem('emp_name', employee.name);
+      } as any).eq('id', orderId);
       qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
-      toast.success(`Accepted — ${employee.display_name || employee.name}`);
+      toast.success(`Accepted — ${name}`);
     } catch (err: any) {
       toast.error(err.message || 'Failed to accept');
     }
-    setAcceptingOrderId(null);
   };
 
   const priorityColor = (p: string) => {
@@ -236,13 +236,13 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
                     Created: {format(new Date(order.created_at), 'h:mm a')}
                   </p>
                   <Button
-                    onClick={() => setAcceptingOrderId(order.id)}
+                    onClick={() => handleAccept(order.id)}
                     className={`w-full font-display tracking-wider text-sm min-h-[52px] ${
                       isAssignedToMe ? 'bg-primary hover:bg-primary/90 animate-pulse' : ''
                     }`}
                     size="lg"
                   >
-                    ✋ Accept with PIN
+                    ✋ Accept
                   </Button>
                 </div>
               );
@@ -328,15 +328,6 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
           </div>
         </div>
       </section>
-
-      {/* PIN Modal */}
-      <PasswordConfirmModal
-        open={!!acceptingOrderId}
-        onClose={() => setAcceptingOrderId(null)}
-        onConfirm={handleAccept}
-        title="Accept Assignment"
-        description="Enter your name and PIN to accept this housekeeping assignment."
-      />
     </div>
   );
 };
