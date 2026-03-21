@@ -14,7 +14,7 @@ interface ServiceOrderDetailProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   permissions: string[];
-  department: 'kitchen' | 'bar' | 'reception' | 'cashier';
+  department: 'kitchen' | 'bar' | 'reception' | 'cashier' | 'waitstaff';
   onAction: (orderId: string, action: string) => Promise<void>;
   resortProfile?: ResortProfile | null;
 }
@@ -47,7 +47,7 @@ const ServiceOrderDetail = ({ order, open, onOpenChange, permissions, department
     } finally { setBusy(null); }
   };
 
-  const isViewOnlyDepartment = department === 'cashier';
+  const isViewOnlyDepartment = department === 'cashier' || department === 'waitstaff';
   const canServe = canEdit(permissions, 'reception') || canEdit(permissions, 'kitchen') || canEdit(permissions, 'bar');
 
   // Build actions based on permissions + order state
@@ -199,7 +199,9 @@ const ServiceOrderDetail = ({ order, open, onOpenChange, permissions, department
 
           {actions.length === 0 && !showInvoice && (
             <p className="font-body text-sm text-muted-foreground text-center py-2">
-              {isViewOnlyDepartment
+              {department === 'waitstaff'
+                ? 'View only — use the board to send ready orders to Cashier'
+                : isViewOnlyDepartment
                 ? 'View only in cashier queue'
                 : isAutoPayable && order.status === 'Served'
                   ? 'Order auto-closed — charged to room/tab'
