@@ -53,17 +53,7 @@ const ServiceHeader = ({ department, onOpenTab }: ServiceHeaderProps) => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {canOrder && department !== 'reception' && department !== 'cashier' && (
-            <Button
-              size="sm"
-              onClick={() => navigate(`/order-type?mode=staff&returnTo=/service/${department}`)}
-              className="gap-1.5 h-9 bg-gold text-background hover:bg-gold/90 font-display text-xs tracking-wider"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Order</span>
-            </Button>
-          )}
-          {canOrder && department === 'waitstaff' && onOpenTab && (
+          {canOrder && (department === 'waitstaff' || department === 'kitchen' || department === 'bar') && onOpenTab && (
             <Button
               size="sm"
               variant="outline"
