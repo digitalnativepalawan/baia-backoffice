@@ -66,7 +66,8 @@ const App = () => (
           <Route path="/housekeeper" element={<RequireAuth requiredPermission="housekeeping"><HousekeeperPage /></RequireAuth>} />
           <Route path="/reception" element={<RequireAuth requiredPermission="reception"><ReceptionPage /></RequireAuth>} />
           <Route path="/experiences" element={<RequireAuth requiredPermission={['experiences', 'reception']}><ExperiencesPage /></RequireAuth>} />
-          <Route path="/inventory/non-food" element={<RequireAuth><NonFoodInventory /></RequireAuth>} />
+         {/* Non-Food Inventory for Bar/Kitchen/Rooms assets */}
+<Route path="/inventory/non-food" element={<RequireAuth><NonFoodInventory /></RequireAuth>} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>
