@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Edit2, Trash2, AlertCircle, Search, Package, Wine, Utensils, Bed, Coffee, RefreshCw } from 'lucide-react';
+import { Plus, Edit2, Trash2, AlertCircle, Search, Package, Wine, Utensils, Bed, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
@@ -72,6 +71,7 @@ export default function NonFoodInventory() {
       const { data, error } = await supabase
         .from('asset_categories')
         .select('*')
+        .order('department')
         .order('name');
       if (error) throw error;
       setCategories(data || []);
@@ -93,7 +93,17 @@ export default function NonFoodInventory() {
     }
   };
 
-  const handleSaveAsset = async (assetData: any) => {
+  const handleSaveAsset = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const assetData = {
+      name: formData.get('name') as string,
+      category_id: formData.get('category_id') as string,
+      current_quantity: parseInt(formData.get('current_quantity') as string) || 0,
+      min_quantity: parseInt(formData.get('min_quantity') as string) || 0,
+      unit: formData.get('unit') as string || 'pcs'
+    };
+    
     try {
       if (editingAsset) {
         const { error } = await supabase
@@ -257,17 +267,16 @@ export default function NonFoodInventory() {
             className="pl-9 h-10 text-sm"
           />
         </div>
-        <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-          <SelectTrigger className="w-32 h-10 text-sm">
-            <SelectValue placeholder="Dept" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="Bar">🍸 Bar</SelectItem>
-            <SelectItem value="Kitchen">🍽️ Kitchen</SelectItem>
-            <SelectItem value="Rooms">🛏️ Rooms</SelectItem>
-          </SelectContent>
-        </Select>
+        <select 
+          value={selectedDepartment} 
+          onChange={(e) => setSelectedDepartment(e.target.value)}
+          className="h-10 px-3 rounded-md border border-input bg-background text-sm"
+        >
+          <option value="all">All Depts</option>
+          <option value="Bar">🍸 Bar</option>
+          <option value="Kitchen">🍽️ Kitchen</option>
+          <option value="Rooms">🛏️ Rooms</option>
+        </select>
       </div>
 
       {/* Card Grid */}
@@ -280,7 +289,6 @@ export default function NonFoodInventory() {
           {filteredAssets.map((asset) => (
             <Card key={asset.id} className="overflow-hidden">
               <CardContent className="p-4">
-                {/* Header */}
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex-1">
                     <h3 className="font-semibold text-base">{asset.name}</h3>
@@ -294,7 +302,6 @@ export default function NonFoodInventory() {
                   )}
                 </div>
 
-                {/* Stats Grid */}
                 <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
                   <div>
                     <p className="text-muted-foreground text-xs">Current Stock</p>
@@ -316,38 +323,17 @@ export default function NonFoodInventory() {
                   </div>
                 </div>
 
-                {/* Action Buttons */}
                 <div className="flex gap-2 pt-2 border-t">
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="flex-1 text-sm"
-                    onClick={() => setRestockDialog({ open: true, asset, quantity: 0 })}
-                  >
+                  <Button size="sm" variant="outline" className="flex-1 text-sm" onClick={() => setRestockDialog({ open: true, asset, quantity: 0 })}>
                     <RefreshCw className="h-3 w-3 mr-1" /> Restock
                   </Button>
-                  <Button 
-                    size="sm" 
-                    variant="destructive" 
-                    className="flex-1 text-sm"
-                    onClick={() => setBreakageDialog({ open: true, asset, quantity: 1, reason: '' })}
-                  >
+                  <Button size="sm" variant="destructive" className="flex-1 text-sm" onClick={() => setBreakageDialog({ open: true, asset, quantity: 1, reason: '' })}>
                     Broken -1
                   </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="px-3"
-                    onClick={() => { setEditingAsset(asset); setIsDialogOpen(true); }}
-                  >
+                  <Button size="sm" variant="outline" className="px-3" onClick={() => { setEditingAsset(asset); setIsDialogOpen(true); }}>
                     <Edit2 className="h-3 w-3" />
                   </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="px-3"
-                    onClick={() => handleDelete(asset.id)}
-                  >
+                  <Button size="sm" variant="outline" className="px-3" onClick={() => handleDelete(asset.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -357,18 +343,45 @@ export default function NonFoodInventory() {
         </div>
       )}
 
-      {/* Add/Edit Dialog */}
+      {/* Add/Edit Dialog - Using native select */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingAsset ? 'Edit Item' : 'Add New Item'}</DialogTitle>
           </DialogHeader>
-          <AssetForm
-            asset={editingAsset}
-            categories={categories}
-            onSave={handleSaveAsset}
-            onCancel={() => { setIsDialogOpen(false); setEditingAsset(null); }}
-          />
+          <form onSubmit={handleSaveAsset} className="space-y-4">
+            <div>
+              <label className="text-sm font-medium block mb-1">Item Name</label>
+              <Input name="name" defaultValue={editingAsset?.name || ''} placeholder="e.g., Red Wine Glass" required />
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Category</label>
+              <select name="category_id" defaultValue={editingAsset?.category_id || ''} className="w-full h-10 px-3 rounded-md border border-input bg-background" required>
+                <option value="">Select category</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.name} ({cat.department})</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium block mb-1">Current Qty</label>
+                <Input name="current_quantity" type="number" defaultValue={editingAsset?.current_quantity || 0} />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">Min Qty</label>
+                <Input name="min_quantity" type="number" defaultValue={editingAsset?.min_quantity || 0} />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Unit</label>
+              <Input name="unit" defaultValue={editingAsset?.unit || 'pcs'} placeholder="pcs" />
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+              <Button type="submit">Save</Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -381,31 +394,21 @@ export default function NonFoodInventory() {
           <div className="space-y-4">
             <div className="bg-yellow-50 p-3 rounded">
               <p className="font-medium">{breakageDialog.asset?.name}</p>
-              <p className="text-sm">Current stock: {breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}</p>
+              <p className="text-sm">Current: {breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}</p>
             </div>
             <div>
-              <label className="text-sm font-medium">Quantity Broken</label>
-              <Input
-                type="number"
-                min="1"
-                max={breakageDialog.asset?.current_quantity}
-                value={breakageDialog.quantity}
-                onChange={(e) => setBreakageDialog({ ...breakageDialog, quantity: parseInt(e.target.value) || 1 })}
-              />
+              <label className="text-sm font-medium block mb-1">Quantity Broken</label>
+              <Input type="number" min="1" value={breakageDialog.quantity} onChange={(e) => setBreakageDialog({ ...breakageDialog, quantity: parseInt(e.target.value) || 1 })} />
             </div>
             <div>
-              <label className="text-sm font-medium">Reason</label>
-              <Select value={breakageDialog.reason} onValueChange={(value) => setBreakageDialog({ ...breakageDialog, reason: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select reason" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Guest dropped">Guest dropped</SelectItem>
-                  <SelectItem value="Staff accident">Staff accident</SelectItem>
-                  <SelectItem value="Normal wear">Normal wear & tear</SelectItem>
-                  <SelectItem value="Lost">Lost / Missing</SelectItem>
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium block mb-1">Reason</label>
+              <select value={breakageDialog.reason} onChange={(e) => setBreakageDialog({ ...breakageDialog, reason: e.target.value })} className="w-full h-10 px-3 rounded-md border border-input bg-background">
+                <option value="">Select reason</option>
+                <option value="Guest dropped">Guest dropped</option>
+                <option value="Staff accident">Staff accident</option>
+                <option value="Normal wear">Normal wear & tear</option>
+                <option value="Lost">Lost / Missing</option>
+              </select>
             </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setBreakageDialog({ ...breakageDialog, open: false })}>Cancel</Button>
@@ -423,85 +426,16 @@ export default function NonFoodInventory() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium">Quantity to Add</label>
-              <Input
-                type="number"
-                min="1"
-                value={restockDialog.quantity}
-                onChange={(e) => setRestockDialog({ ...restockDialog, quantity: parseInt(e.target.value) || 0 })}
-                placeholder="Enter quantity"
-              />
+              <label className="text-sm font-medium block mb-1">Quantity to Add</label>
+              <Input type="number" min="1" value={restockDialog.quantity} onChange={(e) => setRestockDialog({ ...restockDialog, quantity: parseInt(e.target.value) || 0 })} placeholder="Enter quantity" />
             </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setRestockDialog({ ...restockDialog, open: false })}>Cancel</Button>
-              <Button onClick={handleRestock}>Confirm Restock</Button>
+              <Button onClick={handleRestock}>Confirm</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-// Asset Form Component (mobile friendly)
-function AssetForm({ asset, categories, onSave, onCancel }: any) {
-  const [formData, setFormData] = useState({
-    name: asset?.name || '',
-    category_id: asset?.category_id || '',
-    current_quantity: asset?.current_quantity || 0,
-    min_quantity: asset?.min_quantity || 0,
-    unit: asset?.unit || 'pcs'
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(formData);
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="text-sm font-medium">Item Name</label>
-        <Input
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          placeholder="e.g., Red Wine Glass"
-          required
-        />
-      </div>
-      <div>
-        <label className="text-sm font-medium">Category</label>
-        <Select value={formData.category_id} onValueChange={(value) => setFormData({ ...formData, category_id: value })}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select category" />
-          </SelectTrigger>
-          <SelectContent>
-            {categories.map((cat: any) => (
-              <SelectItem key={cat.id} value={cat.id}>
-                {cat.name} ({cat.department})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="text-sm font-medium">Current Qty</label>
-          <Input type="number" value={formData.current_quantity} onChange={(e) => setFormData({ ...formData, current_quantity: parseInt(e.target.value) || 0 })} />
-        </div>
-        <div>
-          <label className="text-sm font-medium">Min Qty (Alert)</label>
-          <Input type="number" value={formData.min_quantity} onChange={(e) => setFormData({ ...formData, min_quantity: parseInt(e.target.value) || 0 })} />
-        </div>
-      </div>
-      <div>
-        <label className="text-sm font-medium">Unit</label>
-        <Input value={formData.unit} onChange={(e) => setFormData({ ...formData, unit: e.target.value })} placeholder="pcs" />
-      </div>
-      <div className="flex gap-2 justify-end pt-2">
-        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button type="submit">Save</Button>
-      </div>
-    </form>
   );
 }
