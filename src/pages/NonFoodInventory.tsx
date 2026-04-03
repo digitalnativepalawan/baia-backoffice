@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Edit2, Trash2, AlertCircle, Search, Package, Wine, Utensils, Bed, Coffee } from 'lucide-react';
+import { Plus, Edit2, Trash2, AlertCircle, Search, Package, Wine, Utensils, Bed, Coffee, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -33,6 +33,7 @@ export default function NonFoodInventory() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [breakageDialog, setBreakageDialog] = useState<any>({ open: false, asset: null, quantity: 1, reason: '' });
+  const [restockDialog, setRestockDialog] = useState<any>({ open: false, asset: null, quantity: 0 });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -80,14 +81,14 @@ export default function NonFoodInventory() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this item?')) {
+    if (confirm('Delete this item?')) {
       try {
         const { error } = await supabase.from('assets').delete().eq('id', id);
         if (error) throw error;
         await loadAssets();
-        toast({ title: 'Success', description: 'Item deleted successfully' });
+        toast({ title: 'Deleted', description: 'Item removed' });
       } catch (error) {
-        toast({ title: 'Error', description: 'Failed to delete item', variant: 'destructive' });
+        toast({ title: 'Error', description: 'Failed to delete', variant: 'destructive' });
       }
     }
   };
@@ -100,19 +101,19 @@ export default function NonFoodInventory() {
           .update({ ...assetData, updated_at: new Date() })
           .eq('id', editingAsset.id);
         if (error) throw error;
-        toast({ title: 'Success', description: 'Item updated successfully' });
+        toast({ title: 'Updated', description: 'Item saved' });
       } else {
         const { error } = await supabase
           .from('assets')
           .insert([{ ...assetData, breakage_count: 0 }]);
         if (error) throw error;
-        toast({ title: 'Success', description: 'Item created successfully' });
+        toast({ title: 'Added', description: 'New item created' });
       }
       await loadAssets();
       setIsDialogOpen(false);
       setEditingAsset(null);
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to save item', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to save', variant: 'destructive' });
     }
   };
 
@@ -145,39 +146,38 @@ export default function NonFoodInventory() {
       
       await loadAssets();
       setBreakageDialog({ open: false, asset: null, quantity: 1, reason: '' });
-      toast({ title: 'Success', description: 'Breakage logged successfully' });
+      toast({ title: 'Logged', description: `${breakageDialog.quantity} broken item(s) recorded` });
     } catch (error) {
-      console.error('Error logging breakage:', error);
       toast({ title: 'Error', description: 'Failed to log breakage', variant: 'destructive' });
     }
   };
 
-  const handleRestock = async (asset: Asset) => {
-    const quantity = prompt(`How many ${asset.unit} to add?`, '10');
-    if (!quantity) return;
+  const handleRestock = async () => {
+    if (!restockDialog.asset || !restockDialog.quantity) return;
     
     try {
       const { error } = await supabase
         .from('assets')
         .update({
-          current_quantity: asset.current_quantity + parseInt(quantity),
+          current_quantity: restockDialog.asset.current_quantity + restockDialog.quantity,
           last_restocked: new Date().toISOString().split('T')[0],
           updated_at: new Date()
         })
-        .eq('id', asset.id);
+        .eq('id', restockDialog.asset.id);
       
       if (error) throw error;
       
       await supabase.from('asset_transactions').insert([{
-        asset_id: asset.id,
-        quantity_change: parseInt(quantity),
+        asset_id: restockDialog.asset.id,
+        quantity_change: restockDialog.quantity,
         transaction_type: 'RESTOCK',
         reason: 'New stock received',
         performed_by: 'Staff'
       }]);
       
       await loadAssets();
-      toast({ title: 'Success', description: `Added ${quantity} ${asset.unit}` });
+      setRestockDialog({ open: false, asset: null, quantity: 0 });
+      toast({ title: 'Restocked', description: `Added ${restockDialog.quantity} items` });
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to restock', variant: 'destructive' });
     }
@@ -198,72 +198,71 @@ export default function NonFoodInventory() {
     }
   };
 
+  const getDepartmentColor = (department: string) => {
+    switch(department) {
+      case 'Bar': return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'Kitchen': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'Rooms': return 'bg-sky-100 text-sky-800 border-sky-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 pb-24 space-y-4">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center sticky top-0 bg-navy-texture z-10 py-2">
         <div>
-          <h1 className="text-3xl font-bold">Non-Food Inventory</h1>
-          <p className="text-muted-foreground">Manage glasses, plates, tools, and appliances by department</p>
+          <h1 className="text-xl font-bold">Non-Food Inventory</h1>
+          <p className="text-xs text-muted-foreground">Glasses, plates, tools, appliances</p>
         </div>
-        <Button onClick={() => {
-          setEditingAsset(null);
-          setIsDialogOpen(true);
-        }}>
-          <Plus className="mr-2 h-4 w-4" /> Add Item
+        <Button size="sm" onClick={() => { setEditingAsset(null); setIsDialogOpen(true); }}>
+          <Plus className="mr-1 h-4 w-4" /> Add
         </Button>
       </div>
 
       {/* Low Stock Alerts */}
       {lowStockAssets.length > 0 && (
-        <Card className="border-yellow-500 bg-yellow-50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-yellow-800">
-              <AlertCircle className="h-5 w-5" />
-              Low Stock Alerts - Need to Reorder
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {lowStockAssets.map(asset => (
-                <div key={asset.id} className="flex justify-between items-center p-2 bg-white rounded">
-                  <div className="flex items-center gap-2">
-                    {getDepartmentIcon(asset.category?.department || '')}
-                    <span className="font-medium">{asset.name}</span>
-                    <span className="text-sm text-muted-foreground">({asset.category?.department})</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-red-600 font-bold">
-                      {asset.current_quantity} / {asset.min_quantity} {asset.unit}
-                    </span>
-                    <Button size="sm" onClick={() => handleRestock(asset)}>Restock Now</Button>
-                  </div>
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <div className="flex items-center gap-2 text-yellow-800 mb-2">
+            <AlertCircle className="h-4 w-4" />
+            <span className="text-sm font-medium">Low Stock Alerts</span>
+          </div>
+          <div className="space-y-2">
+            {lowStockAssets.map(asset => (
+              <div key={asset.id} className="flex justify-between items-center bg-white rounded p-2">
+                <div>
+                  <p className="font-medium text-sm">{asset.name}</p>
+                  <p className="text-xs text-muted-foreground">{asset.category?.department}</p>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Filters */}
-      <div className="flex gap-4">
-        <div className="flex-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search items..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+                <div className="text-right">
+                  <p className="text-red-600 font-bold text-sm">{asset.current_quantity} / {asset.min_quantity} {asset.unit}</p>
+                  <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setRestockDialog({ open: true, asset, quantity: 0 })}>
+                    Restock
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
+      )}
+
+      {/* Search and Filter */}
+      <div className="flex gap-2 sticky top-[60px] bg-navy-texture z-10 py-2">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search items..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9 h-10 text-sm"
+          />
+        </div>
         <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Department" />
+          <SelectTrigger className="w-32 h-10 text-sm">
+            <SelectValue placeholder="Dept" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Departments</SelectItem>
+            <SelectItem value="all">All</SelectItem>
             <SelectItem value="Bar">🍸 Bar</SelectItem>
             <SelectItem value="Kitchen">🍽️ Kitchen</SelectItem>
             <SelectItem value="Rooms">🛏️ Rooms</SelectItem>
@@ -271,82 +270,92 @@ export default function NonFoodInventory() {
         </Select>
       </div>
 
-      {/* Assets Table */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b bg-muted/50">
-                <tr className="text-left">
-                  <th className="p-4 font-medium">Item</th>
-                  <th className="p-4 font-medium">Department</th>
-                  <th className="p-4 font-medium">Current Stock</th>
-                  <th className="p-4 font-medium">Min Required</th>
-                  <th className="p-4 font-medium">Breakage</th>
-                  <th className="p-4 font-medium">Status</th>
-                  <th className="p-4 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={7} className="text-center p-8">Loading...</td>
-                  </tr>
-                ) : filteredAssets.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center p-8 text-muted-foreground">No items found</td>
-                  </tr>
-                ) : (
-                  filteredAssets.map((asset) => (
-                    <tr key={asset.id} className="border-b hover:bg-muted/50">
-                      <td className="p-4 font-medium">{asset.name}</td>
-                      <td className="p-4">
-                        <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                          {getDepartmentIcon(asset.category?.department || '')}
-                          {asset.category?.department}
-                        </Badge>
-                      </td>
-                      <td className="p-4">
-                        <span className={asset.current_quantity < asset.min_quantity ? 'text-red-600 font-bold' : 'font-medium'}>
-                          {asset.current_quantity} {asset.unit}
-                        </span>
-                      </td>
-                      <td className="p-4">{asset.min_quantity} {asset.unit}</td>
-                      <td className="p-4 text-orange-600">{asset.breakage_count} {asset.unit}</td>
-                      <td className="p-4">
-                        {asset.current_quantity < asset.min_quantity ? (
-                          <Badge variant="destructive">Low Stock</Badge>
-                        ) : (
-                          <Badge variant="default" className="bg-green-500">OK</Badge>
-                        )}
-                      </td>
-                      <td className="p-4">
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => handleRestock(asset)}>
-                            + Restock
-                          </Button>
-                          <Button size="sm" variant="destructive" onClick={() => setBreakageDialog({ open: true, asset, quantity: 1, reason: '' })}>
-                            Broken -1
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => {
-                            setEditingAsset(asset);
-                            setIsDialogOpen(true);
-                          }}>
-                            <Edit2 className="h-3 w-3" />
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleDelete(asset.id)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Card Grid */}
+      {loading ? (
+        <div className="text-center py-8 text-muted-foreground">Loading...</div>
+      ) : filteredAssets.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground">No items found</div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {filteredAssets.map((asset) => (
+            <Card key={asset.id} className="overflow-hidden">
+              <CardContent className="p-4">
+                {/* Header */}
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-base">{asset.name}</h3>
+                    <Badge className={`mt-1 text-xs ${getDepartmentColor(asset.category?.department || '')}`}>
+                      {getDepartmentIcon(asset.category?.department || '')}
+                      <span className="ml-1">{asset.category?.department}</span>
+                    </Badge>
+                  </div>
+                  {asset.current_quantity < asset.min_quantity && (
+                    <Badge variant="destructive" className="text-xs">Low Stock</Badge>
+                  )}
+                </div>
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
+                  <div>
+                    <p className="text-muted-foreground text-xs">Current Stock</p>
+                    <p className={`font-bold text-lg ${asset.current_quantity < asset.min_quantity ? 'text-red-600' : ''}`}>
+                      {asset.current_quantity} <span className="text-xs font-normal text-muted-foreground">{asset.unit}</span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Min Required</p>
+                    <p className="font-medium">{asset.min_quantity} {asset.unit}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Breakage (Total)</p>
+                    <p className="font-medium text-orange-600">{asset.breakage_count} {asset.unit}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Last Restocked</p>
+                    <p className="text-xs">{asset.last_restocked || 'Never'}</p>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2 pt-2 border-t">
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="flex-1 text-sm"
+                    onClick={() => setRestockDialog({ open: true, asset, quantity: 0 })}
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" /> Restock
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="destructive" 
+                    className="flex-1 text-sm"
+                    onClick={() => setBreakageDialog({ open: true, asset, quantity: 1, reason: '' })}
+                  >
+                    Broken -1
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="px-3"
+                    onClick={() => { setEditingAsset(asset); setIsDialogOpen(true); }}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="px-3"
+                    onClick={() => handleDelete(asset.id)}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Add/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -358,10 +367,7 @@ export default function NonFoodInventory() {
             asset={editingAsset}
             categories={categories}
             onSave={handleSaveAsset}
-            onCancel={() => {
-              setIsDialogOpen(false);
-              setEditingAsset(null);
-            }}
+            onCancel={() => { setIsDialogOpen(false); setEditingAsset(null); }}
           />
         </DialogContent>
       </Dialog>
@@ -370,13 +376,12 @@ export default function NonFoodInventory() {
       <Dialog open={breakageDialog.open} onOpenChange={(open) => !open && setBreakageDialog({ ...breakageDialog, open: false })}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Log Breakage - {breakageDialog.asset?.name}</DialogTitle>
+            <DialogTitle>Log Breakage</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="bg-yellow-50 p-3 rounded border border-yellow-200">
-              <div className="text-sm text-yellow-800">
-                Current stock: <strong>{breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}</strong>
-              </div>
+            <div className="bg-yellow-50 p-3 rounded">
+              <p className="font-medium">{breakageDialog.asset?.name}</p>
+              <p className="text-sm">Current stock: {breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}</p>
             </div>
             <div>
               <label className="text-sm font-medium">Quantity Broken</label>
@@ -397,18 +402,39 @@ export default function NonFoodInventory() {
                 <SelectContent>
                   <SelectItem value="Guest dropped">Guest dropped</SelectItem>
                   <SelectItem value="Staff accident">Staff accident</SelectItem>
-                  <SelectItem value="Normal wear">Normal wear and tear</SelectItem>
+                  <SelectItem value="Normal wear">Normal wear & tear</SelectItem>
                   <SelectItem value="Lost">Lost / Missing</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex gap-2 justify-end pt-4">
-              <Button variant="outline" onClick={() => setBreakageDialog({ ...breakageDialog, open: false })}>
-                Cancel
-              </Button>
-              <Button onClick={handleBreakage}>
-                Confirm Breakage
-              </Button>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setBreakageDialog({ ...breakageDialog, open: false })}>Cancel</Button>
+              <Button onClick={handleBreakage}>Confirm</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Restock Dialog */}
+      <Dialog open={restockDialog.open} onOpenChange={(open) => !open && setRestockDialog({ ...restockDialog, open: false })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restock - {restockDialog.asset?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Quantity to Add</label>
+              <Input
+                type="number"
+                min="1"
+                value={restockDialog.quantity}
+                onChange={(e) => setRestockDialog({ ...restockDialog, quantity: parseInt(e.target.value) || 0 })}
+                placeholder="Enter quantity"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setRestockDialog({ ...restockDialog, open: false })}>Cancel</Button>
+              <Button onClick={handleRestock}>Confirm Restock</Button>
             </div>
           </div>
         </DialogContent>
@@ -417,7 +443,7 @@ export default function NonFoodInventory() {
   );
 }
 
-// Asset Form Component
+// Asset Form Component (mobile friendly)
 function AssetForm({ asset, categories, onSave, onCancel }: any) {
   const [formData, setFormData] = useState({
     name: asset?.name || '',
@@ -439,18 +465,18 @@ function AssetForm({ asset, categories, onSave, onCancel }: any) {
         <Input
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          placeholder="e.g., Red Wine Glass, Blender, Dinner Plate"
+          placeholder="e.g., Red Wine Glass"
           required
         />
       </div>
       <div>
-        <label className="text-sm font-medium">Category / Department</label>
+        <label className="text-sm font-medium">Category</label>
         <Select value={formData.category_id} onValueChange={(value) => setFormData({ ...formData, category_id: value })}>
           <SelectTrigger>
             <SelectValue placeholder="Select category" />
           </SelectTrigger>
           <SelectContent>
-            {categories.map((cat) => (
+            {categories.map((cat: any) => (
               <SelectItem key={cat.id} value={cat.id}>
                 {cat.name} ({cat.department})
               </SelectItem>
@@ -458,33 +484,21 @@ function AssetForm({ asset, categories, onSave, onCancel }: any) {
           </SelectContent>
         </Select>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-sm font-medium">Current Quantity</label>
-          <Input
-            type="number"
-            value={formData.current_quantity}
-            onChange={(e) => setFormData({ ...formData, current_quantity: parseInt(e.target.value) || 0 })}
-          />
+          <label className="text-sm font-medium">Current Qty</label>
+          <Input type="number" value={formData.current_quantity} onChange={(e) => setFormData({ ...formData, current_quantity: parseInt(e.target.value) || 0 })} />
         </div>
         <div>
-          <label className="text-sm font-medium">Min Quantity (Alert)</label>
-          <Input
-            type="number"
-            value={formData.min_quantity}
-            onChange={(e) => setFormData({ ...formData, min_quantity: parseInt(e.target.value) || 0 })}
-          />
+          <label className="text-sm font-medium">Min Qty (Alert)</label>
+          <Input type="number" value={formData.min_quantity} onChange={(e) => setFormData({ ...formData, min_quantity: parseInt(e.target.value) || 0 })} />
         </div>
       </div>
       <div>
         <label className="text-sm font-medium">Unit</label>
-        <Input
-          value={formData.unit}
-          onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-          placeholder="pcs, sets, units"
-        />
+        <Input value={formData.unit} onChange={(e) => setFormData({ ...formData, unit: e.target.value })} placeholder="pcs" />
       </div>
-      <div className="flex gap-2 justify-end pt-4">
+      <div className="flex gap-2 justify-end pt-2">
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
         <Button type="submit">Save</Button>
       </div>
