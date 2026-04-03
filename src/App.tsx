@@ -17,6 +17,7 @@ import HousekeeperPage from "./pages/HousekeeperPage";
 import GuestPortalPage from "./pages/GuestPortal";
 import ReceptionPage from "./pages/ReceptionPage";
 import ExperiencesPage from "./pages/ExperiencesPage";
+import NonFoodInventory from "./pages/NonFoodInventory";
 import StaffShell from "./pages/StaffShell";
 import RequireAuth from "./components/RequireAuth";
 import ServiceModePage from "./pages/ServiceModePage";
@@ -65,6 +66,7 @@ const App = () => (
           <Route path="/housekeeper" element={<RequireAuth requiredPermission="housekeeping"><HousekeeperPage /></RequireAuth>} />
           <Route path="/reception" element={<RequireAuth requiredPermission="reception"><ReceptionPage /></RequireAuth>} />
           <Route path="/experiences" element={<RequireAuth requiredPermission={['experiences', 'reception']}><ExperiencesPage /></RequireAuth>} />
+          <Route path="/inventory/non-food" element={<RequireAuth><NonFoodInventory /></RequireAuth>} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>
