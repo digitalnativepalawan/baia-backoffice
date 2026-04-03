@@ -41,6 +41,7 @@ import GuestPortalConfig from '@/components/admin/GuestPortalConfig';
 import DepartmentOrdersView from '@/components/DepartmentOrdersView';
 import IntegrationReadinessDashboard from '@/components/integration/IntegrationReadinessDashboard';
 import LiveOpsDashboard from '@/components/admin/LiveOpsDashboard';
+import NonFoodInventory from '@/pages/NonFoodInventory';
 
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 import { hasAccess, canEdit, canViewDocuments } from '@/lib/permissions';
@@ -86,6 +87,7 @@ const CONFIG: TabDef[] = [
   { value: 'menu', label: 'Menu', perm: 'menu' },
   { value: 'reports', label: 'Reports', perm: 'reports' },
   { value: 'inventory', label: 'Inventory', perm: 'inventory' },
+  { value: 'nonfood', label: 'Non-Food Inventory', perm: 'inventory' },
   { value: 'resort-ops', label: 'Resort Ops', perm: 'resort_ops' },
   { value: 'audit', label: 'Audit', perm: null },
   { value: 'archive', label: 'Archive', perm: null },
@@ -1002,10 +1004,17 @@ const AdminPage = () => {
             </TabsContent>
           )}
 
-          {/* INVENTORY TAB */}
+          {/* INVENTORY TAB - Food Inventory */}
           {(isAdmin || hasAccess(perms, 'inventory')) && (
             <TabsContent value="inventory">
               <InventoryDashboard readOnly={readOnly('inventory')} />
+            </TabsContent>
+          )}
+
+          {/* NON-FOOD INVENTORY TAB - Glasses, Plates, Tools, Appliances */}
+          {(isAdmin || hasAccess(perms, 'inventory')) && (
+            <TabsContent value="nonfood">
+              <NonFoodInventory />
             </TabsContent>
           )}
 
