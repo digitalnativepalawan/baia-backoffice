@@ -379,7 +379,7 @@ export default function NonFoodInventory() {
       )}
 
       {/* Add/Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+     Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{editingAsset ? 'Edit Item' : 'Add New Item'}</DialogTitle>
