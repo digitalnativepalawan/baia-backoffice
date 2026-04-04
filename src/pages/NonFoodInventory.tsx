@@ -1,25 +1,7 @@
-import React from 'react';
-import { DialogContent } from '@material-ui/core';
+<DialogContent className="bg-white">
+  {/* Existing content for Add/Edit dialog */}
+</DialogContent>
 
-const NonFoodInventory = () => {
-  return (
-    <> 
-      {/* Add/Edit dialog */} 
-      <DialogContent className="bg-white">
-        {/* Content goes here */} 
-      </DialogContent>
-
-      {/* Breakage dialog */} 
-      <DialogContent className="bg-white">
-        {/* Content goes here */} 
-      </DialogContent>
-
-      {/* Restock dialog */} 
-      <DialogContent className="bg-white">
-        {/* Content goes here */} 
-      </DialogContent>
-    </>
-  );
-};
-
-export default NonFoodInventory;
+<DialogContent className="bg-white">
+  {/* Existing content for Breakage dialog */}
+</DialogContent>
