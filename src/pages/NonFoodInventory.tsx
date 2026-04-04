@@ -350,11 +350,12 @@ export default function NonFoodInventory() {
           value={selectedDepartment} 
           onChange={(e) => setSelectedDepartment(e.target.value)}
           className="h-10 px-3 rounded-md border border-input bg-white text-black text-sm"
+          style={{ color: 'black', backgroundColor: 'white' }}
         >
-          <option value="all">All Depts</option>
-          <option value="Bar">🍸 Bar</option>
-          <option value="Kitchen">🍽️ Kitchen</option>
-          <option value="Rooms">🛏️ Rooms</option>
+          <option value="all" style={{ color: 'black', backgroundColor: 'white' }}>All Depts</option>
+          <option value="Bar" style={{ color: 'black', backgroundColor: 'white' }}>🍸 Bar</option>
+          <option value="Kitchen" style={{ color: 'black', backgroundColor: 'white' }}>🍽️ Kitchen</option>
+          <option value="Rooms" style={{ color: 'black', backgroundColor: 'white' }}>🛏️ Rooms</option>
         </select>
       </div>
 
@@ -444,13 +445,13 @@ export default function NonFoodInventory() {
               <select 
                 value={formData.department}
                 onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                className="w-full h-10 px-3 rounded-md border border-input bg-white text-black"
-                style={{ color: 'black' }}
+                className="w-full h-10 px-3 rounded-md border border-input"
+                style={{ color: 'black', backgroundColor: 'white' }}
               >
-                <option value="">Select department</option>
-                <option value="Bar">🍸 Bar</option>
-                <option value="Kitchen">🍽️ Kitchen</option>
-                <option value="Rooms">🛏️ Rooms</option>
+                <option value="" style={{ color: 'black', backgroundColor: 'white' }}>Select department</option>
+                <option value="Bar" style={{ color: 'black', backgroundColor: 'white' }}>🍸 Bar</option>
+                <option value="Kitchen" style={{ color: 'black', backgroundColor: 'white' }}>🍽️ Kitchen</option>
+                <option value="Rooms" style={{ color: 'black', backgroundColor: 'white' }}>🛏️ Rooms</option>
               </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -539,14 +540,14 @@ export default function NonFoodInventory() {
               <select 
                 value={breakageDialog.reason} 
                 onChange={(e) => setBreakageDialog({ ...breakageDialog, reason: e.target.value })} 
-                className="w-full h-10 px-3 rounded-md border border-input bg-white text-black"
-                style={{ color: 'black' }}
+                className="w-full h-10 px-3 rounded-md border border-input"
+                style={{ color: 'black', backgroundColor: 'white' }}
               >
-                <option value="">Select reason</option>
-                <option value="Guest dropped">Guest dropped</option>
-                <option value="Staff accident">Staff accident</option>
-                <option value="Normal wear">Normal wear & tear</option>
-                <option value="Lost">Lost / Missing</option>
+                <option value="" style={{ color: 'black', backgroundColor: 'white' }}>Select reason</option>
+                <option value="Guest dropped" style={{ color: 'black', backgroundColor: 'white' }}>Guest dropped</option>
+                <option value="Staff accident" style={{ color: 'black', backgroundColor: 'white' }}>Staff accident</option>
+                <option value="Normal wear" style={{ color: 'black', backgroundColor: 'white' }}>Normal wear & tear</option>
+                <option value="Lost" style={{ color: 'black', backgroundColor: 'white' }}>Lost / Missing</option>
               </select>
             </div>
             <div className="flex gap-2 justify-end">
