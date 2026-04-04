@@ -42,9 +42,11 @@ import DepartmentOrdersView from '@/components/DepartmentOrdersView';
 import IntegrationReadinessDashboard from '@/components/integration/IntegrationReadinessDashboard';
 import LiveOpsDashboard from '@/components/admin/LiveOpsDashboard';
 import NonFoodInventory from '@/pages/NonFoodInventory';
+
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 import { hasAccess, canEdit, canViewDocuments } from '@/lib/permissions';
 import { usePermissions } from '@/hooks/usePermissions';
+
 import { formatDistanceToNow } from 'date-fns';
 import { useResortProfile } from '@/hooks/useResortProfile';
 import { useDepartmentAlerts } from '@/hooks/useDepartmentAlerts';
@@ -60,6 +62,8 @@ const ALERT_KEY_MAP: Record<string, string> = {
   housekeeping: 'housekeeping',
 };
 
+
+// ── Tab / section definitions ────────────────────────────────────
 interface TabDef { value: string; label: string; perm: string | null }
 
 const OPERATIONS: TabDef[] = [
@@ -96,6 +100,7 @@ const AdminPage = () => {
   const qc = useQueryClient();
   const { data: resortProfile } = useResortProfile();
 
+  // ── Permissions ────────────────────────────────────────────────
   const { perms, isAdmin, canView, canEdit: canEditModule, readOnly, canViewDocuments: docsAllowedFn } = usePermissions();
 
   const allowed = (t: TabDef) => isAdmin || (t.perm !== null && canView(t.perm));
@@ -106,10 +111,11 @@ const AdminPage = () => {
   const defaultTab = allTabs[0]?.value || 'orders';
 
   const [activeTab, setActiveTab] = useState(defaultTab);
-  const [cfgOpen, setCfgOpen] = useState(() => cfgTabs.some(t => t.value === defaultTab));
   const alerts = useDepartmentAlerts();
+
   const docsAllowed = docsAllowedFn();
 
+  // ── Realtime ───────────────────────────────────────────────────
   useEffect(() => {
     const channel = supabase
       .channel('admin-realtime')
@@ -125,6 +131,7 @@ const AdminPage = () => {
     return () => { supabase.removeChannel(channel); };
   }, [qc]);
 
+  // ── Data queries ───────────────────────────────────────────────
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     enabled: isAdmin || hasAccess(perms, 'setup'),
@@ -198,6 +205,7 @@ const AdminPage = () => {
     },
   });
 
+  // ── Settings state ─────────────────────────────────────────────
   const [whatsapp, setWhatsapp] = useState('');
   const [brkStart, setBrkStart] = useState('');
   const [brkEnd, setBrkEnd] = useState('');
@@ -225,6 +233,7 @@ const AdminPage = () => {
     toast.success('Settings saved');
   };
 
+  // ── Units ──────────────────────────────────────────────────────
   const [newUnit, setNewUnit] = useState('');
   const addUnit = async () => {
     if (!newUnit.trim()) return;
@@ -233,6 +242,7 @@ const AdminPage = () => {
     qc.invalidateQueries({ queryKey: ['units-admin'] });
   };
 
+  // ── Tables ─────────────────────────────────────────────────────
   const [newTable, setNewTable] = useState('');
   const addTable = async () => {
     if (!newTable.trim()) return;
@@ -241,6 +251,7 @@ const AdminPage = () => {
     qc.invalidateQueries({ queryKey: ['tables-admin'] });
   };
 
+  // ── Order Types ────────────────────────────────────────────────
   const [newOrderType, setNewOrderType] = useState('');
   const addOrderType = async () => {
     if (!newOrderType.trim()) return;
@@ -256,6 +267,7 @@ const AdminPage = () => {
     qc.invalidateQueries({ queryKey: ['order-types-admin'] });
   };
 
+  // ── Menu Categories ────────────────────────────────────────────
   const [newCategory, setNewCategory] = useState('');
   const addCategory = async () => {
     if (!newCategory.trim()) return;
@@ -265,6 +277,7 @@ const AdminPage = () => {
     qc.invalidateQueries({ queryKey: ['menu-categories-admin'] });
   };
 
+  // ── Menu item editor ──────────────────────────────────────────
   const [menuSearch, setMenuSearch] = useState('');
   const [editItem, setEditItem] = useState<any>(null);
   const [recipeCost, setRecipeCost] = useState(0);
@@ -307,6 +320,7 @@ const AdminPage = () => {
     toast.success('Menu item saved');
   };
 
+  // ── Delete menu item ──────────────────────────────────────────
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const deleteItem = async () => {
@@ -324,6 +338,7 @@ const AdminPage = () => {
     toast.success('Menu item deleted');
   };
 
+  // ── Orders pipeline state ─────────────────────────────────────
   const [dateFilter, setDateFilter] = useState<DateFilter>('today');
   const [showClosed, setShowClosed] = useState(false);
   const [activeStatus, setActiveStatus] = useState('New');
@@ -333,6 +348,7 @@ const AdminPage = () => {
 
   const deleteAllOrders = async () => {
     try {
+      // Delete in FK order: room_transactions → inventory_logs → orders → tabs
       await supabase.from('room_transactions' as any).delete().gte('created_at', '1970-01-01');
       await supabase.from('inventory_logs').delete().gte('created_at', '1970-01-01');
       const { error: ordErr } = await supabase.from('orders').delete().gte('created_at', '1970-01-01');
@@ -349,7 +365,6 @@ const AdminPage = () => {
       toast.error(e.message || 'Delete failed');
     }
   };
-
   const filteredOrders = useMemo(() => {
     let filtered = orders;
     const now = new Date();
@@ -408,6 +423,7 @@ const AdminPage = () => {
   };
 
   const deleteOrder = async (orderId: string) => {
+    // Delete dependent records first to avoid FK constraint errors
     await supabase.from('room_transactions').delete().eq('order_id', orderId);
     await supabase.from('inventory_logs').delete().eq('order_id', orderId);
     const { error } = await supabase.from('orders').delete().eq('id', orderId);
@@ -419,6 +435,7 @@ const AdminPage = () => {
     toast.success('Order deleted');
   };
 
+  // ── Add items to order ─────────────────────────────────────────
   const [addingToOrder, setAddingToOrder] = useState<any>(null);
   const [addCart, setAddCart] = useState<Record<string, { name: string; price: number; qty: number }>>({});
   const [addCat, setAddCat] = useState('');
@@ -461,6 +478,7 @@ const AdminPage = () => {
     ? ['New', 'Preparing', 'Served', 'Paid', 'Closed']
     : ['New', 'Preparing', 'Served', 'Paid'];
 
+  // ── No access guard ────────────────────────────────────────────
   if (allTabs.length === 0) {
     return (
       <div className="min-h-screen bg-navy-texture flex items-center justify-center px-4">
@@ -474,122 +492,60 @@ const AdminPage = () => {
     );
   }
 
+  // ── Section header helper ──────────────────────────────────────
   const SectionLabel = ({ label }: { label: string }) => (
     <p className="font-display text-[10px] tracking-widest text-muted-foreground uppercase pt-1">{label}</p>
   );
 
-  const opsIcons: Record<string, string> = {
-    rooms: '🏨', orders: '🧾', 'guest-services': '🌴',
-    kitchen: '🍳', bar: '🍹', housekeeping: '🧹', 'live-ops': '📡',
-  };
-  const opsDescs: Record<string, string> = {
-    rooms: 'Check-ins & billing',
-    orders: 'Live order pipeline',
-    'guest-services': 'Tours & requests',
-    kitchen: 'Food prep board',
-    bar: 'Drinks board',
-    housekeeping: 'Room cleaning',
-    'live-ops': 'Resort overview',
-  };
-
   return (
     <div className="min-h-screen bg-navy-texture overflow-x-hidden">
+      {/* Global navigation bar */}
       <StaffNavBar />
+
       <div className="max-w-2xl mx-auto px-4 pb-6">
-        <Tabs value={activeTab} onValueChange={(v) => {
-          setActiveTab(v);
-          if (cfgTabs.some(t => t.value === v)) setCfgOpen(true);
-        }} className="w-full">
 
-          {/* ── Role-aware navigation ─────────────────────────── */}
-          <div className="space-y-4 mb-6 pt-4">
-
-            {/* OPERATIONS — large tap cards */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          {/* ── Grouped tab triggers ─────────────────────────── */}
+          <div className="space-y-2 mb-6">
             {opsTabs.length > 0 && (
-              <div className="space-y-2">
+              <div>
                 <SectionLabel label="Operations" />
-                <div className="grid grid-cols-2 gap-2">
-                  {opsTabs.map(t => {
-                    const hasAlert = ALERT_KEY_MAP[t.value] && alerts[ALERT_KEY_MAP[t.value] as keyof typeof alerts] && activeTab !== t.value;
-                    const isActive = activeTab === t.value;
-                    return (
-                      <button
-                        key={t.value}
-                        onClick={() => setActiveTab(t.value)}
-                        className={`relative text-left rounded-xl border p-4 transition-all min-h-[80px] active:scale-[0.97] ${
-                          isActive
-                            ? 'border-primary bg-primary/10'
-                            : 'border-border bg-secondary/40 hover:border-primary/40 hover:bg-secondary/60'
-                        }`}
-                      >
-                        {hasAlert && (
-                          <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full bg-destructive animate-pulse" />
-                        )}
-                        <p className="text-xl mb-1.5">{opsIcons[t.value] || '📋'}</p>
-                        <p className={`font-display text-sm tracking-wider ${isActive ? 'text-primary' : 'text-foreground'}`}>
-                          {t.label}
-                        </p>
-                        <p className="font-body text-[10px] mt-0.5 text-muted-foreground">
-                          {opsDescs[t.value] || ''}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* PEOPLE — compact pill row */}
-            {peopleTabs.length > 0 && (
-              <div className="space-y-2">
-                <SectionLabel label="People" />
-                <div className="flex flex-wrap gap-2">
-                  {peopleTabs.map(t => (
-                    <button
-                      key={t.value}
-                      onClick={() => setActiveTab(t.value)}
-                      className={`font-display text-xs tracking-wider px-4 py-2.5 rounded-lg border transition-colors min-h-[40px] ${
-                        activeTab === t.value
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border bg-secondary/40 text-muted-foreground hover:border-primary/40'
-                      }`}
-                    >
+                <TabsList className="flex flex-wrap gap-1 mt-1 h-auto bg-transparent p-0">
+                  {opsTabs.map(t => (
+                    <TabsTrigger key={t.value} value={t.value}
+                      className={`font-display text-xs tracking-wider min-h-[44px] px-3 py-1.5 rounded-md border border-border data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary bg-secondary text-muted-foreground ${
+                        ALERT_KEY_MAP[t.value] && alerts[ALERT_KEY_MAP[t.value] as keyof typeof alerts] && activeTab !== t.value ? 'tab-pulse' : ''
+                      }`}>
                       {t.label}
-                    </button>
+                    </TabsTrigger>
                   ))}
-                </div>
+                </TabsList>
               </div>
             )}
-
-            {/* CONFIG — collapsed by default */}
+            {peopleTabs.length > 0 && (
+              <div>
+                <SectionLabel label="People" />
+                <TabsList className="flex flex-wrap gap-1 mt-1 h-auto bg-transparent p-0">
+                  {peopleTabs.map(t => (
+                    <TabsTrigger key={t.value} value={t.value}
+                      className="font-display text-xs tracking-wider min-h-[44px] px-3 py-1.5 rounded-md border border-border data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary bg-secondary text-muted-foreground">
+                      {t.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+            )}
             {cfgTabs.length > 0 && (
-              <div className="space-y-2">
-                <button
-                  onClick={() => setCfgOpen(o => !o)}
-                  className="flex items-center gap-2 w-full py-1"
-                >
-                  <SectionLabel label="Config" />
-                  <span className="font-body text-[10px] text-muted-foreground ml-auto">
-                    {cfgOpen ? '▲ collapse' : '▼ expand'}
-                  </span>
-                </button>
-                {cfgOpen && (
-                  <div className="flex flex-wrap gap-2">
-                    {cfgTabs.map(t => (
-                      <button
-                        key={t.value}
-                        onClick={() => setActiveTab(t.value)}
-                        className={`font-display text-xs tracking-wider px-3 py-2 rounded-lg border transition-colors min-h-[36px] ${
-                          activeTab === t.value
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border bg-secondary/30 text-muted-foreground hover:border-primary/40'
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+              <div>
+                <SectionLabel label="Config" />
+                <TabsList className="flex flex-wrap gap-1 mt-1 h-auto bg-transparent p-0">
+                  {cfgTabs.map(t => (
+                    <TabsTrigger key={t.value} value={t.value}
+                      className="font-display text-xs tracking-wider min-h-[44px] px-3 py-1.5 rounded-md border border-border data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary bg-secondary text-muted-foreground">
+                      {t.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
               </div>
             )}
           </div>
@@ -613,6 +569,7 @@ const AdminPage = () => {
                   <Receipt className="w-3.5 h-3.5" /> Open Tabs
                 </Button>
               </div>
+
               {ordersSubView === 'pipeline' ? (
                 <>
                   <div className="flex gap-2 items-center">
@@ -628,17 +585,22 @@ const AdminPage = () => {
                     </Button>
                     {isAdmin && (
                       confirmDeleteAll ? (
-                        <Button size="sm" variant="destructive" className="font-body text-xs" onClick={deleteAllOrders}>
+                        <Button size="sm" variant="destructive" className="font-body text-xs"
+                          onClick={deleteAllOrders}>
                           Confirm Delete All?
                         </Button>
                       ) : (
                         <Button size="sm" variant="outline" className="font-body text-xs text-destructive border-destructive"
-                          onClick={() => { setConfirmDeleteAll(true); setTimeout(() => setConfirmDeleteAll(false), 3000); }}>
+                          onClick={() => {
+                            setConfirmDeleteAll(true);
+                            setTimeout(() => setConfirmDeleteAll(false), 3000);
+                          }}>
                           <Trash2 className="w-3 h-3 mr-1" /> Delete All
                         </Button>
                       )
                     )}
                   </div>
+
                   <div className="flex flex-wrap gap-1">
                     {statuses.map(s => (
                       <button key={s} onClick={() => setActiveStatus(s)}
@@ -651,6 +613,7 @@ const AdminPage = () => {
                       </button>
                     ))}
                   </div>
+
                   <div className="space-y-3">
                     {filteredOrders.length === 0 && (
                       <p className="font-body text-muted-foreground text-center py-8">No {activeStatus.toLowerCase()} orders</p>
@@ -792,6 +755,7 @@ const AdminPage = () => {
               <div className={readOnly('setup') ? 'pointer-events-none opacity-70' : ''}>
                 <SetupExportCard />
                 <div className="mt-8"><ResortProfileForm /></div>
+
                 <section className="mt-8">
                   <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Kitchen Settings</h3>
                   <div className="space-y-3">
@@ -807,8 +771,10 @@ const AdminPage = () => {
                     <Button onClick={saveSettings} className="font-display tracking-wider w-full">Save Settings</Button>
                   </div>
                 </section>
+
                 <div className="mt-8"><InvoiceSettingsForm /></div>
                 <div className="mt-8"><BillingConfigForm /></div>
+
                 <section className="mt-8">
                   <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Units / Rooms</h3>
                   <div className="space-y-0">
@@ -826,6 +792,7 @@ const AdminPage = () => {
                     </div>
                   </div>
                 </section>
+
                 <section className="mt-8">
                   <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Dine-In Tables</h3>
                   <div className="space-y-0">
@@ -843,6 +810,7 @@ const AdminPage = () => {
                     </div>
                   </div>
                 </section>
+
                 <section className="mt-8">
                   <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Order Types</h3>
                   <div className="space-y-3">
@@ -892,6 +860,7 @@ const AdminPage = () => {
                     </div>
                   </div>
                 </section>
+
                 <section className="mt-8">
                   <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Menu Categories</h3>
                   <div className="space-y-2">
@@ -941,8 +910,12 @@ const AdminPage = () => {
             <TabsContent value="menu" className="space-y-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input value={menuSearch} onChange={e => setMenuSearch(e.target.value)}
-                  placeholder="Search menu items..." className="bg-secondary border-border text-foreground font-body pl-9" />
+                <Input
+                  value={menuSearch}
+                  onChange={e => setMenuSearch(e.target.value)}
+                  placeholder="Search menu items..."
+                  className="bg-secondary border-border text-foreground font-body pl-9"
+                />
               </div>
               {!readOnly('menu') && (
                 <div className="flex gap-2">
@@ -952,19 +925,22 @@ const AdminPage = () => {
                   <Button variant="outline" onClick={() => setBulkImportOpen(true)} title="Bulk Import">
                     <Upload className="w-4 h-4" />
                   </Button>
-                  <Button variant="outline" onClick={() => {
-                    let csv = 'Category,Name,Description,Price,Food Cost\n';
-                    menuItems.forEach(item => {
-                      csv += `\"${item.category}\",\"${item.name}\",\"${(item.description || '').replace(/"/g, '""')}\",${item.price},${item.food_cost || 0}\n`;
-                    });
-                    const blob = new Blob([csv], { type: 'text/csv' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `menu-items-${new Date().toISOString().slice(0, 10)}.csv`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      let csv = 'Category,Name,Description,Price,Food Cost\n';
+                      menuItems.forEach(item => {
+                        csv += `\"${item.category}\",\"${item.name}\",\"${(item.description || '').replace(/"/g, '""')}\",${item.price},${item.food_cost || 0}\n`;
+                      });
+                      const blob = new Blob([csv], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `menu-items-${new Date().toISOString().slice(0, 10)}.csv`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                  >
                     <Download className="w-4 h-4" />
                   </Button>
                 </div>
@@ -1002,7 +978,9 @@ const AdminPage = () => {
                               {((item as any).department || 'kitchen')}
                             </span>
                             {foodCost > 0 ? (
-                              <span className="font-body text-xs text-muted-foreground">· Cost ₱{foodCost} · {margin}% margin</span>
+                              <span className="font-body text-xs text-muted-foreground">
+                                · Cost ₱{foodCost} · {margin}% margin
+                              </span>
                             ) : (
                               <span className="font-body text-xs text-amber-400">· No cost data</span>
                             )}
@@ -1026,14 +1004,14 @@ const AdminPage = () => {
             </TabsContent>
           )}
 
-          {/* INVENTORY TAB */}
+          {/* INVENTORY TAB - Food Inventory */}
           {(isAdmin || hasAccess(perms, 'inventory')) && (
             <TabsContent value="inventory">
               <InventoryDashboard readOnly={readOnly('inventory')} />
             </TabsContent>
           )}
 
-          {/* NON-FOOD INVENTORY TAB */}
+          {/* NON-FOOD INVENTORY TAB - Glasses, Plates, Tools, Appliances */}
           {(isAdmin || hasAccess(perms, 'inventory')) && (
             <TabsContent value="nonfood">
               <NonFoodInventory />
@@ -1088,7 +1066,6 @@ const AdminPage = () => {
               <IntegrationReadinessDashboard />
             </TabsContent>
           )}
-
         </Tabs>
       </div>
 
@@ -1135,7 +1112,9 @@ const AdminPage = () => {
             <div>
               <label className="font-body text-xs text-muted-foreground">Department</label>
               <Select value={itemForm.department} onValueChange={v => setItemForm(f => ({ ...f, department: v }))}>
-                <SelectTrigger className="bg-secondary border-border text-foreground font-body mt-1"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="bg-secondary border-border text-foreground font-body mt-1">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent className="bg-card border-border">
                   <SelectItem value="kitchen" className="text-foreground font-body">Kitchen</SelectItem>
                   <SelectItem value="bar" className="text-foreground font-body">Bar</SelectItem>
@@ -1166,8 +1145,11 @@ const AdminPage = () => {
             )}
             <Button onClick={saveItem} className="font-display tracking-wider w-full">Save</Button>
             {editItem && editItem !== 'new' && (
-              <Button variant="destructive" onClick={deleteItem}
-                className={`font-display tracking-wider w-full ${confirmingDelete ? 'animate-pulse' : ''}`}>
+              <Button
+                variant="destructive"
+                onClick={deleteItem}
+                className={`font-display tracking-wider w-full ${confirmingDelete ? 'animate-pulse' : ''}`}
+              >
                 <Trash2 className="w-4 h-4 mr-2" />
                 {confirmingDelete ? 'Confirm Delete?' : 'Delete Item'}
               </Button>
