@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Plus, Edit2, Trash2, AlertCircle, Search, Package, Wine, Utensils, Bed, RefreshCw, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,19 @@ interface Asset {
   last_restocked: string | null;
 }
 
+interface BreakageDialogState {
+  open: boolean;
+  asset: Asset | null;
+  quantity: number;
+  reason: string;
+}
+
+interface RestockDialogState {
+  open: boolean;
+  asset: Asset | null;
+  quantity: number;
+}
+
 export default function NonFoodInventory() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
@@ -26,7 +39,12 @@ export default function NonFoodInventory() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
-  const [breakageDialog, setBreakageDialog] = useState<any>({ open: false, asset: null, quantity: 1, reason: '' });
+  const [breakageDialog, setBreakageDialog] = useState<BreakageDialogState>({
+    open: false, asset: null, quantity: 1, reason: ''
+  });
+  const [restockDialog, setRestockDialog] = useState<RestockDialogState>({
+    open: false, asset: null, quantity: 10
+  });
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [csvText, setCsvText] = useState('');
@@ -40,19 +58,14 @@ export default function NonFoodInventory() {
   });
   const { toast } = useToast();
 
-  useEffect(() => {
-    loadAssets();
-  }, [selectedDepartment]);
-
-  const loadAssets = async () => {
+  // FIX: useCallback so useEffect dep is stable
+  const loadAssets = useCallback(async () => {
     setLoading(true);
     try {
       let query = supabase.from('assets').select('*');
-      
       if (selectedDepartment !== 'all') {
         query = query.eq('department', selectedDepartment);
       }
-      
       const { data, error } = await query.order('name');
       if (error) throw error;
       setAssets(data || []);
@@ -62,7 +75,11 @@ export default function NonFoodInventory() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDepartment, toast]);
+
+  useEffect(() => {
+    loadAssets();
+  }, [loadAssets]);
 
   const handleDelete = async (id: string) => {
     if (confirm('Delete this item?')) {
@@ -79,13 +96,7 @@ export default function NonFoodInventory() {
 
   const openAddDialog = () => {
     setEditingAsset(null);
-    setFormData({
-      name: '',
-      department: '',
-      current_quantity: 0,
-      min_quantity: 0,
-      unit: 'pcs'
-    });
+    setFormData({ name: '', department: '', current_quantity: 0, min_quantity: 0, unit: 'pcs' });
     setIsDialogOpen(true);
   };
 
@@ -106,7 +117,6 @@ export default function NonFoodInventory() {
       toast({ title: 'Error', description: 'Name and Department are required', variant: 'destructive' });
       return;
     }
-
     try {
       if (editingAsset) {
         const { error } = await supabase
@@ -120,9 +130,7 @@ export default function NonFoodInventory() {
             updated_at: new Date().toISOString()
           })
           .eq('id', editingAsset.id);
-        
         if (error) {
-          console.error('Update error:', error);
           toast({ title: 'Error', description: error.message, variant: 'destructive' });
           return;
         }
@@ -138,9 +146,7 @@ export default function NonFoodInventory() {
             unit: formData.unit,
             breakage_count: 0
           });
-        
         if (error) {
-          console.error('Insert error:', error);
           toast({ title: 'Error', description: error.message, variant: 'destructive' });
           return;
         }
@@ -150,14 +156,27 @@ export default function NonFoodInventory() {
       setIsDialogOpen(false);
       setEditingAsset(null);
     } catch (error: any) {
-      console.error('Save error:', error);
       toast({ title: 'Error', description: error.message || 'Failed to save', variant: 'destructive' });
     }
   };
 
   const handleBreakage = async () => {
     if (!breakageDialog.asset) return;
-    
+
+    // FIX: prevent negative inventory
+    if (breakageDialog.quantity <= 0) {
+      toast({ title: 'Error', description: 'Quantity must be at least 1', variant: 'destructive' });
+      return;
+    }
+    if (breakageDialog.quantity > breakageDialog.asset.current_quantity) {
+      toast({
+        title: 'Error',
+        description: `Cannot exceed current stock of ${breakageDialog.asset.current_quantity} ${breakageDialog.asset.unit}`,
+        variant: 'destructive'
+      });
+      return;
+    }
+
     try {
       const { error: updateError } = await supabase
         .from('assets')
@@ -167,9 +186,8 @@ export default function NonFoodInventory() {
           updated_at: new Date().toISOString()
         })
         .eq('id', breakageDialog.asset.id);
-      
       if (updateError) throw updateError;
-      
+
       await supabase.from('asset_transactions').insert({
         asset_id: breakageDialog.asset.id,
         quantity_change: -breakageDialog.quantity,
@@ -177,7 +195,7 @@ export default function NonFoodInventory() {
         reason: breakageDialog.reason,
         performed_by: 'Staff'
       });
-      
+
       await loadAssets();
       setBreakageDialog({ open: false, asset: null, quantity: 1, reason: '' });
       toast({ title: 'Logged', description: `${breakageDialog.quantity} broken item(s) recorded` });
@@ -186,32 +204,41 @@ export default function NonFoodInventory() {
     }
   };
 
-  const handleRestock = async (asset: Asset) => {
-    const quantity = prompt(`How many ${asset.unit} to add?`, '10');
-    if (!quantity) return;
-    
+  // FIX: proper restock dialog instead of prompt()
+  const openRestockDialog = (asset: Asset) => {
+    setRestockDialog({ open: true, asset, quantity: 10 });
+  };
+
+  const handleRestock = async () => {
+    if (!restockDialog.asset) return;
+    const qty = Math.floor(restockDialog.quantity);
+    // FIX: validate quantity before writing to DB
+    if (!qty || qty <= 0) {
+      toast({ title: 'Error', description: 'Enter a valid quantity greater than 0', variant: 'destructive' });
+      return;
+    }
     try {
       const { error } = await supabase
         .from('assets')
         .update({
-          current_quantity: asset.current_quantity + parseInt(quantity),
+          current_quantity: restockDialog.asset.current_quantity + qty,
           last_restocked: new Date().toISOString().split('T')[0],
           updated_at: new Date().toISOString()
         })
-        .eq('id', asset.id);
-      
+        .eq('id', restockDialog.asset.id);
       if (error) throw error;
-      
+
       await supabase.from('asset_transactions').insert({
-        asset_id: asset.id,
-        quantity_change: parseInt(quantity),
+        asset_id: restockDialog.asset.id,
+        quantity_change: qty,
         transaction_type: 'RESTOCK',
         reason: 'New stock received',
         performed_by: 'Staff'
       });
-      
+
       await loadAssets();
-      toast({ title: 'Restocked', description: `Added ${quantity} ${asset.unit}` });
+      setRestockDialog({ open: false, asset: null, quantity: 10 });
+      toast({ title: 'Restocked', description: `Added ${qty} ${restockDialog.asset.unit}` });
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     }
@@ -236,34 +263,50 @@ export default function NonFoodInventory() {
     }
   };
 
+  // FIX: proper CSV parser that handles quoted fields with commas
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
   const processImport = async (csvData: string) => {
     if (!csvData.trim()) {
       toast({ title: 'Error', description: 'No data to import', variant: 'destructive' });
       return;
     }
-
     const lines = csvData.trim().split('\n');
     const items = [];
-    
     for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',');
-      if (cols.length >= 5) {
+      const cols = parseCSVLine(lines[i]);
+      if (cols.length >= 5 && cols[0]) {
         items.push({
-          name: cols[0].trim(),
-          department: cols[1].trim(),
+          name: cols[0],
+          department: cols[1],
           current_quantity: parseInt(cols[2]) || 0,
           min_quantity: parseInt(cols[3]) || 0,
-          unit: cols[4].trim() || 'pcs',
+          unit: cols[4] || 'pcs',
           breakage_count: 0
         });
       }
     }
-
     if (items.length === 0) {
       toast({ title: 'Error', description: 'No valid data found', variant: 'destructive' });
       return;
     }
-
     try {
       const { error } = await supabase.from('assets').insert(items);
       if (error) throw error;
@@ -277,14 +320,26 @@ export default function NonFoodInventory() {
     }
   };
 
+  // FIX: resets all state including importing on any close
+  const closeBulkDialog = () => {
+    setIsBulkDialogOpen(false);
+    setCsvText('');
+    setUploadedFile(null);
+    setImporting(false);
+  };
+
   const handleBulkImport = async () => {
     setImporting(true);
-    
     if (uploadedFile) {
       const reader = new FileReader();
       reader.onload = async (e) => {
         const csvData = e.target?.result as string;
         await processImport(csvData);
+        setImporting(false);
+      };
+      // FIX: onerror handler so button never gets permanently stuck
+      reader.onerror = () => {
+        toast({ title: 'Error', description: 'Failed to read the file', variant: 'destructive' });
         setImporting(false);
       };
       reader.readAsText(uploadedFile);
@@ -297,15 +352,15 @@ export default function NonFoodInventory() {
     }
   };
 
+  // FIX: removed redundant client-side dept filter (already done in query)
   const filteredAssets = assets.filter(asset =>
-    asset.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-    (selectedDepartment === 'all' || asset.department === selectedDepartment)
+    asset.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const lowStockAssets = assets.filter(asset => asset.current_quantity < asset.min_quantity);
 
   const getDepartmentIcon = (department: string) => {
-    switch(department) {
+    switch (department) {
       case 'Bar': return <Wine className="h-4 w-4" />;
       case 'Kitchen': return <Utensils className="h-4 w-4" />;
       case 'Rooms': return <Bed className="h-4 w-4" />;
@@ -314,7 +369,7 @@ export default function NonFoodInventory() {
   };
 
   const getDepartmentColor = (department: string) => {
-    switch(department) {
+    switch (department) {
       case 'Bar': return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'Kitchen': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
       case 'Rooms': return 'bg-sky-100 text-sky-800 border-sky-200';
@@ -324,6 +379,7 @@ export default function NonFoodInventory() {
 
   return (
     <div className="p-4 pb-24 space-y-4">
+
       {/* Header */}
       <div className="flex justify-between items-center sticky top-0 bg-navy-texture z-10 py-2">
         <div>
@@ -349,14 +405,14 @@ export default function NonFoodInventory() {
           </div>
           <div className="space-y-2">
             {lowStockAssets.map(asset => (
-              <div key={asset.id} className="flex justify-between items-center bg-white rounded p-2">
+              <div key={asset.id} className="flex justify-between items-center bg-yellow-50/60 border border-yellow-100 rounded p-2">
                 <div>
-                  <p className="font-medium text-sm">{asset.name}</p>
-                  <p className="text-xs text-muted-foreground">{asset.department}</p>
+                  <p className="font-medium text-sm text-yellow-900">{asset.name}</p>
+                  <p className="text-xs text-yellow-700">{asset.department}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-red-600 font-bold text-sm">{asset.current_quantity} / {asset.min_quantity} {asset.unit}</p>
-                  <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => handleRestock(asset)}>
+                  <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => openRestockDialog(asset)}>
                     Restock
                   </Button>
                 </div>
@@ -377,10 +433,11 @@ export default function NonFoodInventory() {
             className="pl-9 h-10 text-sm"
           />
         </div>
-        <select 
-          value={selectedDepartment} 
+        {/* FIX: bg-background text-foreground respects dark theme */}
+        <select
+          value={selectedDepartment}
           onChange={(e) => setSelectedDepartment(e.target.value)}
-          className="h-10 px-3 rounded-md border border-input bg-white text-black text-sm"
+          className="h-10 px-3 rounded-md border border-input bg-background text-foreground text-sm"
         >
           <option value="all">All Depts</option>
           <option value="Bar">🍸 Bar</option>
@@ -413,7 +470,6 @@ export default function NonFoodInventory() {
                     <Badge variant="destructive" className="text-xs">Low Stock</Badge>
                   )}
                 </div>
-
                 <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
                   <div>
                     <p className="text-muted-foreground text-xs">Current Stock</p>
@@ -434,9 +490,8 @@ export default function NonFoodInventory() {
                     <p className="text-xs">{asset.last_restocked || 'Never'}</p>
                   </div>
                 </div>
-
                 <div className="flex gap-2 pt-2 border-t">
-                  <Button size="sm" variant="outline" className="flex-1 text-sm" onClick={() => handleRestock(asset)}>
+                  <Button size="sm" variant="outline" className="flex-1 text-sm" onClick={() => openRestockDialog(asset)}>
                     <RefreshCw className="h-3 w-3 mr-1" /> Restock
                   </Button>
                   <Button size="sm" variant="destructive" className="flex-1 text-sm" onClick={() => setBreakageDialog({ open: true, asset, quantity: 1, reason: '' })}>
@@ -455,27 +510,27 @@ export default function NonFoodInventory() {
         </div>
       )}
 
-      {/* Add/Edit Dialog */}
+      {/* Add/Edit Dialog — FIX: no bg-white, inherits theme */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="bg-white">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingAsset ? 'Edit Item' : 'Add New Item'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <label className="text-sm font-medium block mb-1">Item Name</label>
-              <Input 
+              <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Red Wine Glass" 
+                placeholder="e.g., Red Wine Glass"
               />
             </div>
             <div>
               <label className="text-sm font-medium block mb-1">Department</label>
-              <select 
+              <select
                 value={formData.department}
                 onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                className="w-full h-10 px-3 rounded-md border border-input bg-white text-black"
+                className="w-full h-10 px-3 rounded-md border border-input bg-background text-foreground"
               >
                 <option value="">Select department</option>
                 <option value="Bar">🍸 Bar</option>
@@ -486,16 +541,16 @@ export default function NonFoodInventory() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium block mb-1">Current Qty</label>
-                <Input 
-                  type="number" 
+                <Input
+                  type="number"
                   value={formData.current_quantity}
                   onChange={(e) => setFormData({ ...formData, current_quantity: parseInt(e.target.value) || 0 })}
                 />
               </div>
               <div>
                 <label className="text-sm font-medium block mb-1">Min Qty</label>
-                <Input 
-                  type="number" 
+                <Input
+                  type="number"
                   value={formData.min_quantity}
                   onChange={(e) => setFormData({ ...formData, min_quantity: parseInt(e.target.value) || 0 })}
                 />
@@ -503,10 +558,10 @@ export default function NonFoodInventory() {
             </div>
             <div>
               <label className="text-sm font-medium block mb-1">Unit</label>
-              <Input 
+              <Input
                 value={formData.unit}
                 onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                placeholder="pcs" 
+                placeholder="pcs"
               />
             </div>
             <div className="flex gap-2 justify-end pt-2">
@@ -517,68 +572,51 @@ export default function NonFoodInventory() {
         </DialogContent>
       </Dialog>
 
-      {/* Bulk Import Dialog */}
-      <Dialog open={isBulkDialogOpen} onOpenChange={setIsBulkDialogOpen}>
-        <DialogContent className="bg-white max-w-md">
+      {/* Bulk Import Dialog — FIX: onOpenChange resets all state */}
+      <Dialog open={isBulkDialogOpen} onOpenChange={(open) => { if (!open) closeBulkDialog(); else setIsBulkDialogOpen(true); }}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Bulk Import CSV</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {/* Step 1: Download Template */}
             <div className="border rounded-lg p-4">
               <h3 className="font-medium text-sm mb-2">1. Download Template</h3>
               <Button variant="outline" size="sm" onClick={downloadTemplate} className="w-full">
                 📥 Download Template CSV
               </Button>
             </div>
-
-            {/* Step 2: Upload File */}
             <div className="border rounded-lg p-4">
               <h3 className="font-medium text-sm mb-2">2. Upload Your CSV</h3>
               <input
                 type="file"
                 accept=".csv"
                 onChange={handleFileUpload}
-                className="w-full text-sm text-gray-500 file:mr-2 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
+                className="w-full text-sm text-muted-foreground file:mr-2 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
               />
               {uploadedFile && (
                 <p className="text-xs text-green-600 mt-2">✓ {uploadedFile.name}</p>
               )}
             </div>
-
-            {/* OR Divider */}
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300"></div>
+                <div className="w-full border-t border-border"></div>
               </div>
               <div className="relative flex justify-center text-xs">
-                <span className="bg-white px-2 text-gray-500">OR</span>
+                <span className="bg-background px-2 text-muted-foreground">OR</span>
               </div>
             </div>
-
-            {/* Step 3: Paste as fallback */}
             <div className="border rounded-lg p-4">
               <h3 className="font-medium text-sm mb-2">3. Paste CSV Data (Optional)</h3>
               <textarea
                 value={csvText}
-                onChange={(e) => {
-                  setCsvText(e.target.value);
-                  setUploadedFile(null);
-                }}
-                className="w-full h-32 p-3 rounded-md border border-input bg-gray-50 text-gray-900 font-mono text-sm"
-                placeholder="Item Name,Department,Current Quantity,Min Quantity,Unit&#10;Red Wine Glass,Bar,50,30,pcs"
+                onChange={(e) => { setCsvText(e.target.value); setUploadedFile(null); }}
+                className="w-full h-32 p-3 rounded-md border border-input bg-muted text-foreground font-mono text-sm"
+                placeholder={`Item Name,Department,Current Quantity,Min Quantity,Unit\nRed Wine Glass,Bar,50,30,pcs`}
               />
             </div>
           </div>
-
           <div className="flex gap-2 justify-end pt-2">
-            <Button variant="outline" onClick={() => {
-              setIsBulkDialogOpen(false);
-              setCsvText('');
-              setUploadedFile(null);
-            }}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={closeBulkDialog}>Cancel</Button>
             <Button onClick={handleBulkImport} disabled={importing}>
               {importing ? 'Importing...' : 'Import'}
             </Button>
@@ -586,47 +624,99 @@ export default function NonFoodInventory() {
         </DialogContent>
       </Dialog>
 
-      {/* Breakage Dialog */}
-      <Dialog open={breakageDialog.open} onOpenChange={(open) => !open && setBreakageDialog({ ...breakageDialog, open: false })}>
-        <DialogContent className="bg-white">
+      {/* Restock Dialog — FIX: replaces prompt() */}
+      <Dialog
+        open={restockDialog.open}
+        onOpenChange={(open) => !open && setRestockDialog({ open: false, asset: null, quantity: 10 })}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restock Item</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-muted p-3 rounded">
+              <p className="font-medium">{restockDialog.asset?.name}</p>
+              <p className="text-sm text-muted-foreground">
+                Current: {restockDialog.asset?.current_quantity} {restockDialog.asset?.unit}
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">
+                Quantity to Add ({restockDialog.asset?.unit})
+              </label>
+              <Input
+                type="number"
+                min="1"
+                value={restockDialog.quantity}
+                onChange={(e) => setRestockDialog({ ...restockDialog, quantity: parseInt(e.target.value) || 0 })}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setRestockDialog({ open: false, asset: null, quantity: 10 })}>
+                Cancel
+              </Button>
+              <Button onClick={handleRestock}>Confirm Restock</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Breakage Dialog — FIX: no bg-white, inherits theme */}
+      <Dialog
+        open={breakageDialog.open}
+        onOpenChange={(open) => !open && setBreakageDialog({ open: false, asset: null, quantity: 1, reason: '' })}
+      >
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Log Breakage</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="bg-yellow-50 p-3 rounded">
+            <div className="bg-muted p-3 rounded">
               <p className="font-medium">{breakageDialog.asset?.name}</p>
-              <p className="text-sm">Current: {breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}</p>
+              <p className="text-sm text-muted-foreground">
+                Current: {breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}
+              </p>
             </div>
             <div>
               <label className="text-sm font-medium block mb-1">Quantity Broken</label>
-              <Input 
-                type="number" 
-                min="1" 
-                value={breakageDialog.quantity} 
-                onChange={(e) => setBreakageDialog({ ...breakageDialog, quantity: parseInt(e.target.value) || 1 })} 
+              <Input
+                type="number"
+                min="1"
+                max={breakageDialog.asset?.current_quantity ?? undefined}
+                value={breakageDialog.quantity}
+                onChange={(e) => setBreakageDialog({ ...breakageDialog, quantity: parseInt(e.target.value) || 1 })}
               />
+              {/* FIX: live warning when quantity exceeds stock */}
+              {breakageDialog.asset && breakageDialog.quantity > breakageDialog.asset.current_quantity && (
+                <p className="text-xs text-red-500 mt-1">
+                  Exceeds current stock of {breakageDialog.asset.current_quantity}
+                </p>
+              )}
             </div>
             <div>
               <label className="text-sm font-medium block mb-1">Reason</label>
-              <select 
-                value={breakageDialog.reason} 
-                onChange={(e) => setBreakageDialog({ ...breakageDialog, reason: e.target.value })} 
-                className="w-full h-10 px-3 rounded-md border border-input bg-white text-black"
+              <select
+                value={breakageDialog.reason}
+                onChange={(e) => setBreakageDialog({ ...breakageDialog, reason: e.target.value })}
+                className="w-full h-10 px-3 rounded-md border border-input bg-background text-foreground"
               >
                 <option value="">Select reason</option>
                 <option value="Guest dropped">Guest dropped</option>
                 <option value="Staff accident">Staff accident</option>
-                <option value="Normal wear">Normal wear & tear</option>
+                <option value="Normal wear">Normal wear &amp; tear</option>
                 <option value="Lost">Lost / Missing</option>
               </select>
             </div>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setBreakageDialog({ ...breakageDialog, open: false })}>Cancel</Button>
+              <Button variant="outline" onClick={() => setBreakageDialog({ open: false, asset: null, quantity: 1, reason: '' })}>
+                Cancel
+              </Button>
               <Button onClick={handleBreakage}>Confirm</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }
