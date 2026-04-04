@@ -1,569 +1,372 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { Plus, Edit2, Trash2, AlertCircle, Search, Package, Wine, Utensils, Bed, RefreshCw, Upload, Download } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/components/ui/use-toast';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>BuildKit - Website Builder</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #09090B; overflow-x: hidden; }
+        .phone-mockup { box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .slide-up { animation: slideUp 0.3s ease-out; }
+        .transition-all { transition: all 0.2s ease; }
+        [onclick] { cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
-interface Asset {
-  id: string;
-  name: string;
-  department: string;
-  current_quantity: number;
-  min_quantity: number;
-  unit: string;
-  breakage_count: number;
-  last_restocked: string | null;
-}
-
-export default function NonFoodInventory() {
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
-  const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
-  const [breakageDialog, setBreakageDialog] = useState<any>({ open: false, asset: null, quantity: 1, reason: '' });
-  const [loading, setLoading] = useState(false);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    department: '',
-    current_quantity: 0,
-    min_quantity: 0,
-    unit: 'pcs'
-  });
-  const { toast } = useToast();
-
-  useEffect(() => {
-    loadAssets();
-  }, [selectedDepartment]);
-
-  const loadAssets = async () => {
-    setLoading(true);
-    try {
-      let query = supabase.from('assets').select('*');
-      
-      if (selectedDepartment !== 'all') {
-        query = query.eq('department', selectedDepartment);
-      }
-      
-      const { data, error } = await query.order('name');
-      if (error) throw error;
-      setAssets(data || []);
-    } catch (error) {
-      console.error('Error loading assets:', error);
-      toast({ title: 'Error', description: 'Failed to load inventory', variant: 'destructive' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this item?')) {
-      try {
-        const { error } = await supabase.from('assets').delete().eq('id', id);
-        if (error) throw error;
-        await loadAssets();
-        toast({ title: 'Deleted', description: 'Item removed' });
-      } catch (error) {
-        toast({ title: 'Error', description: 'Failed to delete', variant: 'destructive' });
-      }
-    }
-  };
-
-  const openAddDialog = () => {
-    setEditingAsset(null);
-    setFormData({
-      name: '',
-      department: '',
-      current_quantity: 0,
-      min_quantity: 0,
-      unit: 'pcs'
-    });
-    setIsDialogOpen(true);
-  };
-
-  const openEditDialog = (asset: Asset) => {
-    setEditingAsset(asset);
-    setFormData({
-      name: asset.name,
-      department: asset.department,
-      current_quantity: asset.current_quantity,
-      min_quantity: asset.min_quantity,
-      unit: asset.unit
-    });
-    setIsDialogOpen(true);
-  };
-
-  const handleSaveAsset = async () => {
-    if (!formData.name || !formData.department) {
-      toast({ title: 'Error', description: 'Name and Department are required', variant: 'destructive' });
-      return;
-    }
-
-    try {
-      if (editingAsset) {
-        const { error } = await supabase
-          .from('assets')
-          .update({
-            name: formData.name,
-            department: formData.department,
-            current_quantity: formData.current_quantity,
-            min_quantity: formData.min_quantity,
-            unit: formData.unit,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', editingAsset.id);
+    <script>
+        // ---------- STATE MANAGEMENT ----------
+        let appState = {
+            name: '',
+            type: '',
+            templateId: 'wanderlust',
+            color: '#14B8A6',
+            tagline: '',
+            step: 0,
+            features: { contactForm: true, booking: false, gallery: true, analytics: false, darkToggle: true },
+            font: 'Syne',
+            buttonStyle: 'rounded'
+        };
         
-        if (error) {
-          console.error('Update error:', error);
-          toast({ title: 'Error', description: error.message, variant: 'destructive' });
-          return;
-        }
-        toast({ title: 'Updated', description: 'Item saved' });
-      } else {
-        const { error } = await supabase
-          .from('assets')
-          .insert({
-            name: formData.name,
-            department: formData.department,
-            current_quantity: formData.current_quantity,
-            min_quantity: formData.min_quantity,
-            unit: formData.unit,
-            breakage_count: 0
-          });
+        let currentStep = 0;
+        let showAdminSheet = false;
+        let activeTab = 'preview';
         
-        if (error) {
-          console.error('Insert error:', error);
-          toast({ title: 'Error', description: error.message, variant: 'destructive' });
-          return;
+        // Load saved state
+        const savedState = localStorage.getItem('buildkit_state');
+        if (savedState) {
+            try {
+                const parsed = JSON.parse(savedState);
+                appState = { ...appState, ...parsed };
+                currentStep = appState.step;
+            } catch(e) {}
         }
-        toast({ title: 'Added', description: 'New item created' });
-      }
-      await loadAssets();
-      setIsDialogOpen(false);
-      setEditingAsset(null);
-    } catch (error: any) {
-      console.error('Save error:', error);
-      toast({ title: 'Error', description: error.message || 'Failed to save', variant: 'destructive' });
-    }
-  };
-
-  const handleBreakage = async () => {
-    if (!breakageDialog.asset) return;
-    
-    try {
-      const { error: updateError } = await supabase
-        .from('assets')
-        .update({
-          current_quantity: breakageDialog.asset.current_quantity - breakageDialog.quantity,
-          breakage_count: breakageDialog.asset.breakage_count + breakageDialog.quantity,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', breakageDialog.asset.id);
-      
-      if (updateError) throw updateError;
-      
-      await supabase.from('asset_transactions').insert({
-        asset_id: breakageDialog.asset.id,
-        quantity_change: -breakageDialog.quantity,
-        transaction_type: 'BREAKAGE',
-        reason: breakageDialog.reason,
-        performed_by: 'Staff'
-      });
-      
-      await loadAssets();
-      setBreakageDialog({ open: false, asset: null, quantity: 1, reason: '' });
-      toast({ title: 'Logged', description: `${breakageDialog.quantity} broken item(s) recorded` });
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    }
-  };
-
-  const handleRestock = async (asset: Asset) => {
-    const quantity = prompt(`How many ${asset.unit} to add?`, '10');
-    if (!quantity) return;
-    
-    try {
-      const { error } = await supabase
-        .from('assets')
-        .update({
-          current_quantity: asset.current_quantity + parseInt(quantity),
-          last_restocked: new Date().toISOString().split('T')[0],
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', asset.id);
-      
-      if (error) throw error;
-      
-      await supabase.from('asset_transactions').insert({
-        asset_id: asset.id,
-        quantity_change: parseInt(quantity),
-        transaction_type: 'RESTOCK',
-        reason: 'New stock received',
-        performed_by: 'Staff'
-      });
-      
-      await loadAssets();
-      toast({ title: 'Restocked', description: `Added ${quantity} ${asset.unit}` });
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    }
-  };
-
-  const downloadTemplate = () => {
-    const template = `Item Name,Department,Current Quantity,Min Quantity,Unit\nRed Wine Glass,Bar,50,30,pcs\nDinner Plate,Kitchen,100,50,pcs\nBath Towel,Rooms,30,20,pcs`;
-    const blob = new Blob([template], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'inventory-template.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleBulkImport = async () => {
-    if (!csvFile) {
-      toast({ title: 'Error', description: 'Please select a CSV file', variant: 'destructive' });
-      return;
-    }
-
-    const text = await csvFile.text();
-    const lines = text.trim().split('\n');
-    const items = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',');
-      if (cols.length >= 5) {
-        items.push({
-          name: cols[0].trim(),
-          department: cols[1].trim(),
-          current_quantity: parseInt(cols[2]) || 0,
-          min_quantity: parseInt(cols[3]) || 0,
-          unit: cols[4].trim() || 'pcs',
-          breakage_count: 0
-        });
-      }
-    }
-
-    if (items.length === 0) {
-      toast({ title: 'Error', description: 'No valid data found', variant: 'destructive' });
-      return;
-    }
-
-    try {
-      const { error } = await supabase.from('assets').insert(items);
-      if (error) throw error;
-      await loadAssets();
-      setIsBulkDialogOpen(false);
-      setCsvFile(null);
-      toast({ title: 'Success', description: `${items.length} items imported` });
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    }
-  };
-
-  const filteredAssets = assets.filter(asset =>
-    asset.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-    (selectedDepartment === 'all' || asset.department === selectedDepartment)
-  );
-
-  const lowStockAssets = assets.filter(asset => asset.current_quantity < asset.min_quantity);
-
-  const getDepartmentIcon = (department: string) => {
-    switch(department) {
-      case 'Bar': return <Wine className="h-4 w-4" />;
-      case 'Kitchen': return <Utensils className="h-4 w-4" />;
-      case 'Rooms': return <Bed className="h-4 w-4" />;
-      default: return <Package className="h-4 w-4" />;
-    }
-  };
-
-  const getDepartmentColor = (department: string) => {
-    switch(department) {
-      case 'Bar': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'Kitchen': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'Rooms': return 'bg-sky-100 text-sky-800 border-sky-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  return (
-    <div className="p-4 pb-24 space-y-4">
-      {/* Header */}
-      <div className="flex justify-between items-center sticky top-0 bg-navy-texture z-10 py-2">
-        <div>
-          <h1 className="text-xl font-bold">Non-Food Inventory</h1>
-          <p className="text-xs text-muted-foreground">Glasses, plates, tools, appliances</p>
-        </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => setIsBulkDialogOpen(true)}>
-            <Upload className="mr-1 h-4 w-4" /> Bulk
-          </Button>
-          <Button size="sm" onClick={openAddDialog}>
-            <Plus className="mr-1 h-4 w-4" /> Add
-          </Button>
-        </div>
-      </div>
-
-      {/* Low Stock Alerts */}
-      {lowStockAssets.length > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-          <div className="flex items-center gap-2 text-yellow-800 mb-2">
-            <AlertCircle className="h-4 w-4" />
-            <span className="text-sm font-medium">Low Stock Alerts</span>
-          </div>
-          <div className="space-y-2">
-            {lowStockAssets.map(asset => (
-              <div key={asset.id} className="flex justify-between items-center bg-white rounded p-2">
-                <div>
-                  <p className="font-medium text-sm">{asset.name}</p>
-                  <p className="text-xs text-muted-foreground">{asset.department}</p>
+        
+        function saveState() {
+            appState.step = currentStep;
+            localStorage.setItem('buildkit_state', JSON.stringify(appState));
+        }
+        
+        function setField(field, value) {
+            appState[field] = value;
+            saveState();
+            render();
+        }
+        
+        function setFeatures(features) {
+            appState.features = features;
+            saveState();
+            render();
+        }
+        
+        function resetSite() {
+            if (confirm('Reset everything? This cannot be undone.')) {
+                appState = {
+                    name: '', type: '', templateId: 'wanderlust', color: '#14B8A6', tagline: '', step: 0,
+                    features: { contactForm: true, booking: false, gallery: true, analytics: false, darkToggle: true },
+                    font: 'Syne', buttonStyle: 'rounded'
+                };
+                currentStep = 0;
+                showAdminSheet = false;
+                saveState();
+                render();
+            }
+        }
+        
+        // ---------- TEMPLATE RENDERS ----------
+        function renderWanderlust(name, tagline, color) {
+            return `
+                <div class="w-full bg-gradient-to-b from-gray-900 to-black rounded-2xl overflow-hidden">
+                    <div class="h-48 bg-gradient-to-r" style="background: linear-gradient(135deg, ${color}, ${color}cc)">
+                        <div class="p-6 pt-12">
+                            <h2 class="text-2xl font-bold text-white mb-2">${name || 'Wanderlust Resort'}</h2>
+                            <p class="text-white/80 text-sm">${tagline || 'Experience paradise like never before'}</p>
+                            <button class="mt-4 px-6 py-2 bg-white text-gray-900 rounded-full text-sm font-semibold">Book Now</button>
+                        </div>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div class="bg-gray-800 rounded-xl p-3"><h3 class="font-semibold text-white mb-1">Ocean View Suite</h3><p class="text-teal-400 text-sm">$299/night</p></div>
+                        <div class="bg-gray-800 rounded-xl p-3"><h3 class="font-semibold text-white mb-1">Mountain View Room</h3><p class="text-teal-400 text-sm">$199/night</p></div>
+                        <p class="text-gray-400 text-sm mt-2">Luxury amenities • Ocean views • Fine dining</p>
+                    </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-red-600 font-bold text-sm">{asset.current_quantity} / {asset.min_quantity} {asset.unit}</p>
-                  <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => handleRestock(asset)}>
-                    Restock
-                  </Button>
+            `;
+        }
+        
+        function renderCarta(name, tagline, color) {
+            return `
+                <div class="w-full bg-gradient-to-b from-gray-900 to-black rounded-2xl overflow-hidden">
+                    <div class="p-6 text-center border-b border-gray-800">
+                        <h2 class="text-3xl font-bold mb-2" style="color: ${color}">${name || 'Carta'}</h2>
+                        <p class="text-gray-400 text-sm">${tagline || 'Italian cuisine at its finest'}</p>
+                        <div class="flex gap-3 mt-4 justify-center">
+                            <button class="px-4 py-2 rounded-full text-sm font-semibold" style="background: ${color}; color: white">View Menu</button>
+                            <button class="px-4 py-2 rounded-full border border-gray-700 text-white text-sm font-semibold">Reserve</button>
+                        </div>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div class="flex justify-between items-center p-3 bg-gray-800 rounded-xl"><div><h3 class="font-semibold text-white">Truffle Pasta</h3><p class="text-gray-400 text-xs">Homemade pasta</p></div><span class="text-teal-400">$24</span></div>
+                        <div class="flex justify-between items-center p-3 bg-gray-800 rounded-xl"><div><h3 class="font-semibold text-white">Grilled Salmon</h3><p class="text-gray-400 text-xs">With lemon butter</p></div><span class="text-teal-400">$32</span></div>
+                        <div class="text-center text-gray-400 text-xs pt-2"><p>Mon-Sun: 11am - 11pm</p><p>123 Restaurant St</p></div>
+                    </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Search and Filter */}
-      <div className="flex gap-2 sticky top-[60px] bg-navy-texture z-10 py-2">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search items..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 h-10 text-sm"
-          />
-        </div>
-        <select 
-          value={selectedDepartment} 
-          onChange={(e) => setSelectedDepartment(e.target.value)}
-          className="h-10 px-3 rounded-md border border-input"
-          style={{ color: 'black', backgroundColor: 'white' }}
-        >
-          <option value="all" style={{ color: 'black', backgroundColor: 'white' }}>All Depts</option>
-          <option value="Bar" style={{ color: 'black', backgroundColor: 'white' }}>🍸 Bar</option>
-          <option value="Kitchen" style={{ color: 'black', backgroundColor: 'white' }}>🍽️ Kitchen</option>
-          <option value="Rooms" style={{ color: 'black', backgroundColor: 'white' }}>🛏️ Rooms</option>
-        </select>
-      </div>
-
-      {/* Card Grid */}
-      {loading ? (
-        <div className="text-center py-8 text-muted-foreground">Loading...</div>
-      ) : filteredAssets.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">
-          No items found. Click "Add" or "Bulk Import" to add items.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3">
-          {filteredAssets.map((asset) => (
-            <Card key={asset.id} className="overflow-hidden">
-              <CardContent className="p-4">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-base">{asset.name}</h3>
-                    <Badge className={`mt-1 text-xs ${getDepartmentColor(asset.department)}`}>
-                      {getDepartmentIcon(asset.department)}
-                      <span className="ml-1">{asset.department}</span>
-                    </Badge>
-                  </div>
-                  {asset.current_quantity < asset.min_quantity && (
-                    <Badge variant="destructive" className="text-xs">Low Stock</Badge>
-                  )}
+            `;
+        }
+        
+        function renderFolio(name, tagline, color) {
+            return `
+                <div class="w-full bg-gradient-to-b from-gray-900 to-black rounded-2xl overflow-hidden">
+                    <div class="p-6 text-center">
+                        <div class="w-20 h-20 mx-auto bg-gradient-to-br rounded-full mb-3" style="background: ${color}"></div>
+                        <h2 class="text-2xl font-bold text-white mb-1">${name || 'Alex Morgan'}</h2>
+                        <p class="text-gray-400 text-sm">${tagline || 'Creative Director'}</p>
+                        <button class="mt-4 px-6 py-2 rounded-full text-sm font-semibold" style="background: ${color}; color: white">See My Work</button>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div class="bg-gray-800 rounded-xl p-3"><h3 class="font-semibold text-white">Brand Identity</h3><p class="text-gray-400 text-xs">Logo design, guidelines</p></div>
+                        <div class="bg-gray-800 rounded-xl p-3"><h3 class="font-semibold text-white">Web Design</h3><p class="text-gray-400 text-xs">Responsive websites</p></div>
+                        <div class="flex justify-center gap-4 mt-2 text-gray-400 text-xs"><span>📧 hello@alex.com</span><span>📱 @alexmorgan</span></div>
+                    </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
-                  <div>
-                    <p className="text-muted-foreground text-xs">Current Stock</p>
-                    <p className={`font-bold text-lg ${asset.current_quantity < asset.min_quantity ? 'text-red-600' : ''}`}>
-                      {asset.current_quantity} <span className="text-xs font-normal text-muted-foreground">{asset.unit}</span>
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Min Required</p>
-                    <p className="font-medium">{asset.min_quantity} {asset.unit}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Breakage (Total)</p>
-                    <p className="font-medium text-orange-600">{asset.breakage_count} {asset.unit}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Last Restocked</p>
-                    <p className="text-xs">{asset.last_restocked || 'Never'}</p>
-                  </div>
+            `;
+        }
+        
+        function renderPhoneMockup() {
+            const templates = {
+                wanderlust: renderWanderlust(appState.name, appState.tagline, appState.color),
+                carta: renderCarta(appState.name, appState.tagline, appState.color),
+                folio: renderFolio(appState.name, appState.tagline, appState.color)
+            };
+            return `
+                <div class="w-full max-w-[280px] mx-auto bg-black rounded-3xl overflow-hidden border border-gray-800 phone-mockup">
+                    <div class="bg-gray-900 p-2">
+                        <div class="w-32 h-1 bg-gray-700 rounded-full mx-auto mb-2"></div>
+                        <div class="bg-black rounded-2xl overflow-hidden" style="min-height: 400px">
+                            ${templates[appState.templateId]}
+                        </div>
+                    </div>
                 </div>
-
-                <div className="flex gap-2 pt-2 border-t">
-                  <Button size="sm" variant="outline" className="flex-1 text-sm" onClick={() => handleRestock(asset)}>
-                    <RefreshCw className="h-3 w-3 mr-1" /> Restock
-                  </Button>
-                  <Button size="sm" variant="destructive" className="flex-1 text-sm" onClick={() => setBreakageDialog({ open: true, asset, quantity: 1, reason: '' })}>
-                    Broken -1
-                  </Button>
-                  <Button size="sm" variant="outline" className="px-3" onClick={() => openEditDialog(asset)}>
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-                  <Button size="sm" variant="outline" className="px-3" onClick={() => handleDelete(asset.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+            `;
+        }
+        
+        // ---------- SCREEN RENDERS ----------
+        function renderStep0() {
+            return `
+                <div class="min-h-screen bg-[#09090B] px-4 py-8 pb-24">
+                    <div class="max-w-[420px] mx-auto">
+                        <div class="flex gap-2 justify-center mb-8">
+                            ${[0,1,2,3].map(i => `<div class="h-1 flex-1 rounded-full ${i === 0 ? 'bg-teal-500' : 'bg-gray-800'}"></div>`).join('')}
+                        </div>
+                        <h1 class="text-3xl font-bold text-white mb-2 font-['Syne']">Launch your webapp in minutes</h1>
+                        <p class="text-gray-400 mb-6 text-sm">Get started with BuildKit</p>
+                        <input type="text" id="businessName" placeholder="Business name" value="${appState.name}" class="w-full bg-[#111113] border border-[#2A2A30] rounded-xl px-4 py-3 text-white mb-6 focus:outline-none focus:border-teal-500">
+                        <div class="space-y-3 mb-8">
+                            ${['6 Templates', 'Fully customizable', 'Deploy instantly'].map(text => `<div class="bg-[#111113] border border-[#2A2A30] rounded-xl p-4"><p class="text-white font-medium">${text}</p></div>`).join('')}
+                        </div>
+                    </div>
+                    <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#09090B] to-transparent">
+                        <div class="max-w-[420px] mx-auto">
+                            <button onclick="const name = document.getElementById('businessName').value; if(name.trim()) { setField('name', name); currentStep = 1; saveState(); render(); }" class="w-full py-3 rounded-xl font-semibold bg-teal-500 text-white">Continue</button>
+                        </div>
+                    </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Add/Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="bg-white" style={{ backgroundColor: 'white' }}>
-          <DialogHeader>
-            <DialogTitle style={{ color: 'black' }}>{editingAsset ? 'Edit Item' : 'Add New Item'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Item Name</label>
-              <Input 
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Red Wine Glass" 
-                style={{ color: 'black', backgroundColor: 'white' }}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Department</label>
-              <select 
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                className="w-full h-10 px-3 rounded-md border border-input"
-                style={{ color: 'black', backgroundColor: 'white' }}
-              >
-                <option value="" style={{ color: 'black', backgroundColor: 'white' }}>Select department</option>
-                <option value="Bar" style={{ color: 'black', backgroundColor: 'white' }}>🍸 Bar</option>
-                <option value="Kitchen" style={{ color: 'black', backgroundColor: 'white' }}>🍽️ Kitchen</option>
-                <option value="Rooms" style={{ color: 'black', backgroundColor: 'white' }}>🛏️ Rooms</option>
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Current Qty</label>
-                <Input 
-                  type="number" 
-                  value={formData.current_quantity}
-                  onChange={(e) => setFormData({ ...formData, current_quantity: parseInt(e.target.value) || 0 })}
-                  style={{ color: 'black', backgroundColor: 'white' }}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Min Qty</label>
-                <Input 
-                  type="number" 
-                  value={formData.min_quantity}
-                  onChange={(e) => setFormData({ ...formData, min_quantity: parseInt(e.target.value) || 0 })}
-                  style={{ color: 'black', backgroundColor: 'white' }}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Unit</label>
-              <Input 
-                value={formData.unit}
-                onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                placeholder="pcs"
-                style={{ color: 'black', backgroundColor: 'white' }}
-              />
-            </div>
-            <div className="flex gap-2 justify-end pt-2">
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-              <Button type="button" onClick={handleSaveAsset}>Save</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Bulk Import Dialog */}
-      <Dialog open={isBulkDialogOpen} onOpenChange={setIsBulkDialogOpen}>
-        <DialogContent className="bg-white" style={{ backgroundColor: 'white' }}>
-          <DialogHeader>
-            <DialogTitle style={{ color: 'black' }}>Bulk Import CSV</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Button variant="outline" size="sm" onClick={downloadTemplate} className="w-full">
-              <Download className="mr-1 h-4 w-4" /> Download Template CSV
-            </Button>
-            <div>
-              <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Upload CSV File:</label>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
-                className="w-full p-2 rounded-md border border-input"
-                style={{ color: 'black', backgroundColor: 'white' }}
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setIsBulkDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleBulkImport}>Import</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Breakage Dialog */}
-      <Dialog open={breakageDialog.open} onOpenChange={(open) => !open && setBreakageDialog({ ...breakageDialog, open: false })}>
-        <DialogContent className="bg-white" style={{ backgroundColor: 'white' }}>
-          <DialogHeader>
-            <DialogTitle style={{ color: 'black' }}>Log Breakage</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="bg-yellow-50 p-3 rounded">
-              <p className="font-medium" style={{ color: 'black' }}>{breakageDialog.asset?.name}</p>
-              <p className="text-sm" style={{ color: 'black' }}>Current: {breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Quantity Broken</label>
-              <Input 
-                type="number" 
-                min="1" 
-                value={breakageDialog.quantity} 
-                onChange={(e) => setBreakageDialog({ ...breakageDialog, quantity: parseInt(e.target.value) || 1 })} 
-                style={{ color: 'black', backgroundColor: 'white' }}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Reason</label>
-              <select 
-                value={breakageDialog.reason} 
-                onChange={(e) => setBreakageDialog({ ...breakageDialog, reason: e.target.value })} 
-                className="w-full h-10 px-3 rounded-md border border-input"
-                style={{ color: 'black', backgroundColor: 'white' }}
-              >
-                <option value="" style={{ color: 'black', backgroundColor: 'white' }}>Select reason</option>
-                <option value="Guest dropped" style={{ color: 'black', backgroundColor: 'white' }}>Guest dropped</option>
-                <option value="Staff accident" style={{ color: 'black', backgroundColor: 'white' }}>Staff accident</option>
-                <option value="Normal wear" style={{ color: 'black', backgroundColor: 'white' }}>Normal wear & tear</option>
-                <option value="Lost" style={{ color: 'black', backgroundColor: 'white' }}>Lost / Missing</option>
-              </select>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setBreakageDialog({ ...breakageDialog, open: false })}>Cancel</Button>
-              <Button onClick={handleBreakage}>Confirm</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
+            `;
+        }
+        
+        function renderStep1() {
+            const types = ['Resort/Hotel', 'Food & Drink', 'Creative Studio', 'Shop', 'Services', 'Events'];
+            return `
+                <div class="min-h-screen bg-[#09090B] px-4 py-8 pb-24">
+                    <div class="max-w-[420px] mx-auto">
+                        <button onclick="currentStep = 0; saveState(); render();" class="text-gray-400 mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+                        </button>
+                        <h2 class="text-2xl font-bold text-white mb-6 font-['Syne']">What kind of business?</h2>
+                        <div class="grid grid-cols-2 gap-3">
+                            ${types.map(t => `
+                                <div onclick="setField('type', '${t}');" class="p-4 rounded-xl border-2 cursor-pointer text-center ${appState.type === t ? 'border-teal-500 bg-teal-500/10' : 'border-[#2A2A30] bg-[#111113]'}">
+                                    <div class="w-8 h-8 mx-auto mb-2 bg-gray-800 rounded-full"></div>
+                                    <p class="text-sm ${appState.type === t ? 'text-teal-500' : 'text-white'}">${t}</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#09090B] to-transparent">
+                        <div class="max-w-[420px] mx-auto">
+                            <button onclick="if(appState.type) { currentStep = 2; saveState(); render(); }" class="w-full py-3 rounded-xl font-semibold ${appState.type ? 'bg-teal-500 text-white' : 'bg-gray-800 text-gray-500'}">Choose a template</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderStep2() {
+            const templates = [
+                { id: 'wanderlust', name: 'Wanderlust', category: 'Resort', desc: 'Perfect for hotels & resorts' },
+                { id: 'carta', name: 'Carta', category: 'Restaurant', desc: 'Ideal for restaurants & cafes' },
+                { id: 'folio', name: 'Folio', category: 'Portfolio', desc: 'Great for creatives & freelancers' }
+            ];
+            return `
+                <div class="min-h-screen bg-[#09090B] px-4 py-8 pb-32">
+                    <div class="max-w-[420px] mx-auto">
+                        <button onclick="currentStep = 1; saveState(); render();" class="text-gray-400 mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+                        </button>
+                        <h2 class="text-2xl font-bold text-white mb-6 font-['Syne']">Pick your template</h2>
+                        <div class="space-y-4">
+                            ${templates.map(t => `
+                                <div onclick="setField('templateId', '${t.id}');" class="bg-[#111113] border-2 rounded-xl p-4 cursor-pointer ${appState.templateId === t.id ? 'border-teal-500' : 'border-[#2A2A30]'}">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-8 h-8 rounded-full bg-teal-500"></div>
+                                            <div><h3 class="text-white font-semibold">${t.name}</h3><p class="text-gray-400 text-xs">${t.category}</p></div>
+                                        </div>
+                                        ${appState.templateId === t.id ? '<div class="text-teal-500"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>' : ''}
+                                    </div>
+                                    <p class="text-gray-400 text-sm">${t.desc}</p>
+                                    ${appState.templateId === t.id ? `<div class="mt-4">${renderPhoneMockup()}</div>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#09090B] to-transparent">
+                        <div class="max-w-[420px] mx-auto">
+                            <button onclick="if(appState.templateId) { currentStep = 3; saveState(); render(); }" class="w-full py-3 rounded-xl font-semibold ${appState.templateId ? 'bg-teal-500 text-white' : 'bg-gray-800 text-gray-500'}">Customize</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderStep3() {
+            const colors = ['#14B8A6', '#0D9488', '#F59E0B', '#8B5CF6', '#EF4444', '#3B82F6'];
+            return `
+                <div class="min-h-screen bg-[#09090B] px-4 py-8 pb-32">
+                    <div class="max-w-[420px] mx-auto">
+                        <button onclick="currentStep = 2; saveState(); render();" class="text-gray-400 mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+                        </button>
+                        <h2 class="text-2xl font-bold text-white mb-6 font-['Syne']">Make it yours</h2>
+                        <div class="mb-6">
+                            <label class="text-gray-400 text-sm mb-2 block">Tagline</label>
+                            <input type="text" id="taglineInput" value="${appState.tagline}" placeholder="Your tagline here" class="w-full bg-[#111113] border border-[#2A2A30] rounded-xl px-4 py-3 text-white">
+                        </div>
+                        <div class="mb-6">
+                            <label class="text-gray-400 text-sm mb-2 block">Brand Color</label>
+                            <div class="flex gap-3 flex-wrap">
+                                ${colors.map(c => `<div onclick="setField('color', '${c}');" class="w-10 h-10 rounded-full cursor-pointer border-2 ${appState.color === c ? 'border-white' : 'border-transparent'}" style="background: ${c}"></div>`).join('')}
+                            </div>
+                        </div>
+                        ${renderPhoneMockup()}
+                    </div>
+                    <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#09090B] to-transparent">
+                        <div class="max-w-[420px] mx-auto">
+                            <button onclick="const tagline = document.getElementById('taglineInput').value; setField('tagline', tagline); currentStep = 4; saveState(); render();" class="w-full py-3 rounded-xl font-semibold bg-teal-500 text-white">Launch my site</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderBuilder() {
+            return `
+                <div class="min-h-screen bg-[#09090B] pb-16">
+                    <div class="max-w-[420px] mx-auto">
+                        ${activeTab === 'preview' ? `
+                            <div class="p-4">
+                                ${renderPhoneMockup()}
+                                <div class="flex gap-3 mt-6">
+                                    <button class="flex-1 py-2 bg-teal-500 text-white rounded-xl text-sm font-semibold">Share link</button>
+                                    <button onclick="showAdminSheet = true; render();" class="flex-1 py-2 bg-[#111113] border border-[#2A2A30] text-white rounded-xl text-sm font-semibold">Edit in Admin</button>
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${activeTab === 'pages' ? `
+                            <div class="p-4 space-y-4">
+                                <h3 class="text-white font-semibold mb-3">Page visibility</h3>
+                                ${['Home', 'About', 'Contact', 'Gallery', 'Booking'].map(page => `
+                                    <div class="flex justify-between items-center p-3 bg-[#111113] rounded-xl">
+                                        <span class="text-white">${page}</span>
+                                        <div class="w-10 h-5 bg-teal-500 rounded-full relative"><div class="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full"></div></div>
+                                    </div>
+                                `).join('')}
+                                <button class="w-full py-3 bg-teal-500/10 border border-teal-500 rounded-xl text-teal-500 font-semibold">+ Add page</button>
+                            </div>
+                        ` : ''}
+                        ${activeTab === 'design' ? `
+                            <div class="p-4 space-y-6">
+                                <div><label class="text-gray-400 text-sm block mb-2">Font</label><div class="flex gap-2">${['Syne', 'Jakarta', 'Inter'].map(f => `<button onclick="setField('font', '${f}');" class="flex-1 py-2 rounded-xl ${appState.font === f ? 'bg-teal-500 text-white' : 'bg-[#111113] text-gray-400'}">${f}</button>`).join('')}</div></div>
+                                <div><label class="text-gray-400 text-sm block mb-2">Button Style</label><div class="flex gap-2">${['rounded', 'pill', 'sharp'].map(s => `<button onclick="setField('buttonStyle', '${s}');" class="flex-1 py-2 rounded-xl ${appState.buttonStyle === s ? 'bg-teal-500 text-white' : 'bg-[#111113] text-gray-400'}">${s}</button>`).join('')}</div></div>
+                                <div><label class="text-gray-400 text-sm block mb-2">Color</label><div class="flex gap-3 flex-wrap">${['#14B8A6', '#0D9488', '#F59E0B', '#8B5CF6', '#EF4444', '#3B82F6'].map(c => `<div onclick="setField('color', '${c}');" class="w-8 h-8 rounded-full cursor-pointer border-2 ${appState.color === c ? 'border-white' : 'border-transparent'}" style="background: ${c}"></div>`).join('')}</div></div>
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="fixed bottom-0 left-0 right-0 bg-[#111113] border-t border-[#2A2A30] py-2">
+                        <div class="max-w-[420px] mx-auto flex justify-around">
+                            ${['preview', 'pages', 'design', 'admin'].map(tab => `
+                                <button onclick="activeTab = '${tab}'; render();" class="flex flex-col items-center gap-1 py-2 px-4 rounded-xl ${activeTab === tab ? 'text-teal-500' : 'text-gray-500'}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776"/></svg>
+                                    <span class="text-xs capitalize">${tab}</span>
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    ${showAdminSheet ? `
+                        <div class="fixed inset-0 bg-black/80 z-50 flex items-end" onclick="showAdminSheet = false; render();">
+                            <div class="bg-[#111113] rounded-t-3xl w-full max-w-[420px] mx-auto slide-up" onclick="event.stopPropagation()">
+                                <div class="w-12 h-1 bg-gray-700 rounded-full mx-auto my-3"></div>
+                                <div class="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+                                    <h3 class="text-white font-semibold">Site settings</h3>
+                                    <input type="text" id="adminName" value="${appState.name}" placeholder="Site name" class="w-full bg-[#111113] border border-[#2A2A30] rounded-xl px-4 py-2 text-white">
+                                    <input type="text" id="adminTagline" value="${appState.tagline}" placeholder="Tagline" class="w-full bg-[#111113] border border-[#2A2A30] rounded-xl px-4 py-2 text-white">
+                                    <button onclick="setField('name', document.getElementById('adminName').value); setField('tagline', document.getElementById('adminTagline').value); currentStep = 2; saveState(); showAdminSheet = false; render();" class="w-full py-2 bg-teal-500/10 border border-teal-500 rounded-xl text-teal-500">Change template</button>
+                                    <h3 class="text-white font-semibold mt-4">Features</h3>
+                                    ${['contactForm', 'booking', 'gallery', 'analytics', 'darkToggle'].map(f => `
+                                        <div class="flex justify-between items-center">
+                                            <span class="text-gray-400">${f.replace(/([A-Z])/g, ' $1').trim()}</span>
+                                            <div onclick="const newFeatures = {...appState.features, ['${f}']: !appState.features['${f}']}; setFeatures(newFeatures);" class="w-10 h-5 rounded-full relative cursor-pointer ${appState.features[f] ? 'bg-teal-500' : 'bg-gray-700'}">
+                                                <div class="absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${appState.features[f] ? 'right-0.5' : 'left-0.5'}"></div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                    <button onclick="resetSite(); showAdminSheet = false;" class="w-full py-2 bg-red-500/10 border border-red-500 rounded-xl text-red-500 mt-4">Reset site</button>
+                                    <div class="h-8"></div>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        // ---------- MAIN RENDER FUNCTION ----------
+        function render() {
+            const root = document.getElementById('root');
+            if (currentStep < 4) {
+                if (currentStep === 0) root.innerHTML = renderStep0();
+                else if (currentStep === 1) root.innerHTML = renderStep1();
+                else if (currentStep === 2) root.innerHTML = renderStep2();
+                else if (currentStep === 3) root.innerHTML = renderStep3();
+            } else {
+                root.innerHTML = renderBuilder();
+            }
+        }
+        
+        // Make functions global for onclick
+        window.setField = setField;
+        window.setFeatures = setFeatures;
+        window.resetSite = resetSite;
+        window.render = render;
+        
+        // Initial render
+        render();
+    </script>
+</body>
+</html>
