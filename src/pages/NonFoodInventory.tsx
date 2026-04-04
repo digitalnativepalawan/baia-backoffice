@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Edit2, Trash2, AlertCircle, Search, Package, Wine, Utensils, Bed, RefreshCw } from 'lucide-react';
+import { Plus, Edit2, Trash2, AlertCircle, Search, Package, Wine, Utensils, Bed } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
@@ -32,15 +33,7 @@ export default function NonFoodInventory() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [breakageDialog, setBreakageDialog] = useState<any>({ open: false, asset: null, quantity: 1, reason: '' });
-  const [restockDialog, setRestockDialog] = useState<any>({ open: false, asset: null, quantity: 0 });
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    category_id: '',
-    current_quantity: 0,
-    min_quantity: 0,
-    unit: 'pcs'
-  });
   const { toast } = useToast();
 
   useEffect(() => {
@@ -78,7 +71,6 @@ export default function NonFoodInventory() {
       const { data, error } = await supabase
         .from('asset_categories')
         .select('*')
-        .order('department')
         .order('name');
       if (error) throw error;
       setCategories(data || []);
@@ -88,82 +80,39 @@ export default function NonFoodInventory() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Delete this item?')) {
+    if (confirm('Are you sure you want to delete this item?')) {
       try {
         const { error } = await supabase.from('assets').delete().eq('id', id);
         if (error) throw error;
         await loadAssets();
-        toast({ title: 'Deleted', description: 'Item removed' });
+        toast({ title: 'Success', description: 'Item deleted successfully' });
       } catch (error) {
-        toast({ title: 'Error', description: 'Failed to delete', variant: 'destructive' });
+        toast({ title: 'Error', description: 'Failed to delete item', variant: 'destructive' });
       }
     }
   };
 
-  const openAddDialog = () => {
-    setEditingAsset(null);
-    setFormData({
-      name: '',
-      category_id: '',
-      current_quantity: 0,
-      min_quantity: 0,
-      unit: 'pcs'
-    });
-    setIsDialogOpen(true);
-  };
-
-  const openEditDialog = (asset: Asset) => {
-    setEditingAsset(asset);
-    setFormData({
-      name: asset.name,
-      category_id: asset.category_id,
-      current_quantity: asset.current_quantity,
-      min_quantity: asset.min_quantity,
-      unit: asset.unit
-    });
-    setIsDialogOpen(true);
-  };
-
-  const handleSaveAsset = async () => {
-    if (!formData.category_id) {
-      toast({ title: 'Error', description: 'Please select a category', variant: 'destructive' });
-      return;
-    }
-
+  const handleSaveAsset = async (assetData: any) => {
     try {
       if (editingAsset) {
         const { error } = await supabase
           .from('assets')
-          .update({
-            name: formData.name,
-            category_id: formData.category_id,
-            current_quantity: formData.current_quantity,
-            min_quantity: formData.min_quantity,
-            unit: formData.unit,
-            updated_at: new Date()
-          })
+          .update({ ...assetData, updated_at: new Date() })
           .eq('id', editingAsset.id);
         if (error) throw error;
-        toast({ title: 'Updated', description: 'Item saved' });
+        toast({ title: 'Success', description: 'Item updated successfully' });
       } else {
         const { error } = await supabase
           .from('assets')
-          .insert([{
-            name: formData.name,
-            category_id: formData.category_id,
-            current_quantity: formData.current_quantity,
-            min_quantity: formData.min_quantity,
-            unit: formData.unit,
-            breakage_count: 0
-          }]);
+          .insert([{ ...assetData, breakage_count: 0 }]);
         if (error) throw error;
-        toast({ title: 'Added', description: 'New item created' });
+        toast({ title: 'Success', description: 'Item created successfully' });
       }
       await loadAssets();
       setIsDialogOpen(false);
       setEditingAsset(null);
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to save', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to save item', variant: 'destructive' });
     }
   };
 
@@ -189,45 +138,46 @@ export default function NonFoodInventory() {
           quantity_change: -breakageDialog.quantity,
           transaction_type: 'BREAKAGE',
           reason: breakageDialog.reason,
-          performed_by: 'Staff'
+          performed_by: 'Current User'
         }]);
       
       if (transactionError) throw transactionError;
       
       await loadAssets();
       setBreakageDialog({ open: false, asset: null, quantity: 1, reason: '' });
-      toast({ title: 'Logged', description: `${breakageDialog.quantity} broken item(s) recorded` });
+      toast({ title: 'Success', description: 'Breakage logged successfully' });
     } catch (error) {
+      console.error('Error logging breakage:', error);
       toast({ title: 'Error', description: 'Failed to log breakage', variant: 'destructive' });
     }
   };
 
-  const handleRestock = async () => {
-    if (!restockDialog.asset || !restockDialog.quantity) return;
+  const handleRestock = async (asset: Asset) => {
+    const quantity = prompt(`How many ${asset.unit} to add?`, '10');
+    if (!quantity) return;
     
     try {
       const { error } = await supabase
         .from('assets')
         .update({
-          current_quantity: restockDialog.asset.current_quantity + restockDialog.quantity,
+          current_quantity: asset.current_quantity + parseInt(quantity),
           last_restocked: new Date().toISOString().split('T')[0],
           updated_at: new Date()
         })
-        .eq('id', restockDialog.asset.id);
+        .eq('id', asset.id);
       
       if (error) throw error;
       
       await supabase.from('asset_transactions').insert([{
-        asset_id: restockDialog.asset.id,
-        quantity_change: restockDialog.quantity,
+        asset_id: asset.id,
+        quantity_change: parseInt(quantity),
         transaction_type: 'RESTOCK',
         reason: 'New stock received',
-        performed_by: 'Staff'
+        performed_by: 'Current User'
       }]);
       
       await loadAssets();
-      setRestockDialog({ open: false, asset: null, quantity: 0 });
-      toast({ title: 'Restocked', description: `Added ${restockDialog.quantity} items` });
+      toast({ title: 'Success', description: `Added ${quantity} ${asset.unit}` });
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to restock', variant: 'destructive' });
     }
@@ -248,91 +198,89 @@ export default function NonFoodInventory() {
     }
   };
 
-  const getDepartmentColor = (department: string) => {
-    switch(department) {
-      case 'Bar': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'Kitchen': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'Rooms': return 'bg-sky-100 text-sky-800 border-sky-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
   return (
-    <div className="p-4 pb-24 space-y-4">
+    <div className="p-4 space-y-4">
       {/* Header */}
-      <div className="flex justify-between items-center sticky top-0 bg-navy-texture z-10 py-2">
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold">Non-Food Inventory</h1>
-          <p className="text-xs text-muted-foreground">Glasses, plates, tools, appliances</p>
+          <p className="text-xs text-muted-foreground">Manage glasses, plates, tools, and appliances</p>
         </div>
-        <Button size="sm" onClick={openAddDialog}>
-          <Plus className="mr-1 h-4 w-4" /> Add
+        <Button size="sm" onClick={() => {
+          setEditingAsset(null);
+          setIsDialogOpen(true);
+        }}>
+          <Plus className="mr-1 h-4 w-4" /> Add Item
         </Button>
       </div>
 
       {/* Low Stock Alerts */}
       {lowStockAssets.length > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-          <div className="flex items-center gap-2 text-yellow-800 mb-2">
-            <AlertCircle className="h-4 w-4" />
-            <span className="text-sm font-medium">Low Stock Alerts</span>
-          </div>
-          <div className="space-y-2">
-            {lowStockAssets.map(asset => (
-              <div key={asset.id} className="flex justify-between items-center bg-white rounded p-2">
-                <div>
-                  <p className="font-medium text-sm">{asset.name}</p>
-                  <p className="text-xs text-muted-foreground">{asset.category?.department}</p>
+        <Card className="border-yellow-500 bg-yellow-50">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-yellow-800 mb-2">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm font-medium">Low Stock Alerts - Need to Reorder</span>
+            </div>
+            <div className="space-y-2">
+              {lowStockAssets.map(asset => (
+                <div key={asset.id} className="flex justify-between items-center bg-white rounded p-2">
+                  <div className="flex items-center gap-2">
+                    {getDepartmentIcon(asset.category?.department || '')}
+                    <span className="font-medium text-sm">{asset.name}</span>
+                    <span className="text-xs text-muted-foreground">({asset.category?.department})</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-red-600 font-bold text-sm">
+                      {asset.current_quantity} / {asset.min_quantity} {asset.unit}
+                    </span>
+                    <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => handleRestock(asset)}>Restock</Button>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-red-600 font-bold text-sm">{asset.current_quantity} / {asset.min_quantity} {asset.unit}</p>
-                  <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setRestockDialog({ open: true, asset, quantity: 0 })}>
-                    Restock
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Search and Filter */}
-      <div className="flex gap-2 sticky top-[60px] bg-navy-texture z-10 py-2">
+      {/* Filters */}
+      <div className="flex gap-2">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search items..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 h-10 text-sm"
+            className="pl-9 h-9 text-sm"
           />
         </div>
-        <select 
-          value={selectedDepartment} 
-          onChange={(e) => setSelectedDepartment(e.target.value)}
-          className="h-10 px-3 rounded-md border border-input bg-background text-sm"
-        >
-          <option value="all">All Depts</option>
-          <option value="Bar">🍸 Bar</option>
-          <option value="Kitchen">🍽️ Kitchen</option>
-          <option value="Rooms">🛏️ Rooms</option>
-        </select>
+        <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+          <SelectTrigger className="w-32 h-9 text-sm">
+            <SelectValue placeholder="Department" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Departments</SelectItem>
+            <SelectItem value="Bar">🍸 Bar</SelectItem>
+            <SelectItem value="Kitchen">🍽️ Kitchen</SelectItem>
+            <SelectItem value="Rooms">🛏️ Rooms</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Card Grid */}
+      {/* Assets Cards */}
       {loading ? (
         <div className="text-center py-8 text-muted-foreground">Loading...</div>
       ) : filteredAssets.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">No items found. Click Add to create your first item.</div>
+        <div className="text-center py-8 text-muted-foreground">No items found</div>
       ) : (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="space-y-3">
           {filteredAssets.map((asset) => (
-            <Card key={asset.id} className="overflow-hidden">
-              <CardContent className="p-4">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex-1">
+            <Card key={asset.id}>
+              <CardContent className="p-3">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
                     <h3 className="font-semibold text-base">{asset.name}</h3>
-                    <Badge className={`mt-1 text-xs ${getDepartmentColor(asset.category?.department || '')}`}>
+                    <Badge variant="outline" className="mt-1 text-xs">
                       {getDepartmentIcon(asset.category?.department || '')}
                       <span className="ml-1">{asset.category?.department}</span>
                     </Badge>
@@ -342,35 +290,34 @@ export default function NonFoodInventory() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
+                <div className="grid grid-cols-3 gap-2 mb-3 text-sm">
                   <div>
-                    <p className="text-muted-foreground text-xs">Current Stock</p>
-                    <p className={`font-bold text-lg ${asset.current_quantity < asset.min_quantity ? 'text-red-600' : ''}`}>
-                      {asset.current_quantity} <span className="text-xs font-normal text-muted-foreground">{asset.unit}</span>
+                    <p className="text-muted-foreground text-xs">Current</p>
+                    <p className={`font-bold ${asset.current_quantity < asset.min_quantity ? 'text-red-600' : ''}`}>
+                      {asset.current_quantity} {asset.unit}
                     </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Min Required</p>
-                    <p className="font-medium">{asset.min_quantity} {asset.unit}</p>
+                    <p>{asset.min_quantity} {asset.unit}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground text-xs">Breakage (Total)</p>
-                    <p className="font-medium text-orange-600">{asset.breakage_count} {asset.unit}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Last Restocked</p>
-                    <p className="text-xs">{asset.last_restocked || 'Never'}</p>
+                    <p className="text-muted-foreground text-xs">Breakage</p>
+                    <p className="text-orange-600">{asset.breakage_count} {asset.unit}</p>
                   </div>
                 </div>
 
-                <div className="flex gap-2 pt-2 border-t">
-                  <Button size="sm" variant="outline" className="flex-1 text-sm" onClick={() => setRestockDialog({ open: true, asset, quantity: 0 })}>
-                    <RefreshCw className="h-3 w-3 mr-1" /> Restock
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={() => handleRestock(asset)}>
+                    + Restock
                   </Button>
-                  <Button size="sm" variant="destructive" className="flex-1 text-sm" onClick={() => setBreakageDialog({ open: true, asset, quantity: 1, reason: '' })}>
+                  <Button size="sm" variant="destructive" className="flex-1 text-xs" onClick={() => setBreakageDialog({ open: true, asset, quantity: 1, reason: '' })}>
                     Broken -1
                   </Button>
-                  <Button size="sm" variant="outline" className="px-3" onClick={() => openEditDialog(asset)}>
+                  <Button size="sm" variant="outline" className="px-3" onClick={() => {
+                    setEditingAsset(asset);
+                    setIsDialogOpen(true);
+                  }}>
                     <Edit2 className="h-3 w-3" />
                   </Button>
                   <Button size="sm" variant="outline" className="px-3" onClick={() => handleDelete(asset.id)}>
@@ -385,136 +332,138 @@ export default function NonFoodInventory() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent aria-describedby={undefined}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{editingAsset ? 'Edit Item' : 'Add New Item'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium block mb-1">Item Name</label>
-              <Input 
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Red Wine Glass" 
-                required 
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium block mb-1">Category</label>
-              <select 
-                value={formData.category_id}
-                onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                required
-              >
-                <option value="">Select category</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name} ({cat.department})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium block mb-1">Current Qty</label>
-                <Input 
-                  type="number" 
-                  value={formData.current_quantity}
-                  onChange={(e) => setFormData({ ...formData, current_quantity: parseInt(e.target.value) || 0 })}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1">Min Qty</label>
-                <Input 
-                  type="number" 
-                  value={formData.min_quantity}
-                  onChange={(e) => setFormData({ ...formData, min_quantity: parseInt(e.target.value) || 0 })}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium block mb-1">Unit</label>
-              <Input 
-                value={formData.unit}
-                onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                placeholder="pcs" 
-              />
-            </div>
-            <div className="flex gap-2 justify-end pt-2">
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-              <Button type="button" onClick={handleSaveAsset}>Save</Button>
-            </div>
-          </div>
+          <AssetForm
+            asset={editingAsset}
+            categories={categories}
+            onSave={handleSaveAsset}
+            onCancel={() => {
+              setIsDialogOpen(false);
+              setEditingAsset(null);
+            }}
+          />
         </DialogContent>
       </Dialog>
 
       {/* Breakage Dialog */}
       <Dialog open={breakageDialog.open} onOpenChange={(open) => !open && setBreakageDialog({ ...breakageDialog, open: false })}>
-        <DialogContent aria-describedby={undefined}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Log Breakage</DialogTitle>
+            <DialogTitle>Log Breakage - {breakageDialog.asset?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="bg-yellow-50 p-3 rounded">
-              <p className="font-medium">{breakageDialog.asset?.name}</p>
-              <p className="text-sm">Current: {breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}</p>
+            <div className="bg-yellow-50 p-3 rounded border border-yellow-200">
+              <p className="text-sm">Current stock: <strong>{breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}</strong></p>
             </div>
             <div>
-              <label className="text-sm font-medium block mb-1">Quantity Broken</label>
-              <Input 
-                type="number" 
-                min="1" 
-                value={breakageDialog.quantity} 
-                onChange={(e) => setBreakageDialog({ ...breakageDialog, quantity: parseInt(e.target.value) || 1 })} 
+              <label className="text-sm font-medium">Quantity Broken</label>
+              <Input
+                type="number"
+                min="1"
+                max={breakageDialog.asset?.current_quantity}
+                value={breakageDialog.quantity}
+                onChange={(e) => setBreakageDialog({ ...breakageDialog, quantity: parseInt(e.target.value) || 1 })}
               />
             </div>
             <div>
-              <label className="text-sm font-medium block mb-1">Reason</label>
-              <select 
-                value={breakageDialog.reason} 
-                onChange={(e) => setBreakageDialog({ ...breakageDialog, reason: e.target.value })} 
-                className="w-full h-10 px-3 rounded-md border border-input bg-background"
-              >
-                <option value="">Select reason</option>
-                <option value="Guest dropped">Guest dropped</option>
-                <option value="Staff accident">Staff accident</option>
-                <option value="Normal wear">Normal wear & tear</option>
-                <option value="Lost">Lost / Missing</option>
-              </select>
+              <label className="text-sm font-medium">Reason</label>
+              <Select value={breakageDialog.reason} onValueChange={(value) => setBreakageDialog({ ...breakageDialog, reason: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select reason" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Guest dropped">Guest dropped</SelectItem>
+                  <SelectItem value="Staff accident">Staff accident</SelectItem>
+                  <SelectItem value="Normal wear">Normal wear & tear</SelectItem>
+                  <SelectItem value="Lost">Lost / Missing</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setBreakageDialog({ ...breakageDialog, open: false })}>Cancel</Button>
-              <Button onClick={handleBreakage}>Confirm</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Restock Dialog */}
-      <Dialog open={restockDialog.open} onOpenChange={(open) => !open && setRestockDialog({ ...restockDialog, open: false })}>
-        <DialogContent aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>Restock - {restockDialog.asset?.name}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium block mb-1">Quantity to Add</label>
-              <Input 
-                type="number" 
-                min="1" 
-                value={restockDialog.quantity} 
-                onChange={(e) => setRestockDialog({ ...restockDialog, quantity: parseInt(e.target.value) || 0 })} 
-                placeholder="Enter quantity" 
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setRestockDialog({ ...restockDialog, open: false })}>Cancel</Button>
-              <Button onClick={handleRestock}>Confirm</Button>
+              <Button onClick={handleBreakage}>Confirm Breakage</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// Asset Form Component
+function AssetForm({ asset, categories, onSave, onCancel }: any) {
+  const [formData, setFormData] = useState({
+    name: asset?.name || '',
+    category_id: asset?.category_id || '',
+    current_quantity: asset?.current_quantity || 0,
+    min_quantity: asset?.min_quantity || 0,
+    unit: asset?.unit || 'pcs'
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(formData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="text-sm font-medium">Item Name</label>
+        <Input
+          value={formData.name}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          placeholder="e.g., Red Wine Glass"
+          required
+        />
+      </div>
+      <div>
+        <label className="text-sm font-medium">Category</label>
+        <Select value={formData.category_id} onValueChange={(value) => setFormData({ ...formData, category_id: value })}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select category" />
+          </SelectTrigger>
+          <SelectContent>
+            {categories.map((cat: any) => (
+              <SelectItem key={cat.id} value={cat.id}>
+                {cat.name} ({cat.department})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-sm font-medium">Current Quantity</label>
+          <Input
+            type="number"
+            value={formData.current_quantity}
+            onChange={(e) => setFormData({ ...formData, current_quantity: parseInt(e.target.value) || 0 })}
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium">Min Quantity (Alert)</label>
+          <Input
+            type="number"
+            value={formData.min_quantity}
+            onChange={(e) => setFormData({ ...formData, min_quantity: parseInt(e.target.value) || 0 })}
+          />
+        </div>
+      </div>
+      <div>
+        <label className="text-sm font-medium">Unit</label>
+        <Input
+          value={formData.unit}
+          onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+          placeholder="pcs"
+        />
+      </div>
+      <div className="flex gap-2 justify-end pt-2">
+        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button type="submit">Save</Button>
+      </div>
+    </form>
   );
 }
