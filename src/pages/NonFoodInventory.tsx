@@ -45,9 +45,7 @@ export default function NonFoodInventory() {
   const loadAssets = async () => {
     setLoading(true);
     try {
-      let query = supabase
-        .from('assets')
-        .select('*');
+      let query = supabase.from('assets').select('*');
       
       if (selectedDepartment !== 'all') {
         query = query.eq('department', selectedDepartment);
@@ -117,31 +115,115 @@ export default function NonFoodInventory() {
             current_quantity: formData.current_quantity,
             min_quantity: formData.min_quantity,
             unit: formData.unit,
-            updated_at: new Date()
+            updated_at: new Date().toISOString()
           })
           .eq('id', editingAsset.id);
-        if (error) throw error;
+        
+        if (error) {
+          console.error('Update error:', error);
+          toast({ title: 'Error', description: error.message, variant: 'destructive' });
+          return;
+        }
         toast({ title: 'Updated', description: 'Item saved' });
       } else {
         const { error } = await supabase
           .from('assets')
-          .insert([{
+          .insert({
             name: formData.name,
             department: formData.department,
             current_quantity: formData.current_quantity,
             min_quantity: formData.min_quantity,
             unit: formData.unit,
             breakage_count: 0
-          }]);
-        if (error) throw error;
+          });
+        
+        if (error) {
+          console.error('Insert error:', error);
+          toast({ title: 'Error', description: error.message, variant: 'destructive' });
+          return;
+        }
         toast({ title: 'Added', description: 'New item created' });
       }
       await loadAssets();
       setIsDialogOpen(false);
       setEditingAsset(null);
-    } catch (error) {
-      toast({ title: 'Error', description: 'Failed to save', variant: 'destructive' });
+    } catch (error: any) {
+      console.error('Save error:', error);
+      toast({ title: 'Error', description: error.message || 'Failed to save', variant: 'destructive' });
     }
+  };
+
+  const handleBreakage = async () => {
+    if (!breakageDialog.asset) return;
+    
+    try {
+      const { error: updateError } = await supabase
+        .from('assets')
+        .update({
+          current_quantity: breakageDialog.asset.current_quantity - breakageDialog.quantity,
+          breakage_count: breakageDialog.asset.breakage_count + breakageDialog.quantity,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', breakageDialog.asset.id);
+      
+      if (updateError) throw updateError;
+      
+      await supabase.from('asset_transactions').insert({
+        asset_id: breakageDialog.asset.id,
+        quantity_change: -breakageDialog.quantity,
+        transaction_type: 'BREAKAGE',
+        reason: breakageDialog.reason,
+        performed_by: 'Staff'
+      });
+      
+      await loadAssets();
+      setBreakageDialog({ open: false, asset: null, quantity: 1, reason: '' });
+      toast({ title: 'Logged', description: `${breakageDialog.quantity} broken item(s) recorded` });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleRestock = async (asset: Asset) => {
+    const quantity = prompt(`How many ${asset.unit} to add?`, '10');
+    if (!quantity) return;
+    
+    try {
+      const { error } = await supabase
+        .from('assets')
+        .update({
+          current_quantity: asset.current_quantity + parseInt(quantity),
+          last_restocked: new Date().toISOString().split('T')[0],
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', asset.id);
+      
+      if (error) throw error;
+      
+      await supabase.from('asset_transactions').insert({
+        asset_id: asset.id,
+        quantity_change: parseInt(quantity),
+        transaction_type: 'RESTOCK',
+        reason: 'New stock received',
+        performed_by: 'Staff'
+      });
+      
+      await loadAssets();
+      toast({ title: 'Restocked', description: `Added ${quantity} ${asset.unit}` });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const downloadTemplate = () => {
+    const template = `Item Name,Department,Current Quantity,Min Quantity,Unit\nRed Wine Glass,Bar,50,30,pcs\nDinner Plate,Kitchen,100,50,pcs\nBath Towel,Rooms,30,20,pcs`;
+    const blob = new Blob([template], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'inventory-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleBulkImport = async () => {
@@ -179,86 +261,9 @@ export default function NonFoodInventory() {
       setIsBulkDialogOpen(false);
       setCsvText('');
       toast({ title: 'Success', description: `${items.length} items imported` });
-    } catch (error) {
-      toast({ title: 'Error', description: 'Failed to import', variant: 'destructive' });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
     }
-  };
-
-  const handleBreakage = async () => {
-    if (!breakageDialog.asset) return;
-    
-    try {
-      const { error: updateError } = await supabase
-        .from('assets')
-        .update({
-          current_quantity: breakageDialog.asset.current_quantity - breakageDialog.quantity,
-          breakage_count: breakageDialog.asset.breakage_count + breakageDialog.quantity,
-          updated_at: new Date()
-        })
-        .eq('id', breakageDialog.asset.id);
-      
-      if (updateError) throw updateError;
-      
-      const { error: transactionError } = await supabase
-        .from('asset_transactions')
-        .insert([{
-          asset_id: breakageDialog.asset.id,
-          quantity_change: -breakageDialog.quantity,
-          transaction_type: 'BREAKAGE',
-          reason: breakageDialog.reason,
-          performed_by: 'Staff'
-        }]);
-      
-      if (transactionError) throw transactionError;
-      
-      await loadAssets();
-      setBreakageDialog({ open: false, asset: null, quantity: 1, reason: '' });
-      toast({ title: 'Logged', description: `${breakageDialog.quantity} broken item(s) recorded` });
-    } catch (error) {
-      toast({ title: 'Error', description: 'Failed to log breakage', variant: 'destructive' });
-    }
-  };
-
-  const handleRestock = async (asset: Asset) => {
-    const quantity = prompt(`How many ${asset.unit} to add?`, '10');
-    if (!quantity) return;
-    
-    try {
-      const { error } = await supabase
-        .from('assets')
-        .update({
-          current_quantity: asset.current_quantity + parseInt(quantity),
-          last_restocked: new Date().toISOString().split('T')[0],
-          updated_at: new Date()
-        })
-        .eq('id', asset.id);
-      
-      if (error) throw error;
-      
-      await supabase.from('asset_transactions').insert([{
-        asset_id: asset.id,
-        quantity_change: parseInt(quantity),
-        transaction_type: 'RESTOCK',
-        reason: 'New stock received',
-        performed_by: 'Staff'
-      }]);
-      
-      await loadAssets();
-      toast({ title: 'Restocked', description: `Added ${quantity} ${asset.unit}` });
-    } catch (error) {
-      toast({ title: 'Error', description: 'Failed to restock', variant: 'destructive' });
-    }
-  };
-
-  const downloadTemplate = () => {
-    const template = `Item Name,Department,Current Quantity,Min Quantity,Unit\nRed Wine Glass,Bar,50,30,pcs\nDinner Plate,Kitchen,100,50,pcs\nBath Towel,Rooms,30,20,pcs`;
-    const blob = new Blob([template], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'inventory-template.csv';
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const filteredAssets = assets.filter(asset =>
@@ -419,9 +424,9 @@ export default function NonFoodInventory() {
         </div>
       )}
 
-      {/* Add/Edit Dialog - Simple form without category dropdown */}
+      {/* Add/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent aria-describedby={undefined}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingAsset ? 'Edit Item' : 'Add New Item'}</DialogTitle>
           </DialogHeader>
@@ -432,7 +437,6 @@ export default function NonFoodInventory() {
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Red Wine Glass" 
-                required 
               />
             </div>
             <div>
@@ -441,7 +445,6 @@ export default function NonFoodInventory() {
                 value={formData.department}
                 onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                 className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                required
               >
                 <option value="">Select department</option>
                 <option value="Bar">🍸 Bar</option>
@@ -459,7 +462,7 @@ export default function NonFoodInventory() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium block mb-1">Min Qty (Alert)</label>
+                <label className="text-sm font-medium block mb-1">Min Qty</label>
                 <Input 
                   type="number" 
                   value={formData.min_quantity}
@@ -485,20 +488,11 @@ export default function NonFoodInventory() {
 
       {/* Bulk Import Dialog */}
       <Dialog open={isBulkDialogOpen} onOpenChange={setIsBulkDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Bulk Import CSV</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium block mb-1">CSV Format:</label>
-              <div className="bg-muted p-3 rounded text-xs font-mono">
-                Item Name,Department,Current Quantity,Min Quantity,Unit
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Department must be: Bar, Kitchen, or Rooms
-              </p>
-            </div>
             <Button variant="outline" size="sm" onClick={downloadTemplate} className="w-full">
               Download Template CSV
             </Button>
@@ -507,13 +501,13 @@ export default function NonFoodInventory() {
               <textarea
                 value={csvText}
                 onChange={(e) => setCsvText(e.target.value)}
-                className="w-full h-48 p-3 rounded-md border border-input bg-background font-mono text-sm"
-                placeholder="Red Wine Glass,Bar,50,30,pcs&#10;Dinner Plate,Kitchen,100,50,pcs&#10;Bath Towel,Rooms,30,20,pcs"
+                className="w-full h-40 p-3 rounded-md border border-input bg-background font-mono text-sm"
+                placeholder="Item Name,Department,Current Quantity,Min Quantity,Unit&#10;Red Wine Glass,Bar,50,30,pcs"
               />
             </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setIsBulkDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleBulkImport}>Import Items</Button>
+              <Button onClick={handleBulkImport}>Import</Button>
             </div>
           </div>
         </DialogContent>
@@ -521,7 +515,7 @@ export default function NonFoodInventory() {
 
       {/* Breakage Dialog */}
       <Dialog open={breakageDialog.open} onOpenChange={(open) => !open && setBreakageDialog({ ...breakageDialog, open: false })}>
-        <DialogContent aria-describedby={undefined}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Log Breakage</DialogTitle>
           </DialogHeader>
