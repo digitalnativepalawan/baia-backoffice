@@ -28,7 +28,9 @@ export default function NonFoodInventory() {
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [breakageDialog, setBreakageDialog] = useState<any>({ open: false, asset: null, quantity: 1, reason: '' });
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [csvText, setCsvText] = useState('');
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     department: '',
@@ -226,13 +228,21 @@ export default function NonFoodInventory() {
     URL.revokeObjectURL(url);
   };
 
-  const handleBulkImport = async () => {
-    if (!csvText.trim()) {
-      toast({ title: 'Error', description: 'Please paste CSV data', variant: 'destructive' });
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setUploadedFile(file);
+      setCsvText('');
+    }
+  };
+
+  const processImport = async (csvData: string) => {
+    if (!csvData.trim()) {
+      toast({ title: 'Error', description: 'No data to import', variant: 'destructive' });
       return;
     }
 
-    const lines = csvText.trim().split('\n');
+    const lines = csvData.trim().split('\n');
     const items = [];
     
     for (let i = 1; i < lines.length; i++) {
@@ -260,9 +270,30 @@ export default function NonFoodInventory() {
       await loadAssets();
       setIsBulkDialogOpen(false);
       setCsvText('');
+      setUploadedFile(null);
       toast({ title: 'Success', description: `${items.length} items imported` });
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleBulkImport = async () => {
+    setImporting(true);
+    
+    if (uploadedFile) {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const csvData = e.target?.result as string;
+        await processImport(csvData);
+        setImporting(false);
+      };
+      reader.readAsText(uploadedFile);
+    } else if (csvText.trim()) {
+      await processImport(csvText);
+      setImporting(false);
+    } else {
+      toast({ title: 'Error', description: 'Please upload a CSV file or paste data', variant: 'destructive' });
+      setImporting(false);
     }
   };
 
@@ -445,7 +476,6 @@ export default function NonFoodInventory() {
                 value={formData.department}
                 onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                 className="w-full h-10 px-3 rounded-md border border-input bg-white text-black"
-                style={{ color: 'black' }}
               >
                 <option value="">Select department</option>
                 <option value="Bar">🍸 Bar</option>
@@ -489,27 +519,69 @@ export default function NonFoodInventory() {
 
       {/* Bulk Import Dialog */}
       <Dialog open={isBulkDialogOpen} onOpenChange={setIsBulkDialogOpen}>
-        <DialogContent className="bg-white">
+        <DialogContent className="bg-white max-w-md">
           <DialogHeader>
             <DialogTitle>Bulk Import CSV</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <Button variant="outline" size="sm" onClick={downloadTemplate} className="w-full">
-              Download Template CSV
-            </Button>
-            <div>
-              <label className="text-sm font-medium block mb-1">Paste CSV Data:</label>
+          <div className="space-y-4 py-4">
+            {/* Step 1: Download Template */}
+            <div className="border rounded-lg p-4">
+              <h3 className="font-medium text-sm mb-2">1. Download Template</h3>
+              <Button variant="outline" size="sm" onClick={downloadTemplate} className="w-full">
+                📥 Download Template CSV
+              </Button>
+            </div>
+
+            {/* Step 2: Upload File */}
+            <div className="border rounded-lg p-4">
+              <h3 className="font-medium text-sm mb-2">2. Upload Your CSV</h3>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                className="w-full text-sm text-gray-500 file:mr-2 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
+              />
+              {uploadedFile && (
+                <p className="text-xs text-green-600 mt-2">✓ {uploadedFile.name}</p>
+              )}
+            </div>
+
+            {/* OR Divider */}
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300"></div>
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-white px-2 text-gray-500">OR</span>
+              </div>
+            </div>
+
+            {/* Step 3: Paste as fallback */}
+            <div className="border rounded-lg p-4">
+              <h3 className="font-medium text-sm mb-2">3. Paste CSV Data (Optional)</h3>
               <textarea
                 value={csvText}
-                onChange={(e) => setCsvText(e.target.value)}
-                className="w-full h-40 p-3 rounded-md border border-input bg-white text-gray-900 font-mono text-sm"
+                onChange={(e) => {
+                  setCsvText(e.target.value);
+                  setUploadedFile(null);
+                }}
+                className="w-full h-32 p-3 rounded-md border border-input bg-gray-50 text-gray-900 font-mono text-sm"
                 placeholder="Item Name,Department,Current Quantity,Min Quantity,Unit&#10;Red Wine Glass,Bar,50,30,pcs"
               />
             </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setIsBulkDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleBulkImport}>Import</Button>
-            </div>
+          </div>
+
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => {
+              setIsBulkDialogOpen(false);
+              setCsvText('');
+              setUploadedFile(null);
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={handleBulkImport} disabled={importing}>
+              {importing ? 'Importing...' : 'Import'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -540,7 +612,6 @@ export default function NonFoodInventory() {
                 value={breakageDialog.reason} 
                 onChange={(e) => setBreakageDialog({ ...breakageDialog, reason: e.target.value })} 
                 className="w-full h-10 px-3 rounded-md border border-input bg-white text-black"
-                style={{ color: 'black' }}
               >
                 <option value="">Select reason</option>
                 <option value="Guest dropped">Guest dropped</option>
