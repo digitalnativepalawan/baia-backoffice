@@ -444,7 +444,7 @@ export default function NonFoodInventory() {
               <select 
                 value={formData.department}
                 onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                className="w-full h-10 px-3 rounded-md border border-input bg-white text-gray-900"
               >
                 <option value="">Select department</option>
                 <option value="Bar">🍸 Bar</option>
@@ -501,7 +501,7 @@ export default function NonFoodInventory() {
               <textarea
                 value={csvText}
                 onChange={(e) => setCsvText(e.target.value)}
-                className="w-full h-40 p-3 rounded-md border border-input bg-background font-mono text-sm"
+                className="w-full h-40 p-3 rounded-md border border-input bg-white text-gray-900 font-mono text-sm"
                 placeholder="Item Name,Department,Current Quantity,Min Quantity,Unit&#10;Red Wine Glass,Bar,50,30,pcs"
               />
             </div>
@@ -538,7 +538,7 @@ export default function NonFoodInventory() {
               <select 
                 value={breakageDialog.reason} 
                 onChange={(e) => setBreakageDialog({ ...breakageDialog, reason: e.target.value })} 
-                className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                className="w-full h-10 px-3 rounded-md border border-input bg-white text-gray-900"
               >
                 <option value="">Select reason</option>
                 <option value="Guest dropped">Guest dropped</option>
