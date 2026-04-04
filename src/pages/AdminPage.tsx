@@ -91,6 +91,17 @@ const CONFIG: TabDef[] = [
   ...(import.meta.env.DEV ? [{ value: 'integration', label: 'Integration', perm: null } as TabDef] : []),
 ];
 
+// Fast action buttons — navigate directly to live boards without switching tab
+const OPS_FAST_ACTIONS: Record<string, { label: string; route: string }> = {
+  rooms: { label: 'Live Reception', route: '/service/reception' },
+  orders: { label: 'New Order', route: '/order-type?mode=staff&returnTo=/admin' },
+  'guest-services': { label: 'Experiences', route: '/experiences' },
+  kitchen: { label: 'Kitchen Board', route: '/service/kitchen' },
+  bar: { label: 'Bar Board', route: '/service/bar' },
+  housekeeping: { label: 'Housekeeper View', route: '/housekeeper' },
+  'live-ops': { label: 'Service Mode', route: '/service' },
+};
+
 const AdminPage = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -504,7 +515,7 @@ const AdminPage = () => {
           {/* ── Role-aware navigation ─────────────────────────── */}
           <div className="space-y-4 mb-6 pt-4">
 
-            {/* OPERATIONS — large tap cards */}
+            {/* OPERATIONS — large tap cards with fast action buttons */}
             {opsTabs.length > 0 && (
               <div className="space-y-2">
                 <SectionLabel label="Operations" />
@@ -512,27 +523,48 @@ const AdminPage = () => {
                   {opsTabs.map(t => {
                     const hasAlert = ALERT_KEY_MAP[t.value] && alerts[ALERT_KEY_MAP[t.value] as keyof typeof alerts] && activeTab !== t.value;
                     const isActive = activeTab === t.value;
+                    const fast = OPS_FAST_ACTIONS[t.value];
                     return (
-                      <button
-                        key={t.value}
-                        onClick={() => setActiveTab(t.value)}
-                        className={`relative text-left rounded-xl border p-4 transition-all min-h-[80px] active:scale-[0.97] ${
-                          isActive
-                            ? 'border-primary bg-primary/10'
-                            : 'border-border bg-secondary/40 hover:border-primary/40 hover:bg-secondary/60'
-                        }`}
-                      >
-                        {hasAlert && (
-                          <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full bg-destructive animate-pulse" />
+                      <div key={t.value} className="relative">
+                        {/* Card tap → switch tab (loads inline content) */}
+                        <button
+                          onClick={() => setActiveTab(t.value)}
+                          className={`relative w-full text-left rounded-xl border p-4 pb-9 transition-all min-h-[90px] active:scale-[0.97] ${
+                            isActive
+                              ? 'border-primary bg-primary/10'
+                              : 'border-border bg-secondary/40 hover:border-primary/40 hover:bg-secondary/60'
+                          }`}
+                        >
+                          {hasAlert && (
+                            <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full bg-destructive animate-pulse" />
+                          )}
+                          <p className="text-xl mb-1.5">{opsIcons[t.value] || '📋'}</p>
+                          <p className={`font-display text-sm tracking-wider ${isActive ? 'text-primary' : 'text-foreground'}`}>
+                            {t.label}
+                          </p>
+                          <p className="font-body text-[10px] mt-0.5 text-muted-foreground">
+                            {opsDescs[t.value] || ''}
+                          </p>
+                        </button>
+
+                        {/* Fast action button — stopPropagation prevents tab switch, navigates to live board */}
+                        {fast && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(fast.route);
+                            }}
+                            className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 py-1.5 rounded-b-xl border-t border-border/60 bg-background/40 hover:bg-primary/10 transition-colors group"
+                          >
+                            <span className="font-body text-[10px] text-muted-foreground group-hover:text-primary transition-colors truncate">
+                              {fast.label}
+                            </span>
+                            <span className="font-body text-[10px] text-muted-foreground group-hover:text-primary transition-colors ml-1 shrink-0">
+                              →
+                            </span>
+                          </button>
                         )}
-                        <p className="text-xl mb-1.5">{opsIcons[t.value] || '📋'}</p>
-                        <p className={`font-display text-sm tracking-wider ${isActive ? 'text-primary' : 'text-foreground'}`}>
-                          {t.label}
-                        </p>
-                        <p className="font-body text-[10px] mt-0.5 text-muted-foreground">
-                          {opsDescs[t.value] || ''}
-                        </p>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
