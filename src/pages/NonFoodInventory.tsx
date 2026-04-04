@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Edit2, Trash2, AlertCircle, Search, Package, Wine, Utensils, Bed, RefreshCw, Upload } from 'lucide-react';
+import { Plus, Edit2, Trash2, AlertCircle, Search, Package, Wine, Utensils, Bed, RefreshCw, Upload, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -28,7 +28,7 @@ export default function NonFoodInventory() {
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [breakageDialog, setBreakageDialog] = useState<any>({ open: false, asset: null, quantity: 1, reason: '' });
   const [loading, setLoading] = useState(false);
-  const [csvText, setCsvText] = useState('');
+  const [csvFile, setCsvFile] = useState<File | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     department: '',
@@ -227,12 +227,13 @@ export default function NonFoodInventory() {
   };
 
   const handleBulkImport = async () => {
-    if (!csvText.trim()) {
-      toast({ title: 'Error', description: 'Please paste CSV data', variant: 'destructive' });
+    if (!csvFile) {
+      toast({ title: 'Error', description: 'Please select a CSV file', variant: 'destructive' });
       return;
     }
 
-    const lines = csvText.trim().split('\n');
+    const text = await csvFile.text();
+    const lines = text.trim().split('\n');
     const items = [];
     
     for (let i = 1; i < lines.length; i++) {
@@ -259,7 +260,7 @@ export default function NonFoodInventory() {
       if (error) throw error;
       await loadAssets();
       setIsBulkDialogOpen(false);
-      setCsvText('');
+      setCsvFile(null);
       toast({ title: 'Success', description: `${items.length} items imported` });
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -349,7 +350,7 @@ export default function NonFoodInventory() {
         <select 
           value={selectedDepartment} 
           onChange={(e) => setSelectedDepartment(e.target.value)}
-          className="h-10 px-3 rounded-md border border-input bg-white text-black text-sm"
+          className="h-10 px-3 rounded-md border border-input"
           style={{ color: 'black', backgroundColor: 'white' }}
         >
           <option value="all" style={{ color: 'black', backgroundColor: 'white' }}>All Depts</option>
@@ -427,21 +428,22 @@ export default function NonFoodInventory() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="bg-white">
+        <DialogContent className="bg-white" style={{ backgroundColor: 'white' }}>
           <DialogHeader>
-            <DialogTitle>{editingAsset ? 'Edit Item' : 'Add New Item'}</DialogTitle>
+            <DialogTitle style={{ color: 'black' }}>{editingAsset ? 'Edit Item' : 'Add New Item'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium block mb-1">Item Name</label>
+              <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Item Name</label>
               <Input 
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Red Wine Glass" 
+                style={{ color: 'black', backgroundColor: 'white' }}
               />
             </div>
             <div>
-              <label className="text-sm font-medium block mb-1">Department</label>
+              <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Department</label>
               <select 
                 value={formData.department}
                 onChange={(e) => setFormData({ ...formData, department: e.target.value })}
@@ -456,28 +458,31 @@ export default function NonFoodInventory() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium block mb-1">Current Qty</label>
+                <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Current Qty</label>
                 <Input 
                   type="number" 
                   value={formData.current_quantity}
                   onChange={(e) => setFormData({ ...formData, current_quantity: parseInt(e.target.value) || 0 })}
+                  style={{ color: 'black', backgroundColor: 'white' }}
                 />
               </div>
               <div>
-                <label className="text-sm font-medium block mb-1">Min Qty</label>
+                <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Min Qty</label>
                 <Input 
                   type="number" 
                   value={formData.min_quantity}
                   onChange={(e) => setFormData({ ...formData, min_quantity: parseInt(e.target.value) || 0 })}
+                  style={{ color: 'black', backgroundColor: 'white' }}
                 />
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium block mb-1">Unit</label>
+              <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Unit</label>
               <Input 
                 value={formData.unit}
                 onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                placeholder="pcs" 
+                placeholder="pcs"
+                style={{ color: 'black', backgroundColor: 'white' }}
               />
             </div>
             <div className="flex gap-2 justify-end pt-2">
@@ -490,21 +495,22 @@ export default function NonFoodInventory() {
 
       {/* Bulk Import Dialog */}
       <Dialog open={isBulkDialogOpen} onOpenChange={setIsBulkDialogOpen}>
-        <DialogContent className="bg-white">
+        <DialogContent className="bg-white" style={{ backgroundColor: 'white' }}>
           <DialogHeader>
-            <DialogTitle>Bulk Import CSV</DialogTitle>
+            <DialogTitle style={{ color: 'black' }}>Bulk Import CSV</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <Button variant="outline" size="sm" onClick={downloadTemplate} className="w-full">
-              Download Template CSV
+              <Download className="mr-1 h-4 w-4" /> Download Template CSV
             </Button>
             <div>
-              <label className="text-sm font-medium block mb-1">Paste CSV Data:</label>
-              <textarea
-                value={csvText}
-                onChange={(e) => setCsvText(e.target.value)}
-                className="w-full h-40 p-3 rounded-md border border-input bg-white text-gray-900 font-mono text-sm"
-                placeholder="Item Name,Department,Current Quantity,Min Quantity,Unit&#10;Red Wine Glass,Bar,50,30,pcs"
+              <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Upload CSV File:</label>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+                className="w-full p-2 rounded-md border border-input"
+                style={{ color: 'black', backgroundColor: 'white' }}
               />
             </div>
             <div className="flex gap-2 justify-end">
@@ -517,26 +523,27 @@ export default function NonFoodInventory() {
 
       {/* Breakage Dialog */}
       <Dialog open={breakageDialog.open} onOpenChange={(open) => !open && setBreakageDialog({ ...breakageDialog, open: false })}>
-        <DialogContent className="bg-white">
+        <DialogContent className="bg-white" style={{ backgroundColor: 'white' }}>
           <DialogHeader>
-            <DialogTitle>Log Breakage</DialogTitle>
+            <DialogTitle style={{ color: 'black' }}>Log Breakage</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="bg-yellow-50 p-3 rounded">
-              <p className="font-medium">{breakageDialog.asset?.name}</p>
-              <p className="text-sm">Current: {breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}</p>
+              <p className="font-medium" style={{ color: 'black' }}>{breakageDialog.asset?.name}</p>
+              <p className="text-sm" style={{ color: 'black' }}>Current: {breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}</p>
             </div>
             <div>
-              <label className="text-sm font-medium block mb-1">Quantity Broken</label>
+              <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Quantity Broken</label>
               <Input 
                 type="number" 
                 min="1" 
                 value={breakageDialog.quantity} 
                 onChange={(e) => setBreakageDialog({ ...breakageDialog, quantity: parseInt(e.target.value) || 1 })} 
+                style={{ color: 'black', backgroundColor: 'white' }}
               />
             </div>
             <div>
-              <label className="text-sm font-medium block mb-1">Reason</label>
+              <label className="text-sm font-medium block mb-1" style={{ color: 'black' }}>Reason</label>
               <select 
                 value={breakageDialog.reason} 
                 onChange={(e) => setBreakageDialog({ ...breakageDialog, reason: e.target.value })} 
