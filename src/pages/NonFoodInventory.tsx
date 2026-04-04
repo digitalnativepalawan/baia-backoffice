@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Edit2, Trash2, AlertCircle, Search, Package, Wine, Utensils, Bed } from 'lucide-react';
+import { Plus, Edit2, Trash2, AlertCircle, Search, Package, Wine, Utensils, Bed, RefreshCw, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
@@ -12,33 +11,35 @@ import { useToast } from '@/components/ui/use-toast';
 interface Asset {
   id: string;
   name: string;
-  category_id: string;
+  department: string;
   current_quantity: number;
   min_quantity: number;
   unit: string;
   breakage_count: number;
   last_restocked: string | null;
-  category?: {
-    id: string;
-    name: string;
-    department: string;
-  };
 }
 
 export default function NonFoodInventory() {
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [breakageDialog, setBreakageDialog] = useState<any>({ open: false, asset: null, quantity: 1, reason: '' });
   const [loading, setLoading] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    department: '',
+    current_quantity: 0,
+    min_quantity: 0,
+    unit: 'pcs'
+  });
   const { toast } = useToast();
 
   useEffect(() => {
     loadAssets();
-    loadCategories();
   }, [selectedDepartment]);
 
   const loadAssets = async () => {
@@ -46,13 +47,10 @@ export default function NonFoodInventory() {
     try {
       let query = supabase
         .from('assets')
-        .select(`
-          *,
-          category:asset_categories(*)
-        `);
+        .select('*');
       
       if (selectedDepartment !== 'all') {
-        query = query.eq('category.department', selectedDepartment);
+        query = query.eq('department', selectedDepartment);
       }
       
       const { data, error } = await query.order('name');
@@ -66,53 +64,123 @@ export default function NonFoodInventory() {
     }
   };
 
-  const loadCategories = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('asset_categories')
-        .select('*')
-        .order('name');
-      if (error) throw error;
-      setCategories(data || []);
-    } catch (error) {
-      console.error('Error loading categories:', error);
-    }
-  };
-
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this item?')) {
+    if (confirm('Delete this item?')) {
       try {
         const { error } = await supabase.from('assets').delete().eq('id', id);
         if (error) throw error;
         await loadAssets();
-        toast({ title: 'Success', description: 'Item deleted successfully' });
+        toast({ title: 'Deleted', description: 'Item removed' });
       } catch (error) {
-        toast({ title: 'Error', description: 'Failed to delete item', variant: 'destructive' });
+        toast({ title: 'Error', description: 'Failed to delete', variant: 'destructive' });
       }
     }
   };
 
-  const handleSaveAsset = async (assetData: any) => {
+  const openAddDialog = () => {
+    setEditingAsset(null);
+    setFormData({
+      name: '',
+      department: '',
+      current_quantity: 0,
+      min_quantity: 0,
+      unit: 'pcs'
+    });
+    setIsDialogOpen(true);
+  };
+
+  const openEditDialog = (asset: Asset) => {
+    setEditingAsset(asset);
+    setFormData({
+      name: asset.name,
+      department: asset.department,
+      current_quantity: asset.current_quantity,
+      min_quantity: asset.min_quantity,
+      unit: asset.unit
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleSaveAsset = async () => {
+    if (!formData.name || !formData.department) {
+      toast({ title: 'Error', description: 'Name and Department are required', variant: 'destructive' });
+      return;
+    }
+
     try {
       if (editingAsset) {
         const { error } = await supabase
           .from('assets')
-          .update({ ...assetData, updated_at: new Date() })
+          .update({
+            name: formData.name,
+            department: formData.department,
+            current_quantity: formData.current_quantity,
+            min_quantity: formData.min_quantity,
+            unit: formData.unit,
+            updated_at: new Date()
+          })
           .eq('id', editingAsset.id);
         if (error) throw error;
-        toast({ title: 'Success', description: 'Item updated successfully' });
+        toast({ title: 'Updated', description: 'Item saved' });
       } else {
         const { error } = await supabase
           .from('assets')
-          .insert([{ ...assetData, breakage_count: 0 }]);
+          .insert([{
+            name: formData.name,
+            department: formData.department,
+            current_quantity: formData.current_quantity,
+            min_quantity: formData.min_quantity,
+            unit: formData.unit,
+            breakage_count: 0
+          }]);
         if (error) throw error;
-        toast({ title: 'Success', description: 'Item created successfully' });
+        toast({ title: 'Added', description: 'New item created' });
       }
       await loadAssets();
       setIsDialogOpen(false);
       setEditingAsset(null);
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to save item', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to save', variant: 'destructive' });
+    }
+  };
+
+  const handleBulkImport = async () => {
+    if (!csvText.trim()) {
+      toast({ title: 'Error', description: 'Please paste CSV data', variant: 'destructive' });
+      return;
+    }
+
+    const lines = csvText.trim().split('\n');
+    const items = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',');
+      if (cols.length >= 5) {
+        items.push({
+          name: cols[0].trim(),
+          department: cols[1].trim(),
+          current_quantity: parseInt(cols[2]) || 0,
+          min_quantity: parseInt(cols[3]) || 0,
+          unit: cols[4].trim() || 'pcs',
+          breakage_count: 0
+        });
+      }
+    }
+
+    if (items.length === 0) {
+      toast({ title: 'Error', description: 'No valid data found', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('assets').insert(items);
+      if (error) throw error;
+      await loadAssets();
+      setIsBulkDialogOpen(false);
+      setCsvText('');
+      toast({ title: 'Success', description: `${items.length} items imported` });
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to import', variant: 'destructive' });
     }
   };
 
@@ -138,16 +206,15 @@ export default function NonFoodInventory() {
           quantity_change: -breakageDialog.quantity,
           transaction_type: 'BREAKAGE',
           reason: breakageDialog.reason,
-          performed_by: 'Current User'
+          performed_by: 'Staff'
         }]);
       
       if (transactionError) throw transactionError;
       
       await loadAssets();
       setBreakageDialog({ open: false, asset: null, quantity: 1, reason: '' });
-      toast({ title: 'Success', description: 'Breakage logged successfully' });
+      toast({ title: 'Logged', description: `${breakageDialog.quantity} broken item(s) recorded` });
     } catch (error) {
-      console.error('Error logging breakage:', error);
       toast({ title: 'Error', description: 'Failed to log breakage', variant: 'destructive' });
     }
   };
@@ -173,18 +240,30 @@ export default function NonFoodInventory() {
         quantity_change: parseInt(quantity),
         transaction_type: 'RESTOCK',
         reason: 'New stock received',
-        performed_by: 'Current User'
+        performed_by: 'Staff'
       }]);
       
       await loadAssets();
-      toast({ title: 'Success', description: `Added ${quantity} ${asset.unit}` });
+      toast({ title: 'Restocked', description: `Added ${quantity} ${asset.unit}` });
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to restock', variant: 'destructive' });
     }
   };
 
+  const downloadTemplate = () => {
+    const template = `Item Name,Department,Current Quantity,Min Quantity,Unit\nRed Wine Glass,Bar,50,30,pcs\nDinner Plate,Kitchen,100,50,pcs\nBath Towel,Rooms,30,20,pcs`;
+    const blob = new Blob([template], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'inventory-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const filteredAssets = assets.filter(asset =>
-    asset.name.toLowerCase().includes(searchTerm.toLowerCase())
+    asset.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+    (selectedDepartment === 'all' || asset.department === selectedDepartment)
   );
 
   const lowStockAssets = assets.filter(asset => asset.current_quantity < asset.min_quantity);
@@ -198,91 +277,100 @@ export default function NonFoodInventory() {
     }
   };
 
+  const getDepartmentColor = (department: string) => {
+    switch(department) {
+      case 'Bar': return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'Kitchen': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'Rooms': return 'bg-sky-100 text-sky-800 border-sky-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 pb-24 space-y-4">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center sticky top-0 bg-navy-texture z-10 py-2">
         <div>
           <h1 className="text-xl font-bold">Non-Food Inventory</h1>
-          <p className="text-xs text-muted-foreground">Manage glasses, plates, tools, and appliances</p>
+          <p className="text-xs text-muted-foreground">Glasses, plates, tools, appliances</p>
         </div>
-        <Button size="sm" onClick={() => {
-          setEditingAsset(null);
-          setIsDialogOpen(true);
-        }}>
-          <Plus className="mr-1 h-4 w-4" /> Add Item
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setIsBulkDialogOpen(true)}>
+            <Upload className="mr-1 h-4 w-4" /> Bulk
+          </Button>
+          <Button size="sm" onClick={openAddDialog}>
+            <Plus className="mr-1 h-4 w-4" /> Add
+          </Button>
+        </div>
       </div>
 
       {/* Low Stock Alerts */}
       {lowStockAssets.length > 0 && (
-        <Card className="border-yellow-500 bg-yellow-50">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-yellow-800 mb-2">
-              <AlertCircle className="h-4 w-4" />
-              <span className="text-sm font-medium">Low Stock Alerts - Need to Reorder</span>
-            </div>
-            <div className="space-y-2">
-              {lowStockAssets.map(asset => (
-                <div key={asset.id} className="flex justify-between items-center bg-white rounded p-2">
-                  <div className="flex items-center gap-2">
-                    {getDepartmentIcon(asset.category?.department || '')}
-                    <span className="font-medium text-sm">{asset.name}</span>
-                    <span className="text-xs text-muted-foreground">({asset.category?.department})</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-red-600 font-bold text-sm">
-                      {asset.current_quantity} / {asset.min_quantity} {asset.unit}
-                    </span>
-                    <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => handleRestock(asset)}>Restock</Button>
-                  </div>
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <div className="flex items-center gap-2 text-yellow-800 mb-2">
+            <AlertCircle className="h-4 w-4" />
+            <span className="text-sm font-medium">Low Stock Alerts</span>
+          </div>
+          <div className="space-y-2">
+            {lowStockAssets.map(asset => (
+              <div key={asset.id} className="flex justify-between items-center bg-white rounded p-2">
+                <div>
+                  <p className="font-medium text-sm">{asset.name}</p>
+                  <p className="text-xs text-muted-foreground">{asset.department}</p>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                <div className="text-right">
+                  <p className="text-red-600 font-bold text-sm">{asset.current_quantity} / {asset.min_quantity} {asset.unit}</p>
+                  <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => handleRestock(asset)}>
+                    Restock
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
-      {/* Filters */}
-      <div className="flex gap-2">
+      {/* Search and Filter */}
+      <div className="flex gap-2 sticky top-[60px] bg-navy-texture z-10 py-2">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search items..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 h-9 text-sm"
+            className="pl-9 h-10 text-sm"
           />
         </div>
-        <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-          <SelectTrigger className="w-32 h-9 text-sm">
-            <SelectValue placeholder="Department" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Departments</SelectItem>
-            <SelectItem value="Bar">🍸 Bar</SelectItem>
-            <SelectItem value="Kitchen">🍽️ Kitchen</SelectItem>
-            <SelectItem value="Rooms">🛏️ Rooms</SelectItem>
-          </SelectContent>
-        </Select>
+        <select 
+          value={selectedDepartment} 
+          onChange={(e) => setSelectedDepartment(e.target.value)}
+          className="h-10 px-3 rounded-md border border-input bg-background text-sm"
+        >
+          <option value="all">All Depts</option>
+          <option value="Bar">🍸 Bar</option>
+          <option value="Kitchen">🍽️ Kitchen</option>
+          <option value="Rooms">🛏️ Rooms</option>
+        </select>
       </div>
 
-      {/* Assets Cards */}
+      {/* Card Grid */}
       {loading ? (
         <div className="text-center py-8 text-muted-foreground">Loading...</div>
       ) : filteredAssets.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">No items found</div>
+        <div className="text-center py-8 text-muted-foreground">
+          No items found. Click "Add" or "Bulk Import" to add items.
+        </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-3">
           {filteredAssets.map((asset) => (
-            <Card key={asset.id}>
-              <CardContent className="p-3">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
+            <Card key={asset.id} className="overflow-hidden">
+              <CardContent className="p-4">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1">
                     <h3 className="font-semibold text-base">{asset.name}</h3>
-                    <Badge variant="outline" className="mt-1 text-xs">
-                      {getDepartmentIcon(asset.category?.department || '')}
-                      <span className="ml-1">{asset.category?.department}</span>
+                    <Badge className={`mt-1 text-xs ${getDepartmentColor(asset.department)}`}>
+                      {getDepartmentIcon(asset.department)}
+                      <span className="ml-1">{asset.department}</span>
                     </Badge>
                   </div>
                   {asset.current_quantity < asset.min_quantity && (
@@ -290,34 +378,35 @@ export default function NonFoodInventory() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 mb-3 text-sm">
+                <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
                   <div>
-                    <p className="text-muted-foreground text-xs">Current</p>
-                    <p className={`font-bold ${asset.current_quantity < asset.min_quantity ? 'text-red-600' : ''}`}>
-                      {asset.current_quantity} {asset.unit}
+                    <p className="text-muted-foreground text-xs">Current Stock</p>
+                    <p className={`font-bold text-lg ${asset.current_quantity < asset.min_quantity ? 'text-red-600' : ''}`}>
+                      {asset.current_quantity} <span className="text-xs font-normal text-muted-foreground">{asset.unit}</span>
                     </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Min Required</p>
-                    <p>{asset.min_quantity} {asset.unit}</p>
+                    <p className="font-medium">{asset.min_quantity} {asset.unit}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground text-xs">Breakage</p>
-                    <p className="text-orange-600">{asset.breakage_count} {asset.unit}</p>
+                    <p className="text-muted-foreground text-xs">Breakage (Total)</p>
+                    <p className="font-medium text-orange-600">{asset.breakage_count} {asset.unit}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Last Restocked</p>
+                    <p className="text-xs">{asset.last_restocked || 'Never'}</p>
                   </div>
                 </div>
 
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={() => handleRestock(asset)}>
-                    + Restock
+                <div className="flex gap-2 pt-2 border-t">
+                  <Button size="sm" variant="outline" className="flex-1 text-sm" onClick={() => handleRestock(asset)}>
+                    <RefreshCw className="h-3 w-3 mr-1" /> Restock
                   </Button>
-                  <Button size="sm" variant="destructive" className="flex-1 text-xs" onClick={() => setBreakageDialog({ open: true, asset, quantity: 1, reason: '' })}>
+                  <Button size="sm" variant="destructive" className="flex-1 text-sm" onClick={() => setBreakageDialog({ open: true, asset, quantity: 1, reason: '' })}>
                     Broken -1
                   </Button>
-                  <Button size="sm" variant="outline" className="px-3" onClick={() => {
-                    setEditingAsset(asset);
-                    setIsDialogOpen(true);
-                  }}>
+                  <Button size="sm" variant="outline" className="px-3" onClick={() => openEditDialog(asset)}>
                     <Edit2 className="h-3 w-3" />
                   </Button>
                   <Button size="sm" variant="outline" className="px-3" onClick={() => handleDelete(asset.id)}>
@@ -330,140 +419,147 @@ export default function NonFoodInventory() {
         </div>
       )}
 
-      {/* Add/Edit Dialog */}
+      {/* Add/Edit Dialog - Simple form without category dropdown */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{editingAsset ? 'Edit Item' : 'Add New Item'}</DialogTitle>
           </DialogHeader>
-          <AssetForm
-            asset={editingAsset}
-            categories={categories}
-            onSave={handleSaveAsset}
-            onCancel={() => {
-              setIsDialogOpen(false);
-              setEditingAsset(null);
-            }}
-          />
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium block mb-1">Item Name</label>
+              <Input 
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g., Red Wine Glass" 
+                required 
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Department</label>
+              <select 
+                value={formData.department}
+                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                required
+              >
+                <option value="">Select department</option>
+                <option value="Bar">🍸 Bar</option>
+                <option value="Kitchen">🍽️ Kitchen</option>
+                <option value="Rooms">🛏️ Rooms</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium block mb-1">Current Qty</label>
+                <Input 
+                  type="number" 
+                  value={formData.current_quantity}
+                  onChange={(e) => setFormData({ ...formData, current_quantity: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">Min Qty (Alert)</label>
+                <Input 
+                  type="number" 
+                  value={formData.min_quantity}
+                  onChange={(e) => setFormData({ ...formData, min_quantity: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Unit</label>
+              <Input 
+                value={formData.unit}
+                onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                placeholder="pcs" 
+              />
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+              <Button type="button" onClick={handleSaveAsset}>Save</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Import Dialog */}
+      <Dialog open={isBulkDialogOpen} onOpenChange={setIsBulkDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Bulk Import CSV</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium block mb-1">CSV Format:</label>
+              <div className="bg-muted p-3 rounded text-xs font-mono">
+                Item Name,Department,Current Quantity,Min Quantity,Unit
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Department must be: Bar, Kitchen, or Rooms
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={downloadTemplate} className="w-full">
+              Download Template CSV
+            </Button>
+            <div>
+              <label className="text-sm font-medium block mb-1">Paste CSV Data:</label>
+              <textarea
+                value={csvText}
+                onChange={(e) => setCsvText(e.target.value)}
+                className="w-full h-48 p-3 rounded-md border border-input bg-background font-mono text-sm"
+                placeholder="Red Wine Glass,Bar,50,30,pcs&#10;Dinner Plate,Kitchen,100,50,pcs&#10;Bath Towel,Rooms,30,20,pcs"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setIsBulkDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleBulkImport}>Import Items</Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* Breakage Dialog */}
       <Dialog open={breakageDialog.open} onOpenChange={(open) => !open && setBreakageDialog({ ...breakageDialog, open: false })}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>Log Breakage - {breakageDialog.asset?.name}</DialogTitle>
+            <DialogTitle>Log Breakage</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="bg-yellow-50 p-3 rounded border border-yellow-200">
-              <p className="text-sm">Current stock: <strong>{breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}</strong></p>
+            <div className="bg-yellow-50 p-3 rounded">
+              <p className="font-medium">{breakageDialog.asset?.name}</p>
+              <p className="text-sm">Current: {breakageDialog.asset?.current_quantity} {breakageDialog.asset?.unit}</p>
             </div>
             <div>
-              <label className="text-sm font-medium">Quantity Broken</label>
-              <Input
-                type="number"
-                min="1"
-                max={breakageDialog.asset?.current_quantity}
-                value={breakageDialog.quantity}
-                onChange={(e) => setBreakageDialog({ ...breakageDialog, quantity: parseInt(e.target.value) || 1 })}
+              <label className="text-sm font-medium block mb-1">Quantity Broken</label>
+              <Input 
+                type="number" 
+                min="1" 
+                value={breakageDialog.quantity} 
+                onChange={(e) => setBreakageDialog({ ...breakageDialog, quantity: parseInt(e.target.value) || 1 })} 
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Reason</label>
-              <Select value={breakageDialog.reason} onValueChange={(value) => setBreakageDialog({ ...breakageDialog, reason: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select reason" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Guest dropped">Guest dropped</SelectItem>
-                  <SelectItem value="Staff accident">Staff accident</SelectItem>
-                  <SelectItem value="Normal wear">Normal wear & tear</SelectItem>
-                  <SelectItem value="Lost">Lost / Missing</SelectItem>
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium block mb-1">Reason</label>
+              <select 
+                value={breakageDialog.reason} 
+                onChange={(e) => setBreakageDialog({ ...breakageDialog, reason: e.target.value })} 
+                className="w-full h-10 px-3 rounded-md border border-input bg-background"
+              >
+                <option value="">Select reason</option>
+                <option value="Guest dropped">Guest dropped</option>
+                <option value="Staff accident">Staff accident</option>
+                <option value="Normal wear">Normal wear & tear</option>
+                <option value="Lost">Lost / Missing</option>
+              </select>
             </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setBreakageDialog({ ...breakageDialog, open: false })}>Cancel</Button>
-              <Button onClick={handleBreakage}>Confirm Breakage</Button>
+              <Button onClick={handleBreakage}>Confirm</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-// Asset Form Component
-function AssetForm({ asset, categories, onSave, onCancel }: any) {
-  const [formData, setFormData] = useState({
-    name: asset?.name || '',
-    category_id: asset?.category_id || '',
-    current_quantity: asset?.current_quantity || 0,
-    min_quantity: asset?.min_quantity || 0,
-    unit: asset?.unit || 'pcs'
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(formData);
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="text-sm font-medium">Item Name</label>
-        <Input
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          placeholder="e.g., Red Wine Glass"
-          required
-        />
-      </div>
-      <div>
-        <label className="text-sm font-medium">Category</label>
-        <Select value={formData.category_id} onValueChange={(value) => setFormData({ ...formData, category_id: value })}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select category" />
-          </SelectTrigger>
-          <SelectContent>
-            {categories.map((cat: any) => (
-              <SelectItem key={cat.id} value={cat.id}>
-                {cat.name} ({cat.department})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="text-sm font-medium">Current Quantity</label>
-          <Input
-            type="number"
-            value={formData.current_quantity}
-            onChange={(e) => setFormData({ ...formData, current_quantity: parseInt(e.target.value) || 0 })}
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium">Min Quantity (Alert)</label>
-          <Input
-            type="number"
-            value={formData.min_quantity}
-            onChange={(e) => setFormData({ ...formData, min_quantity: parseInt(e.target.value) || 0 })}
-          />
-        </div>
-      </div>
-      <div>
-        <label className="text-sm font-medium">Unit</label>
-        <Input
-          value={formData.unit}
-          onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-          placeholder="pcs"
-        />
-      </div>
-      <div className="flex gap-2 justify-end pt-2">
-        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button type="submit">Save</Button>
-      </div>
-    </form>
   );
 }
