@@ -125,6 +125,11 @@ export default function NonFoodInventory() {
   };
 
   const handleSaveAsset = async () => {
+    if (!formData.category_id) {
+      toast({ title: 'Error', description: 'Please select a category', variant: 'destructive' });
+      return;
+    }
+
     try {
       if (editingAsset) {
         const { error } = await supabase
@@ -318,7 +323,7 @@ export default function NonFoodInventory() {
       {loading ? (
         <div className="text-center py-8 text-muted-foreground">Loading...</div>
       ) : filteredAssets.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">No items found</div>
+        <div className="text-center py-8 text-muted-foreground">No items found. Click Add to create your first item.</div>
       ) : (
         <div className="grid grid-cols-1 gap-3">
           {filteredAssets.map((asset) => (
@@ -379,7 +384,7 @@ export default function NonFoodInventory() {
       )}
 
       {/* Add/Edit Dialog */}
-     Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{editingAsset ? 'Edit Item' : 'Add New Item'}</DialogTitle>
