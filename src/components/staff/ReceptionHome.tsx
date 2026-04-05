@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import ReceptionPage from '@/pages/ReceptionPage';
+import { DailyBriefing } from './DailyBriefing';
 
 /**
  * Reception home — wraps existing ReceptionPage inside the Staff Shell.
@@ -7,7 +8,12 @@ import ReceptionPage from '@/pages/ReceptionPage';
  * We render it inline (without its own nav header since StaffShell provides that).
  */
 const ReceptionHome = () => {
-  return <ReceptionPage embedded />;
+  return (
+    <>
+      <DailyBriefing />
+      <ReceptionPage embedded />
+    </>
+  );
 };
 
 export default ReceptionHome;
