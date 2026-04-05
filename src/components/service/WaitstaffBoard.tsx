@@ -245,6 +245,7 @@ const WaitstaffBoard = () => {
                           orderType: tab.location_type,
                           location: tab.location_detail,
                           guestName: tab.guest_name || '',
+                          tabId: tab.id,
                           returnTo: '/service/waitstaff',
                         });
                         navigate(`/menu?${params.toString()}`);
