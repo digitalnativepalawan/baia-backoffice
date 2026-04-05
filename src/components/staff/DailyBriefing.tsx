@@ -1,6 +1,6 @@
-// src/components/DailyBriefing.tsx
+// src/components/staff/DailyBriefing.tsx
+import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { supabase } from '@/lib/supabase';
 
 export function DailyBriefing() {
   const [isOpen, setIsOpen] = useState(false);
