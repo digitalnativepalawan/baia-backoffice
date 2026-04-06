@@ -11,6 +11,7 @@ import StaffOrderHome from '@/components/staff/StaffOrderHome';
 import ActionRequiredPanel from '@/components/staff/ActionRequiredPanel';
 import StaffNavBar from '@/components/StaffNavBar';
 import MorningBriefing from '@/components/MorningBriefing';
+import LoginBriefingPopup from '@/components/LoginBriefingPopup';
 import { useDepartmentAlerts } from '@/hooks/useDepartmentAlerts';
 
 interface RoleDef {
@@ -37,7 +38,6 @@ const StaffShell = () => {
   const availableRoles = useMemo(() => {
     if (isAdmin) return ROLES;
     return ROLES.filter(r => {
-      // Orders tab requires edit (placing orders), not just view
       if (r.key === 'orders') return canEdit(perms, r.perm);
       return hasAccess(perms, r.perm);
     });
@@ -52,46 +52,48 @@ const StaffShell = () => {
   }
 
   return (
-    <div className="min-h-screen bg-navy-texture overflow-x-hidden">
-      {/* Global navigation bar */}
-      <StaffNavBar />
+    <>
+      <LoginBriefingPopup />
+      <div className="min-h-screen bg-navy-texture overflow-x-hidden">
+        <StaffNavBar />
+        <div className="max-w-2xl mx-auto px-4 pb-4">
 
-      <div className="max-w-2xl mx-auto px-4 pb-4">
+          {/* Role switcher — only show if multiple roles */}
+          {availableRoles.length > 1 && (
+            <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide pb-1">
+              {availableRoles.map(r => (
+                <button
+                  key={r.key}
+                  onClick={() => setActiveRole(r.key)}
+                  className={`font-display text-xs tracking-wider whitespace-nowrap min-h-[40px] px-4 py-2 rounded-md border transition-colors ${
+                    activeRole === r.key
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
+                  } ${alerts[r.key as keyof typeof alerts] && activeRole !== r.key ? 'tab-pulse' : ''}`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          )}
 
-        {/* Role switcher — only show if multiple roles */}
-        {availableRoles.length > 1 && (
-          <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide pb-1">
-            {availableRoles.map(r => (
-              <button
-                key={r.key}
-                onClick={() => setActiveRole(r.key)}
-                className={`font-display text-xs tracking-wider whitespace-nowrap min-h-[40px] px-4 py-2 rounded-md border transition-colors ${
-                  activeRole === r.key
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
-                } ${alerts[r.key as keyof typeof alerts] && activeRole !== r.key ? 'tab-pulse' : ''}`}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-        )}
+          {/* Morning Briefing — top-level operational summary */}
+          <MorningBriefing />
 
-        {/* Morning Briefing — top-level operational summary */}
-        <MorningBriefing />
+          {/* Action Required — always visible, sorted by urgency */}
+          <ActionRequiredPanel />
 
-        {/* Action Required — always visible, sorted by urgency */}
-        <ActionRequiredPanel />
+          {/* Role-specific home screen */}
+          {activeRole === 'reception' && <ReceptionHome />}
+          {activeRole === 'housekeeping' && <HousekeepingHome />}
+          {activeRole === 'kitchen' && <KitchenHome />}
+          {activeRole === 'bar' && <BarHome />}
+          {activeRole === 'experiences' && <ExperiencesHome />}
+          {activeRole === 'orders' && <StaffOrderHome />}
 
-        {/* Role-specific home screen */}
-        {activeRole === 'reception' && <ReceptionHome />}
-        {activeRole === 'housekeeping' && <HousekeepingHome />}
-        {activeRole === 'kitchen' && <KitchenHome />}
-        {activeRole === 'bar' && <BarHome />}
-        {activeRole === 'experiences' && <ExperiencesHome />}
-        {activeRole === 'orders' && <StaffOrderHome />}
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
