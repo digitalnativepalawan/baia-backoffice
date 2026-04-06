@@ -11,7 +11,6 @@ import StaffOrderHome from '@/components/staff/StaffOrderHome';
 import ActionRequiredPanel from '@/components/staff/ActionRequiredPanel';
 import StaffNavBar from '@/components/StaffNavBar';
 import MorningBriefing from '@/components/MorningBriefing';
-import LoginBriefingPopup from '@/components/LoginBriefingPopup';
 import { useDepartmentAlerts } from '@/hooks/useDepartmentAlerts';
 
 interface RoleDef {
@@ -29,20 +28,11 @@ const ROLES: RoleDef[] = [
   { key: 'orders', label: 'Orders', perm: 'orders' },
 ];
 
-// Force show popup every refresh during testing
-const clearBriefingDismiss = () => {
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-  localStorage.removeItem(`baia_briefing_dismissed_${today}`);
-};
-
 const StaffShell = () => {
   const navigate = useNavigate();
   const session = getStaffSession();
   const perms: string[] = session?.permissions || [];
   const isAdmin = perms.includes('admin');
-
-  // Force show popup on every load during testing
-  clearBriefingDismiss();
 
   const availableRoles = useMemo(() => {
     if (isAdmin) return ROLES;
@@ -61,43 +51,40 @@ const StaffShell = () => {
   }
 
   return (
-    <>
-      <LoginBriefingPopup />
-      <div className="min-h-screen bg-navy-texture overflow-x-hidden">
-        <StaffNavBar />
-        <div className="max-w-2xl mx-auto px-4 pb-4">
+    <div className="min-h-screen bg-navy-texture overflow-x-hidden">
+      <StaffNavBar />
+      <div className="max-w-2xl mx-auto px-4 pb-4">
 
-          {availableRoles.length > 1 && (
-            <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide pb-1">
-              {availableRoles.map(r => (
-                <button
-                  key={r.key}
-                  onClick={() => setActiveRole(r.key)}
-                  className={`font-display text-xs tracking-wider whitespace-nowrap min-h-[40px] px-4 py-2 rounded-md border transition-colors ${
-                    activeRole === r.key
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
-                  } ${alerts[r.key as keyof typeof alerts] && activeRole !== r.key ? 'tab-pulse' : ''}`}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
-          )}
+        {availableRoles.length > 1 && (
+          <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide pb-1">
+            {availableRoles.map(r => (
+              <button
+                key={r.key}
+                onClick={() => setActiveRole(r.key)}
+                className={`font-display text-xs tracking-wider whitespace-nowrap min-h-[40px] px-4 py-2 rounded-md border transition-colors ${
+                  activeRole === r.key
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
+                } ${alerts[r.key as keyof typeof alerts] && activeRole !== r.key ? 'tab-pulse' : ''}`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        )}
 
-          <MorningBriefing />
-          <ActionRequiredPanel />
+        <MorningBriefing />
+        <ActionRequiredPanel />
 
-          {activeRole === 'reception' && <ReceptionHome />}
-          {activeRole === 'housekeeping' && <HousekeepingHome />}
-          {activeRole === 'kitchen' && <KitchenHome />}
-          {activeRole === 'bar' && <BarHome />}
-          {activeRole === 'experiences' && <ExperiencesHome />}
-          {activeRole === 'orders' && <StaffOrderHome />}
+        {activeRole === 'reception' && <ReceptionHome />}
+        {activeRole === 'housekeeping' && <HousekeepingHome />}
+        {activeRole === 'kitchen' && <KitchenHome />}
+        {activeRole === 'bar' && <BarHome />}
+        {activeRole === 'experiences' && <ExperiencesHome />}
+        {activeRole === 'orders' && <StaffOrderHome />}
 
-        </div>
       </div>
-    </>
+    </div>
   );
 };
 
