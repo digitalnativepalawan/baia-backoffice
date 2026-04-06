@@ -29,11 +29,20 @@ const ROLES: RoleDef[] = [
   { key: 'orders', label: 'Orders', perm: 'orders' },
 ];
 
+// Force show popup every refresh during testing
+const clearBriefingDismiss = () => {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+  localStorage.removeItem(`baia_briefing_dismissed_${today}`);
+};
+
 const StaffShell = () => {
   const navigate = useNavigate();
   const session = getStaffSession();
   const perms: string[] = session?.permissions || [];
   const isAdmin = perms.includes('admin');
+
+  // Force show popup on every load during testing
+  clearBriefingDismiss();
 
   const availableRoles = useMemo(() => {
     if (isAdmin) return ROLES;
@@ -58,7 +67,6 @@ const StaffShell = () => {
         <StaffNavBar />
         <div className="max-w-2xl mx-auto px-4 pb-4">
 
-          {/* Role switcher — only show if multiple roles */}
           {availableRoles.length > 1 && (
             <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide pb-1">
               {availableRoles.map(r => (
@@ -77,13 +85,9 @@ const StaffShell = () => {
             </div>
           )}
 
-          {/* Morning Briefing — top-level operational summary */}
           <MorningBriefing />
-
-          {/* Action Required — always visible, sorted by urgency */}
           <ActionRequiredPanel />
 
-          {/* Role-specific home screen */}
           {activeRole === 'reception' && <ReceptionHome />}
           {activeRole === 'housekeeping' && <HousekeepingHome />}
           {activeRole === 'kitchen' && <KitchenHome />}
