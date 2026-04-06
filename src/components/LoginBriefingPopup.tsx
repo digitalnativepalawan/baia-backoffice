@@ -61,6 +61,7 @@ function useBriefingData(enabled: boolean) {
       const role = (profile as any)?.role || 'reception';
       const userName = ((profile as any)?.full_name || 'there').split(' ')[0];
 
+      // exact same queries as MorningBriefing
       const [unitsRes, bookingsRes, opsUnitsRes] = await Promise.all([
         from('units').select('id, status, unit_name'),
         from('resort_ops_bookings').select(
@@ -73,6 +74,7 @@ function useBriefingData(enabled: boolean) {
       const allBookings = (bookingsRes.data as any[]) || [];
       const opsUnits = (opsUnitsRes.data as any[]) || [];
 
+      // exact same logic as MorningBriefing
       const opsUnitNameById = new Map(opsUnits.map((u: any) => [u.id, u.name]));
       const opsUnitIdByName = new Map(
         opsUnits.map((u: any) => [normalizeRoomName(u.name), u.id])
@@ -91,7 +93,7 @@ function useBriefingData(enabled: boolean) {
         bookingsByUnitId.set(b.unit_id, curr);
       });
 
-      const workflowById = new Map(
+      const unitWorkflowById = new Map(
         opsUnits.map((unit: any) => [
           unit.id,
           resolveOperationalUnitWorkflow({
@@ -107,65 +109,75 @@ function useBriefingData(enabled: boolean) {
       const getGuestName = (b: any) =>
         b.resort_ops_guests?.full_name || 'Guest';
 
-      // FIX: use workflow to determine status, same as MorningBriefing
-      const bookings = opsUnits.flatMap((unit: any) => {
-        const wf = workflowById.get(unit.id);
-        if (!wf) return [];
+      // stats — exact same as MorningBriefing
+      const occupiedRooms = opsUnits.filter(
+        (u: any) => unitWorkflowById.get(u.id)?.displayStatus === 'occupied'
+      ).length;
 
-        // Include any unit that is occupied, arriving, or departing
-        if (
-          wf.displayStatus !== 'occupied' &&
-          !wf.pendingArrival &&
-          !wf.pendingDeparture
-        ) return [];
+      const pendingArrivals = opsUnits
+        .map((u: any) => unitWorkflowById.get(u.id)?.pendingArrival)
+        .filter(Boolean);
 
-        // Find the most relevant booking for this unit
-        const unitBookings = bookingsByUnitId.get(unit.id) || [];
-        const active =
-          unitBookings.find((b: any) => b.check_in === today) || // arriving today
-          unitBookings.find((b: any) => b.check_out === today && !b.checked_out_at) || // departing today
-          unitBookings.find((b: any) => b.checked_in_at && !b.checked_out_at); // currently in-house
+      const pendingDepartures = opsUnits
+        .map((u: any) => unitWorkflowById.get(u.id)?.pendingDeparture)
+        .filter(Boolean);
 
-        if (!active) return [];
+      // build booking cards from arrivals + occupied + departures
+      const seen = new Set<string>();
+      const bookings: any[] = [];
 
-        const status: 'occupied' | 'arriving' | 'departing' =
-          wf.pendingArrival ? 'arriving'
-          : wf.pendingDeparture ? 'departing'
-          : 'occupied';
-
-        return [{
-          unitName: getUnitName(active),
-          guestName: getGuestName(active),
-          status,
-          source: active.source,
-          ratePerNight: active.rate_per_night,
-          checkOut: active.check_out,
-        }];
+      pendingArrivals.forEach((b: any) => {
+        if (seen.has(b.id)) return;
+        seen.add(b.id);
+        bookings.push({
+          unitName: getUnitName(b),
+          guestName: getGuestName(b),
+          status: 'arriving',
+          source: b.source,
+          ratePerNight: b.rate_per_night,
+        });
       });
 
-      const occupiedRooms = opsUnits.filter(
-        (u: any) => workflowById.get(u.id)?.displayStatus === 'occupied'
-      ).length;
-      const arrivalsToday = opsUnits.filter(
-        (u: any) => workflowById.get(u.id)?.pendingArrival
-      ).length;
-      const departuresToday = opsUnits.filter(
-        (u: any) => workflowById.get(u.id)?.pendingDeparture
-      ).length;
+      opsUnits.forEach((unit: any) => {
+        const wf = unitWorkflowById.get(unit.id);
+        if (wf?.displayStatus !== 'occupied') return;
+        const unitBookings = bookingsByUnitId.get(unit.id) || [];
+        const active = unitBookings.find(
+          (b: any) => b.checked_in_at && !b.checked_out_at
+        );
+        if (!active || seen.has(active.id)) return;
+        seen.add(active.id);
+        bookings.push({
+          unitName: getUnitName(active),
+          guestName: getGuestName(active),
+          status: 'occupied',
+          source: active.source,
+          ratePerNight: active.rate_per_night,
+        });
+      });
 
+      pendingDepartures.forEach((b: any) => {
+        if (seen.has(b.id)) return;
+        seen.add(b.id);
+        bookings.push({
+          unitName: getUnitName(b),
+          guestName: getGuestName(b),
+          status: 'departing',
+          source: b.source,
+          ratePerNight: b.rate_per_night,
+        });
+      });
+
+      // revenue for admin/gm/owner
       let revenue = null;
       if (canSeeSales(role)) {
         const [todayRevRes, monthRevRes, settingsRes] = await Promise.all([
-          from('resort_ops_bookings')
-            .select('rate_per_night')
-            .eq('check_in', today),
+          from('resort_ops_bookings').select('rate_per_night').eq('check_in', today),
           from('resort_ops_bookings')
             .select('rate_per_night, check_in, check_out')
             .gte('check_in', firstOfMonth)
             .lte('check_in', today),
-          from('resort_settings')
-            .select('monthly_revenue_goal')
-            .single(),
+          from('resort_settings').select('monthly_revenue_goal').single(),
         ]);
 
         const confirmedToday = ((todayRevRes.data as any[]) || []).reduce(
@@ -193,7 +205,9 @@ function useBriefingData(enabled: boolean) {
 
       return {
         userName, role,
-        occupiedRooms, arrivalsToday, departuresToday,
+        occupiedRooms,
+        arrivalsToday: pendingArrivals.length,
+        departuresToday: pendingDepartures.length,
         totalRooms: opsUnits.length,
         bookings, revenue,
       };
@@ -235,10 +249,8 @@ export default function LoginBriefingPopup() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-4 pt-6 pb-6 overflow-y-auto">
-      {/* FIX: explicit dark card — no more white screen */}
       <div className="w-full max-w-sm bg-[#0f1623] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
 
-        {/* Header */}
         <div className="flex justify-between items-start px-4 py-4 border-b border-white/10">
           <div className="flex items-start gap-2.5">
             <Sun className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
@@ -251,10 +263,7 @@ export default function LoginBriefingPopup() {
               </p>
             </div>
           </div>
-          <button
-            onClick={dismiss}
-            className="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-slate-400 hover:bg-white/10 transition-colors shrink-0 ml-2"
-          >
+          <button onClick={dismiss} className="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-slate-400 hover:bg-white/10 transition-colors shrink-0 ml-2">
             <X size={12} />
           </button>
         </div>
@@ -265,7 +274,6 @@ export default function LoginBriefingPopup() {
           </div>
         ) : d ? (
           <>
-            {/* Room stats */}
             <div className="px-4 py-4 border-b border-white/10">
               <SectionLabel>Room status today</SectionLabel>
               <div className="grid grid-cols-3 gap-2">
@@ -282,7 +290,6 @@ export default function LoginBriefingPopup() {
               </div>
             </div>
 
-            {/* Bookings */}
             <div className="px-4 py-4 border-b border-white/10">
               <SectionLabel>Today's bookings</SectionLabel>
               {d.bookings.length === 0 ? (
@@ -292,9 +299,7 @@ export default function LoginBriefingPopup() {
                   {d.bookings.map((b, i) => (
                     <div key={i} className="flex justify-between items-center">
                       <div className="flex items-center gap-2">
-                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                          b.unitName.toLowerCase().includes('sui') ? 'bg-purple-400' : 'bg-blue-400'
-                        }`} />
+                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${b.unitName.toLowerCase().includes('sui') ? 'bg-purple-400' : 'bg-blue-400'}`} />
                         <div>
                           <p className="text-[13px] font-medium text-white">{b.unitName}</p>
                           <p className="text-[11px] text-slate-400">
@@ -310,11 +315,9 @@ export default function LoginBriefingPopup() {
               )}
             </div>
 
-            {/* Sales — GM / Admin / Owner only */}
             {d.revenue && (
               <div className="px-4 py-4 border-b border-white/10">
                 <SectionLabel>Sales snapshot · today</SectionLabel>
-
                 <div className="bg-white/5 rounded-lg p-3.5 mb-3">
                   <div className="flex items-start justify-between">
                     <div>
@@ -332,7 +335,6 @@ export default function LoginBriefingPopup() {
                     <div className="h-full bg-blue-500 rounded-full" style={{ width: `${progressPct}%` }} />
                   </div>
                 </div>
-
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   {[
                     { icon: '🍽', label: 'F&B potential', amt: d.revenue.upsellFnb },
@@ -343,29 +345,20 @@ export default function LoginBriefingPopup() {
                     <div key={u.label} className="bg-white/5 rounded-lg px-3 py-2.5">
                       <p className="text-sm mb-1">{u.icon}</p>
                       <p className="text-[10px] text-slate-400 mb-0.5">{u.label}</p>
-                      <p className="text-[14px] font-semibold text-white">
-                        ₱{u.amt.toLocaleString()}
-                      </p>
+                      <p className="text-[14px] font-semibold text-white">₱{u.amt.toLocaleString()}</p>
                     </div>
                   ))}
                 </div>
-
                 <div className="flex justify-between items-center bg-white/5 rounded-lg px-3 py-2.5">
                   <p className="text-[12px] text-slate-400">Total potential today</p>
-                  <p className="text-[18px] font-semibold text-green-400">
-                    ₱{totalPotential.toLocaleString()}
-                  </p>
+                  <p className="text-[18px] font-semibold text-green-400">₱{totalPotential.toLocaleString()}</p>
                 </div>
               </div>
             )}
 
-            {/* Footer */}
             <div className="px-4 py-3 flex justify-between items-center">
               <p className="text-[11px] text-slate-500">Logged in as: {roleLabel}</p>
-              <button
-                onClick={dismiss}
-                className="text-[12px] font-medium px-4 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white transition-colors"
-              >
+              <button onClick={dismiss} className="text-[12px] font-medium px-4 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white transition-colors">
                 Got it, let's go →
               </button>
             </div>
