@@ -34,7 +34,7 @@ const OpenTabModal = ({ open, onOpenChange }: OpenTabModalProps) => {
       const todayISO = new Date().toISOString().split('T')[0];
       const { data: bookings } = await supabase
         .from('resort_ops_bookings')
-        .select('unit_id, resort_ops_units(name)')
+        .select('unit_id, resort_ops_units(name), resort_ops_guests(full_name)')
         .lte('check_in', todayISO)
         .gte('check_out', todayISO)
         .is('checked_out_at', null);
@@ -57,9 +57,10 @@ const OpenTabModal = ({ open, onOpenChange }: OpenTabModalProps) => {
           const unit = unitsMap.get(opsName.toLowerCase().trim());
           if (!unit || seen.has(unit.unit_name)) return null;
           seen.add(unit.unit_name);
-          return { id: unit.id, unit_name: unit.unit_name };
+          const guestName = (b.resort_ops_guests as any)?.full_name || null;
+          return { id: unit.id, unit_name: unit.unit_name, guest_name: guestName };
         })
-        .filter(Boolean) as { id: string; unit_name: string }[];
+        .filter(Boolean) as { id: string; unit_name: string; guest_name: string | null }[];
     },
     refetchInterval: 30000,
   });
@@ -125,7 +126,17 @@ const OpenTabModal = ({ open, onOpenChange }: OpenTabModalProps) => {
           {/* Location selector */}
           <div className="space-y-1.5">
             <label className="font-display text-xs tracking-wider text-muted-foreground">TABLE / LOCATION</label>
-            <Select value={locationValue} onValueChange={setLocationValue}>
+            <Select value={locationValue} onValueChange={val => {
+              setLocationValue(val);
+              // Auto-fill guest name when an occupied room is selected
+              if (val.startsWith('Room::')) {
+                const roomName = val.slice(6);
+                const unit = occupiedUnits.find((u: any) => u.unit_name === roomName);
+                if (unit?.guest_name && !guestName) {
+                  setGuestName(unit.guest_name);
+                }
+              }
+            }}>
               <SelectTrigger className="bg-secondary border-border text-foreground font-body">
                 <SelectValue placeholder="Select table or room" />
               </SelectTrigger>
@@ -145,7 +156,7 @@ const OpenTabModal = ({ open, onOpenChange }: OpenTabModalProps) => {
                     <SelectLabel className="font-display text-xs tracking-wider text-muted-foreground">OCCUPIED ROOMS</SelectLabel>
                     {occupiedUnits.map((u: any) => (
                       <SelectItem key={u.id} value={`Room::${u.unit_name}`} className="text-foreground font-body">
-                        🏠 {u.unit_name}
+                        🏠 {u.unit_name}{u.guest_name ? ` — ${u.guest_name}` : ''}
                       </SelectItem>
                     ))}
                   </SelectGroup>
