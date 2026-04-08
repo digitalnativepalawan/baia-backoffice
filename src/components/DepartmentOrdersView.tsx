@@ -204,6 +204,13 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
       const otherHasItems = hasOtherDeptItems(order);
       if (!otherHasItems || otherStatus === 'ready') {
         updateData.status = 'Served';
+        
+        // --- TELEGRAM NOTIFICATION START ---
+        import('@/lib/telegram').then(({ notifyTelegram }) => {
+          const items = ((order.items as any[]) || []).map(i => `${i.qty}x ${i.name}`).join(', ');
+          notifyTelegram('waitstaff,reception,managers', `✅ Order Ready\n${order.guest_name || 'Guest'} - ${order.location_detail}\nItems: ${items}`);
+        });
+        // --- TELEGRAM NOTIFICATION END ---
       }
     }
 

@@ -1,370 +1,260 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { resolveOperationalUnitWorkflow } from '@/lib/receptionOccupancy';
-import { X, Sun, TrendingUp, BedDouble, LogIn, LogOut } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { 
+  Sun, Users, LogIn, LogOut, Utensils, 
+  Bike, MapPin, Car, Coffee, Info,
+  Sparkles, Clock
+} from "lucide-react";
+
+/**
+ * Helper to get Manila Date/Time
+ */
+const getManilaDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+const getManilaTimeStr = () => new Date().toLocaleTimeString('en-PH', { 
+  timeZone: 'Asia/Manila', 
+  hour: '2-digit', 
+  minute: '2-digit', 
+  hour12: true 
+});
 
 const from = (table: string) => supabase.from(table as any);
 
-const getManilaDate = () =>
-  new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+export const LoginBriefingPopup = () => {
+  const [isOpen, setIsOpen] = useState(false);
+  const today = getManilaDate();
 
-const getManilaDateLabel = () =>
-  new Date().toLocaleDateString('en-PH', {
-    timeZone: 'Asia/Manila',
-    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+  // Check session storage to show only once per session
+  useEffect(() => {
+    const hasSeenBriefing = sessionStorage.getItem('hasSeenBriefing');
+    if (!hasSeenBriefing) {
+      setIsOpen(true);
+    }
+  }, []);
+
+  const { data: user } = useQuery({
+    queryKey: ['current-user-briefing'],
+    queryFn: async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return null;
+      const { data: emp } = await from('employees').select('display_name, name').eq('id', authUser.id).single();
+      return emp || { display_name: 'Admin' };
+    }
   });
 
-const normalizeRoomName = (value: string) =>
-  value.trim().replace(/\s+/g, ' ').toLowerCase();
-
-const canSeeSales = (role: string) =>
-  ['admin', 'owner', 'gm', 'manager'].includes(role);
-
-function StatusPill({ status }: { status: 'occupied' | 'arriving' | 'departing' }) {
-  const styles = {
-    occupied: 'bg-red-500/20 text-red-400',
-    arriving: 'bg-green-500/20 text-green-400',
-    departing: 'bg-amber-500/20 text-amber-400',
-  };
-  const labels = { occupied: 'Occupied', arriving: 'Arriving', departing: 'Departing' };
-  return (
-    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${styles[status]}`}>
-      {labels[status]}
-    </span>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-medium mb-2.5">
-      {children}
-    </p>
-  );
-}
-
-function useBriefingData(enabled: boolean) {
-  const today = getManilaDate();
-  const firstOfMonth = today.slice(0, 7) + '-01';
-
-  return useQuery({
-    queryKey: ['login-briefing', today],
-    enabled,
-    staleTime: Infinity,
+  const { data: briefing, isLoading } = useQuery({
+    queryKey: ['login-briefing-data', today],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: profile } = await from('user_roles')
-        .select('role, full_name')
-        .eq('user_id', user?.id)
-        .single();
-
-      const role = (profile as any)?.role || 'reception';
-      const userName = ((profile as any)?.full_name || 'there').split(' ')[0];
-
-      // exact same queries as MorningBriefing
-      const [unitsRes, bookingsRes, opsUnitsRes] = await Promise.all([
-        from('units').select('id, status, unit_name'),
-        from('resort_ops_bookings').select(
-          'id, check_in, check_out, checked_in_at, checked_out_at, unit_id, rate_per_night, source, resort_ops_guests(full_name), resort_ops_units:unit_id(name)'
-        ),
-        from('resort_ops_units').select('id, name'),
+      const [bookings, units, orders, tours, requests] = await Promise.all([
+        from('resort_ops_bookings').select('id, check_in, check_out, resort_ops_guests(full_name), resort_ops_units:unit_id(name)'),
+        from('units').select('id, status'),
+        from('orders').select('id, category, status').gte('created_at', today),
+        from('guest_tours').select('tour_name, unit_name, pax').eq('tour_date', today).in('status', ['booked', 'confirmed']),
+        from('guest_requests').select('request_type, details').eq('status', 'pending')
       ]);
 
-      const units = (unitsRes.data as any[]) || [];
-      const allBookings = (bookingsRes.data as any[]) || [];
-      const opsUnits = (opsUnitsRes.data as any[]) || [];
-
-      // exact same logic as MorningBriefing
-      const opsUnitNameById = new Map(opsUnits.map((u: any) => [u.id, u.name]));
-      const opsUnitIdByName = new Map(
-        opsUnits.map((u: any) => [normalizeRoomName(u.name), u.id])
-      );
-      const unitStatusMap = new Map<string, string>();
-      units.forEach((u: any) => {
-        const id = opsUnitIdByName.get(normalizeRoomName(u.unit_name || ''));
-        if (id) unitStatusMap.set(id, u.status);
-      });
-
-      const bookingsByUnitId = new Map<string, any[]>();
-      allBookings.forEach((b: any) => {
-        if (!b.unit_id) return;
-        const curr = bookingsByUnitId.get(b.unit_id) || [];
-        curr.push(b);
-        bookingsByUnitId.set(b.unit_id, curr);
-      });
-
-      const unitWorkflowById = new Map(
-        opsUnits.map((unit: any) => [
-          unit.id,
-          resolveOperationalUnitWorkflow({
-            bookings: bookingsByUnitId.get(unit.id) || [],
-            rawStatus: unitStatusMap.get(unit.id),
-            today,
-          }),
-        ])
-      );
-
-      const getUnitName = (b: any) =>
-        b.resort_ops_units?.name || opsUnitNameById.get(b.unit_id) || 'Room';
-      const getGuestName = (b: any) =>
-        b.resort_ops_guests?.full_name || 'Guest';
-
-      // stats — exact same as MorningBriefing
-      const occupiedRooms = opsUnits.filter(
-        (u: any) => unitWorkflowById.get(u.id)?.displayStatus === 'occupied'
-      ).length;
-
-      const pendingArrivals = opsUnits
-        .map((u: any) => unitWorkflowById.get(u.id)?.pendingArrival)
-        .filter(Boolean);
-
-      const pendingDepartures = opsUnits
-        .map((u: any) => unitWorkflowById.get(u.id)?.pendingDeparture)
-        .filter(Boolean);
-
-      // build booking cards from arrivals + occupied + departures
-      const seen = new Set<string>();
-      const bookings: any[] = [];
-
-      pendingArrivals.forEach((b: any) => {
-        if (seen.has(b.id)) return;
-        seen.add(b.id);
-        bookings.push({
-          unitName: getUnitName(b),
-          guestName: getGuestName(b),
-          status: 'arriving',
-          source: b.source,
-          ratePerNight: b.rate_per_night,
-        });
-      });
-
-      opsUnits.forEach((unit: any) => {
-        const wf = unitWorkflowById.get(unit.id);
-        if (wf?.displayStatus !== 'occupied') return;
-        const unitBookings = bookingsByUnitId.get(unit.id) || [];
-        const active = unitBookings.find(
-          (b: any) => b.checked_in_at && !b.checked_out_at
-        );
-        if (!active || seen.has(active.id)) return;
-        seen.add(active.id);
-        bookings.push({
-          unitName: getUnitName(active),
-          guestName: getGuestName(active),
-          status: 'occupied',
-          source: active.source,
-          ratePerNight: active.rate_per_night,
-        });
-      });
-
-      pendingDepartures.forEach((b: any) => {
-        if (seen.has(b.id)) return;
-        seen.add(b.id);
-        bookings.push({
-          unitName: getUnitName(b),
-          guestName: getGuestName(b),
-          status: 'departing',
-          source: b.source,
-          ratePerNight: b.rate_per_night,
-        });
-      });
-
-      // revenue for admin/gm/owner
-      let revenue = null;
-      if (canSeeSales(role)) {
-        const [todayRevRes, monthRevRes, settingsRes] = await Promise.all([
-          from('resort_ops_bookings').select('rate_per_night').eq('check_in', today),
-          from('resort_ops_bookings')
-            .select('rate_per_night, check_in, check_out')
-            .gte('check_in', firstOfMonth)
-            .lte('check_in', today),
-          from('resort_settings').select('monthly_revenue_goal').single(),
-        ]);
-
-        const confirmedToday = ((todayRevRes.data as any[]) || []).reduce(
-          (s: number, r: any) => s + (Number(r.rate_per_night) || 0), 0
-        );
-        const monthlyActual = ((monthRevRes.data as any[]) || []).reduce(
-          (s: number, r: any) => {
-            const nights = Math.max(1, Math.round(
-              (new Date(r.check_out).getTime() - new Date(r.check_in).getTime()) / 86400000
-            ));
-            return s + (Number(r.rate_per_night) || 0) * nights;
-          }, 0
-        );
-
-        revenue = {
-          confirmedToday,
-          monthlyActual,
-          monthlyGoal: (settingsRes.data as any)?.monthly_revenue_goal || 300000,
-          upsellFnb: 3500,
-          upsellIsland: 6000,
-          upsellTours: 4000,
-          upsellMoto: 2400,
-        };
-      }
-
+      const bData = (bookings.data as any[]) || [];
+      const oData = (orders.data as any[]) || [];
+      const rData = (requests.data as any[]) || [];
+      
       return {
-        userName, role,
-        occupiedRooms,
-        arrivalsToday: pendingArrivals.length,
-        departuresToday: pendingDepartures.length,
-        totalRooms: opsUnits.length,
-        bookings, revenue,
+        checkIns: bData.filter(b => b.check_in === today).map(b => ({
+          guest: b.resort_ops_guests?.full_name || 'Guest',
+          unit: b.resort_ops_units?.name || 'Room'
+        })),
+        checkOuts: bData.filter(b => b.check_out === today).length,
+        occupiedCount: (units.data as any[])?.filter(u => u.status === 'occupied').length || 0,
+        breakfastOrders: oData.filter(o => o.category === 'Breakfast').length,
+        pendingOrders: oData.filter(o => ['New', 'Preparing'].includes(o.status)).length,
+        tours: (tours.data as any[]) || [],
+        motorbikes: rData.filter(r => r.request_type?.toLowerCase().includes('bike')),
+        tuktuks: rData.filter(r => r.request_type?.toLowerCase().includes('tuktuk'))
       };
     },
+    enabled: isOpen
   });
-}
 
-export default function LoginBriefingPopup() {
-  const today = getManilaDate();
-  const storageKey = `baia_briefing_dismissed_${today}`;
-  const [visible, setVisible] = useState(false);
+  const handleDismiss = () => {
+    sessionStorage.setItem('hasSeenBriefing', 'true');
+    setIsOpen(false);
+  };
 
-  useEffect(() => {
-    if (!localStorage.getItem(storageKey)) setVisible(true);
-  }, [storageKey]);
-
-  const { data: d, isLoading } = useBriefingData(visible);
-
-  function dismiss() {
-    localStorage.setItem(storageKey, '1');
-    setVisible(false);
-  }
-
-  if (!visible) return null;
-
-  const roleLabel =
-    d?.role === 'admin' || d?.role === 'owner' ? 'Admin / Owner'
-    : d?.role === 'gm' || d?.role === 'manager' ? 'General Manager'
-    : 'Reception';
-
-  const progressPct = d?.revenue
-    ? Math.min(100, Math.round((d.revenue.monthlyActual / d.revenue.monthlyGoal) * 100))
-    : 0;
-
-  const totalPotential = d?.revenue
-    ? d.revenue.confirmedToday + d.revenue.upsellFnb + d.revenue.upsellIsland +
-      d.revenue.upsellTours + d.revenue.upsellMoto
-    : 0;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-4 pt-6 pb-6 overflow-y-auto">
-      <div className="w-full max-w-sm bg-[#0f1623] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
-
-        <div className="flex justify-between items-start px-4 py-4 border-b border-white/10">
-          <div className="flex items-start gap-2.5">
-            <Sun className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-[15px] font-semibold text-white">
-                {isLoading ? 'Loading…' : `Good morning, ${d?.userName} 👋`}
-              </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                {getManilaDateLabel()} · {roleLabel}
-              </p>
-            </div>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogContent className="max-w-md bg-zinc-950 border-zinc-900 text-zinc-100 p-0 overflow-hidden shadow-2xl">
+        <div className="bg-gradient-to-br from-indigo-500/20 to-purple-500/10 p-6 border-b border-white/5 pb-8 relative">
+          <div className="absolute top-4 right-4 animate-pulse">
+             <Sparkles className="h-4 w-4 text-indigo-400 opacity-50" />
           </div>
-          <button onClick={dismiss} className="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-slate-400 hover:bg-white/10 transition-colors shrink-0 ml-2">
-            <X size={12} />
-          </button>
+          <DialogHeader>
+            <div className="flex items-center gap-4 mb-2">
+              <div className="p-3 bg-indigo-500/20 rounded-2xl border border-indigo-500/20">
+                <Sun className="h-6 w-6 text-indigo-400" />
+              </div>
+              <div>
+                <DialogTitle className="text-2xl font-display italic tracking-tight text-white mb-1">
+                  {greeting}, {user?.display_name || user?.name || 'Manager'}
+                </DialogTitle>
+                <div className="flex items-center gap-2 text-zinc-500 text-[10px] ui-label tracking-[0.15em]">
+                  <Clock className="h-3 w-3" />
+                  {getManilaTimeStr()} • BAIA OPS
+                </div>
+              </div>
+            </div>
+          </DialogHeader>
         </div>
 
-        {isLoading ? (
-          <div className="px-4 py-10 text-center text-sm text-slate-400">
-            Preparing your briefing…
-          </div>
-        ) : d ? (
-          <>
-            <div className="px-4 py-4 border-b border-white/10">
-              <SectionLabel>Room status today</SectionLabel>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { icon: BedDouble, num: d.occupiedRooms, lbl: 'Occupied', cls: 'text-red-400' },
-                  { icon: LogIn, num: d.arrivalsToday, lbl: 'Arriving', cls: 'text-green-400' },
-                  { icon: LogOut, num: d.departuresToday, lbl: 'Departing', cls: 'text-amber-400' },
-                ].map((s) => (
-                  <div key={s.lbl} className="bg-white/5 rounded-lg py-3 px-2 text-center">
-                    <p className={`text-2xl font-semibold ${s.cls}`}>{s.num}</p>
-                    <p className="text-[10px] text-slate-400 mt-1">{s.lbl}</p>
-                  </div>
-                ))}
+        <div className="p-6 space-y-8 max-h-[70vh] overflow-y-auto scrollbar-hide">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <div className="relative">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-400" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                   <div className="h-1 w-1 bg-white rounded-full" />
+                </div>
               </div>
+              <p className="text-[10px] ui-label text-zinc-500 animate-pulse tracking-widest">PULLING LIVE OPS FEED...</p>
             </div>
+          ) : (
+            <>
+              {/* TODAY AT A GLANCE */}
+              <section className="space-y-4">
+                <header className="flex items-center gap-2">
+                  <h3 className="text-[10px] font-bold ui-label tracking-[0.2em] text-zinc-500">TODAY AT A GLANCE</h3>
+                  <div className="h-[1px] flex-grow bg-zinc-800" />
+                </header>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-4 bg-zinc-900/50 rounded-2xl border border-white/5 group hover:border-indigo-500/20 transition-all">
+                    <div className="flex items-center justify-between mb-2">
+                       <span className="text-[8px] ui-label text-zinc-500 tracking-wider">OCCUPIED</span>
+                       <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full" />
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                       <span className="text-3xl font-display italic text-white">{briefing?.occupiedCount}</span>
+                       <span className="text-[10px] text-zinc-600 font-mono">UNITS</span>
+                    </div>
+                  </div>
+                  <div className="p-4 bg-zinc-900/50 rounded-2xl border border-white/5 group hover:border-purple-500/20 transition-all">
+                    <div className="flex items-center justify-between mb-2">
+                       <span className="text-[8px] ui-label text-zinc-500 tracking-wider">CHECK-OUTS</span>
+                       <div className="w-1.5 h-1.5 bg-purple-400 rounded-full" />
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                       <span className="text-3xl font-display italic text-white">{briefing?.checkOuts}</span>
+                       <span className="text-[10px] text-zinc-600 font-mono">GUESTS</span>
+                    </div>
+                  </div>
+                </div>
 
-            <div className="px-4 py-4 border-b border-white/10">
-              <SectionLabel>Today's bookings</SectionLabel>
-              {d.bookings.length === 0 ? (
-                <p className="text-xs text-slate-500 italic">No active bookings today</p>
-              ) : (
-                <div className="space-y-2.5">
-                  {d.bookings.map((b, i) => (
-                    <div key={i} className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${b.unitName.toLowerCase().includes('sui') ? 'bg-purple-400' : 'bg-blue-400'}`} />
-                        <div>
-                          <p className="text-[13px] font-medium text-white">{b.unitName}</p>
-                          <p className="text-[11px] text-slate-400">
-                            {b.guestName}{b.source ? ` · ${b.source}` : ''}
-                            {b.ratePerNight ? ` · ₱${Number(b.ratePerNight).toLocaleString()}/night` : ''}
-                          </p>
+                {briefing?.checkIns.length > 0 && (
+                  <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] ui-label text-emerald-500 font-bold tracking-[0.1em]">EXPECTED ARRIVALS</span>
+                      <Users className="h-3.5 w-3.5 text-emerald-500" />
+                    </div>
+                    <div className="space-y-2">
+                      {briefing.checkIns.map((bin, i) => (
+                        <div key={i} className="flex justify-between items-center text-[11px] py-2 border-t border-emerald-500/5 first:border-0 border-dashed">
+                          <span className="text-zinc-300 font-medium">{bin.guest}</span>
+                          <span className="text-emerald-400 font-display italic tracking-wider p-1 bg-emerald-500/10 rounded uppercase text-[9px]">{bin.unit}</span>
                         </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              {/* FOOD & BEVERAGE */}
+              <section className="space-y-4">
+                <header className="flex items-center gap-2">
+                  <h3 className="text-[10px] font-bold ui-label tracking-[0.2em] text-zinc-500">FOOD & BEVERAGE</h3>
+                  <div className="h-[1px] flex-grow bg-zinc-800" />
+                </header>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-2xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-[9px] ui-label text-amber-500 font-bold tracking-[0.1em]">BREAKFAST PRE-ORDERS</span>
+                      <Coffee className="h-4 w-4 text-amber-500 opacity-50" />
+                    </div>
+                    <span className="text-3xl font-display italic text-white">{briefing?.breakfastOrders}</span>
+                  </div>
+                  <div className="p-4 bg-zinc-900/40 border border-white/5 rounded-2xl flex flex-col justify-center">
+                    <span className="text-[8px] ui-label text-zinc-500 mb-1">PENDING ORDERS IN KITCHEN</span>
+                    <span className="text-xl font-display italic text-amber-200">{briefing?.pendingOrders}</span>
+                  </div>
+                </div>
+              </section>
+
+              {/* ACTIVITIES */}
+              <section className="space-y-4">
+                <header className="flex items-center gap-2">
+                  <h3 className="text-[10px] font-bold ui-label tracking-[0.2em] text-zinc-500">ACTIVITIES TODAY</h3>
+                  <div className="h-[1px] flex-grow bg-zinc-800" />
+                </header>
+                <div className="space-y-2">
+                  {briefing?.tours.length > 0 ? (
+                    briefing.tours.map((t, i) => (
+                      <div key={i} className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl flex items-center justify-between group hover:bg-blue-500/10 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-blue-500/10 rounded-lg group-hover:scale-110 transition-transform">
+                             <MapPin className="h-3.5 w-3.5 text-blue-400" />
+                          </div>
+                          <div>
+                            <p className="text-[11px] text-zinc-200 font-medium">{t.tour_name}</p>
+                            <p className="text-[9px] text-zinc-500 uppercase tracking-widest">{t.pax} PASSENGERS</p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-display italic text-blue-300 bg-blue-500/10 px-2 py-1 rounded">{t.unit_name}</span>
                       </div>
-                      <StatusPill status={b.status} />
+                    ))
+                  ) : (
+                    <div className="text-center py-2 opacity-30 italic text-[10px] text-zinc-500">No tours confirmed for today</div>
+                  )}
+                  
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div className="p-3 bg-zinc-900 border border-white/5 rounded-2xl flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Bike className="h-3.5 w-3.5 text-zinc-500" />
+                        <span className="text-[10px] ui-label text-zinc-400 tracking-tighter">MOTORBIKE</span>
+                      </div>
+                      <span className="text-sm font-display italic text-white">{briefing?.motorbikes.length || 0}</span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {d.revenue && (
-              <div className="px-4 py-4 border-b border-white/10">
-                <SectionLabel>Sales snapshot · today</SectionLabel>
-                <div className="bg-white/5 rounded-lg p-3.5 mb-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-[11px] text-slate-400 mb-1">Confirmed booking revenue</p>
-                      <p className="text-[30px] font-semibold text-white leading-none">
-                        ₱{d.revenue.confirmedToday.toLocaleString()}
-                      </p>
+                    <div className="p-3 bg-zinc-900 border border-white/5 rounded-2xl flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Car className="h-3.5 w-3.5 text-zinc-500" />
+                        <span className="text-[10px] ui-label text-zinc-400 tracking-tighter">TUK-TUK</span>
+                      </div>
+                      <span className="text-sm font-display italic text-white">{briefing?.tuktuks.length || 0}</span>
                     </div>
-                    <TrendingUp className="h-4 w-4 text-green-400 mt-1" />
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-2">
-                    Monthly: ₱{d.revenue.monthlyActual.toLocaleString()} of ₱{d.revenue.monthlyGoal.toLocaleString()} ({progressPct}%)
-                  </p>
-                  <div className="mt-1.5 h-1.5 bg-white/10 rounded-full">
-                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${progressPct}%` }} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  {[
-                    { icon: '🍽', label: 'F&B potential', amt: d.revenue.upsellFnb },
-                    { icon: '🏝', label: 'Island hopping', amt: d.revenue.upsellIsland },
-                    { icon: '🚤', label: 'Tours', amt: d.revenue.upsellTours },
-                    { icon: '🏍', label: 'Motorbike rental', amt: d.revenue.upsellMoto },
-                  ].map((u) => (
-                    <div key={u.label} className="bg-white/5 rounded-lg px-3 py-2.5">
-                      <p className="text-sm mb-1">{u.icon}</p>
-                      <p className="text-[10px] text-slate-400 mb-0.5">{u.label}</p>
-                      <p className="text-[14px] font-semibold text-white">₱{u.amt.toLocaleString()}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-between items-center bg-white/5 rounded-lg px-3 py-2.5">
-                  <p className="text-[12px] text-slate-400">Total potential today</p>
-                  <p className="text-[18px] font-semibold text-green-400">₱{totalPotential.toLocaleString()}</p>
-                </div>
-              </div>
-            )}
+              </section>
+            </>
+          )}
+        </div>
 
-            <div className="px-4 py-3 flex justify-between items-center">
-              <p className="text-[11px] text-slate-500">Logged in as: {roleLabel}</p>
-              <button onClick={dismiss} className="text-[12px] font-medium px-4 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white transition-colors">
-                Got it, let's go →
-              </button>
-            </div>
-          </>
-        ) : null}
-      </div>
-    </div>
+        <div className="p-6 bg-zinc-950/80 backdrop-blur-sm border-t border-white/5 pt-4">
+          <Button 
+            className="w-full bg-white hover:bg-zinc-200 text-zinc-950 font-bold ui-label text-[10px] tracking-[0.3em] h-14 rounded-2xl"
+            onClick={handleDismiss}
+          >
+            DISMISS BRIEFING
+          </Button>
+          <p className="text-center text-[8px] text-zinc-600 mt-4 uppercase tracking-[0.2em] font-mono">End of briefing · Baia Boutique Resort</p>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
-}
+};

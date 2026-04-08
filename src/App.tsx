@@ -26,6 +26,7 @@ import ServiceBarPage from "./pages/ServiceBarPage";
 import ServiceReceptionPage from "./pages/ServiceReceptionPage";
 import ServiceCashierPage from "./pages/ServiceCashierPage";
 import ServiceWaitstaffPage from "./pages/ServiceWaitstaffPage";
+import { LoginBriefingPopup } from "./components/LoginBriefingPopup";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +36,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <LoginBriefingPopup />
         <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
