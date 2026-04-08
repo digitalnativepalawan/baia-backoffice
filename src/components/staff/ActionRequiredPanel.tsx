@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../supabaseClient';
+import { supabase } from '@/integrations/supabase/client';
 import { ChevronRight } from 'lucide-react';
 
 interface EmployeeTask {
