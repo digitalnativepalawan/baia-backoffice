@@ -12,21 +12,29 @@ import ActionRequiredPanel from '@/components/staff/ActionRequiredPanel';
 import StaffNavBar from '@/components/StaffNavBar';
 import MorningBriefing from '@/components/MorningBriefing';
 import { useDepartmentAlerts } from '@/hooks/useDepartmentAlerts';
+import { BedDouble, Sparkles, UtensilsCrossed, Wine, Compass, ShoppingBag } from 'lucide-react';
 
 interface RoleDef {
   key: string;
   label: string;
   perm: string;
+  icon: React.ReactNode;
+  activeClass: string;
 }
 
 const ROLES: RoleDef[] = [
-  { key: 'reception', label: 'Reception', perm: 'reception' },
-  { key: 'housekeeping', label: 'Housekeeping', perm: 'housekeeping' },
-  { key: 'kitchen', label: 'Kitchen', perm: 'kitchen' },
-  { key: 'bar', label: 'Bar', perm: 'bar' },
-  { key: 'experiences', label: 'Experiences', perm: 'experiences' },
-  { key: 'orders', label: 'Orders', perm: 'orders' },
+  { key: 'reception',    label: 'Reception',    perm: 'reception',    icon: <BedDouble className="w-4 h-4" />,       activeClass: 'bg-blue-600 text-white border-blue-600' },
+  { key: 'housekeeping', label: 'Housekeeping', perm: 'housekeeping', icon: <Sparkles className="w-4 h-4" />,        activeClass: 'bg-emerald-600 text-white border-emerald-600' },
+  { key: 'kitchen',      label: 'Kitchen',      perm: 'kitchen',      icon: <UtensilsCrossed className="w-4 h-4" />, activeClass: 'bg-orange-600 text-white border-orange-600' },
+  { key: 'bar',          label: 'Bar',          perm: 'bar',          icon: <Wine className="w-4 h-4" />,            activeClass: 'bg-purple-600 text-white border-purple-600' },
+  { key: 'experiences',  label: 'Experiences',  perm: 'experiences',  icon: <Compass className="w-4 h-4" />,         activeClass: 'bg-amber-600 text-white border-amber-600' },
+  { key: 'orders',       label: 'Orders',       perm: 'orders',       icon: <ShoppingBag className="w-4 h-4" />,     activeClass: 'bg-cyan-600 text-white border-cyan-600' },
 ];
+
+// Only show morning briefing for roles that need it
+const BRIEFING_ROLES = ['reception'];
+// Only show action tasks for roles that have tasks assigned
+const TASKS_ROLES = ['reception', 'housekeeping', 'experiences'];
 
 const StaffShell = () => {
   const navigate = useNavigate();
@@ -50,38 +58,45 @@ const StaffShell = () => {
     return null;
   }
 
+  const showBriefing = isAdmin || BRIEFING_ROLES.includes(activeRole);
+  const showTasks = isAdmin || TASKS_ROLES.includes(activeRole);
+
   return (
     <div className="min-h-screen bg-navy-texture overflow-x-hidden">
       <StaffNavBar />
       <div className="max-w-2xl mx-auto px-4 pb-4">
 
         {availableRoles.length > 1 && (
-          <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide pb-1">
+          <div className="flex flex-wrap gap-2 mb-4">
             {availableRoles.map(r => (
               <button
                 key={r.key}
                 onClick={() => setActiveRole(r.key)}
-                className={`font-display text-xs tracking-wider whitespace-nowrap min-h-[40px] px-4 py-2 rounded-md border transition-colors ${
+                className={`relative flex items-center gap-2 font-display text-xs tracking-wider whitespace-nowrap min-h-[44px] px-4 py-2.5 rounded-full border transition-colors ${
                   activeRole === r.key
-                    ? 'bg-primary text-primary-foreground border-primary'
+                    ? r.activeClass
                     : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
                 } ${alerts[r.key as keyof typeof alerts] && activeRole !== r.key ? 'tab-pulse' : ''}`}
               >
+                {r.icon}
                 {r.label}
+                {alerts[r.key as keyof typeof alerts] && activeRole !== r.key && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-destructive border-2 border-background" />
+                )}
               </button>
             ))}
           </div>
         )}
 
-        <MorningBriefing />
-        <ActionRequiredPanel />
+        {showBriefing && <MorningBriefing />}
+        {showTasks && <ActionRequiredPanel />}
 
-        {activeRole === 'reception' && <ReceptionHome />}
+        {activeRole === 'reception'    && <ReceptionHome />}
         {activeRole === 'housekeeping' && <HousekeepingHome />}
-        {activeRole === 'kitchen' && <KitchenHome />}
-        {activeRole === 'bar' && <BarHome />}
-        {activeRole === 'experiences' && <ExperiencesHome />}
-        {activeRole === 'orders' && <StaffOrderHome />}
+        {activeRole === 'kitchen'      && <KitchenHome />}
+        {activeRole === 'bar'          && <BarHome />}
+        {activeRole === 'experiences'  && <ExperiencesHome />}
+        {activeRole === 'orders'       && <StaffOrderHome />}
 
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -246,63 +247,104 @@ const opsIconMap: Record<string, typeof LogIn> = {
 const MorningBriefing = () => {
   const { data: rawData, isLoading } = useMorningBriefing();
   const data = rawData ? { ...rawData, adminTasks: rawData.adminTasks || [], opsTasks: rawData.opsTasks || [] } : undefined;
+  const [expanded, setExpanded] = useState(false);
 
-  const values: Record<string, string> = data
-    ? {
-        occupancy: `${data.occupiedRooms} / ${data.totalRooms}`,
-        arrivals: String(data.arrivalsToday),
-        departures: String(data.departuresToday),
-        cleaning: String(data.roomsToClean),
-        kitchen: String(data.pendingKitchenOrders),
-      }
-    : {};
+  const occupancy = data ? `${data.occupiedRooms} / ${data.totalRooms}` : '…';
+  const arrivals = data ? data.arrivalsToday : null;
+  const departures = data ? data.departuresToday : null;
+  const hasUrgent = data ? (data.opsTasks.some(t => t.urgent) || arrivals! > 0) : false;
 
   return (
     <Card className="border-primary/20 bg-primary/5 mb-4">
-      <CardContent className="p-4">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Sun className="h-5 w-5 text-primary" />
-            <h2 className="font-display text-sm font-semibold tracking-wide text-foreground">
-              Morning Briefing
-            </h2>
-          </div>
-          <span className="text-[11px] text-muted-foreground">
-            Updated: {getManilaTimeStr()}
-          </span>
-        </div>
-
-        {/* Stats grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-          {statsDef.map((s) => (
-            <div
-              key={s.key}
-              className="flex items-center gap-2 rounded-md bg-background/60 border border-border/50 px-3 py-2"
-            >
-              <s.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <div className="min-w-0">
-                <p className="text-[11px] text-muted-foreground truncate">{s.label}</p>
-                <p className="text-sm font-semibold text-foreground">
-                  {isLoading ? '…' : values[s.key] ?? '–'}
-                </p>
+      <CardContent className="p-0">
+        {/* Always-visible summary row — tap to expand */}
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="w-full flex items-center justify-between px-4 py-3 text-left"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <Sun className="h-4 w-4 text-primary shrink-0" />
+            <div className="flex items-center gap-4 min-w-0">
+              {/* Occupancy — always shown */}
+              <div className="flex items-center gap-1.5">
+                <BedDouble className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="font-semibold text-sm text-foreground">{isLoading ? '…' : occupancy}</span>
               </div>
+              {/* Arrivals — shown if > 0 */}
+              {!isLoading && arrivals !== null && arrivals > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <LogIn className="h-3.5 w-3.5 text-success shrink-0" />
+                  <span className="text-sm font-semibold text-success">{arrivals} in</span>
+                </div>
+              )}
+              {/* Departures — shown if > 0 */}
+              {!isLoading && departures !== null && departures > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <LogOut className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground">{departures} out</span>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {hasUrgent && !expanded && (
+              <span className="h-2 w-2 rounded-full bg-amber-400" />
+            )}
+            {expanded
+              ? <Car className="h-3.5 w-3.5 text-muted-foreground rotate-90" />
+              : <Bell className="h-3.5 w-3.5 text-muted-foreground" />
+            }
+            <span className="text-[11px] text-muted-foreground">{expanded ? 'less' : 'more'}</span>
+          </div>
+        </button>
 
-        {/* Task sections */}
-        {!isLoading && data && (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* Admin Tasks */}
-            <div className="rounded-md bg-background/60 border border-border/50 p-3">
-              <div className="flex items-center gap-1.5 mb-2">
-                <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                <h3 className="text-xs font-semibold text-foreground tracking-wide">Admin Tasks</h3>
+        {/* Expanded detail */}
+        {expanded && !isLoading && data && (
+          <div className="px-4 pb-4 border-t border-border/40 pt-3 space-y-3">
+            {/* All stats */}
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { icon: Sparkles, label: 'To clean', value: data.roomsToClean },
+                { icon: UtensilsCrossed, label: 'Kitchen orders', value: data.pendingKitchenOrders },
+              ].map((s, i) => (
+                <div key={i} className="flex items-center gap-2 rounded-md bg-background/60 border border-border/50 px-3 py-2">
+                  <s.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                    <p className="text-sm font-semibold text-foreground">{s.value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Live operations */}
+            {data.opsTasks.length > 0 && (
+              <div className="rounded-md bg-background/60 border border-border/50 p-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Zap className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-xs font-semibold text-foreground tracking-wide">Live Operations</h3>
+                </div>
+                <ul className="space-y-1.5">
+                  {data.opsTasks.map((t, i) => {
+                    const Icon = opsIconMap[t.icon] || Zap;
+                    return (
+                      <li key={i} className="flex items-start gap-1.5 text-xs leading-relaxed">
+                        <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${t.urgent ? 'text-amber-400' : 'text-muted-foreground'}`} />
+                        <span className={t.urgent ? 'text-foreground font-medium' : 'text-foreground'}>{t.label}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
-              {data.adminTasks.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">No admin tasks scheduled today</p>
-              ) : (
+            )}
+
+            {/* Admin tasks */}
+            {data.adminTasks.length > 0 && (
+              <div className="rounded-md bg-background/60 border border-border/50 p-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-xs font-semibold text-foreground tracking-wide">Admin Tasks</h3>
+                </div>
                 <ul className="space-y-1">
                   {data.adminTasks.map((t, i) => (
                     <li key={i} className="text-xs text-foreground leading-relaxed">
@@ -311,29 +353,8 @@ const MorningBriefing = () => {
                     </li>
                   ))}
                 </ul>
-              )}
-            </div>
-
-            {/* Operations Tasks — Real-time */}
-            <div className="rounded-md bg-background/60 border border-border/50 p-3">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Zap className="h-4 w-4 text-muted-foreground" />
-                <h3 className="text-xs font-semibold text-foreground tracking-wide">Live Operations</h3>
               </div>
-              <ul className="space-y-1.5">
-                {data.opsTasks.map((t, i) => {
-                  const Icon = opsIconMap[t.icon] || Zap;
-                  return (
-                    <li key={i} className="flex items-start gap-1.5 text-xs leading-relaxed">
-                      <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${t.urgent ? 'text-amber-400' : 'text-muted-foreground'}`} />
-                      <span className={t.urgent ? 'text-foreground font-medium' : 'text-foreground'}>
-                        {t.label}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            )}
           </div>
         )}
       </CardContent>
