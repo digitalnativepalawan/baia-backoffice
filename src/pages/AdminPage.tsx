@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Plus, Eye, EyeOff, Receipt, Search, Download, Upload, Trash2, Minus } from 'lucide-react';
+import { Plus, Eye, EyeOff, Receipt, Search, Download, Upload, Trash2, Minus, BedDouble, ShoppingBag, Users, UtensilsCrossed, Wine, Sparkles, Zap, MapPin, Users2, Calendar, Clock, Settings, BookOpen, BarChart3, Package, Box, Building2, ClipboardList, Archive, Globe, BrainCircuit, UserCog, BarChart2 } from 'lucide-react';
 import StaffNavBar from '@/components/StaffNavBar';
 import MenuBulkImportModal from '@/components/admin/MenuBulkImportModal';
 import ResortProfileForm from '@/components/admin/ResortProfileForm';
@@ -53,6 +53,11 @@ import { useDepartmentAlerts } from '@/hooks/useDepartmentAlerts';
 
 type DateFilter = 'today' | 'yesterday' | 'all';
 
+interface TabIcon {
+  icon: React.ReactNode;
+  activeClass: string;
+}
+
 const ALERT_KEY_MAP: Record<string, string> = {
   rooms: 'reception',
   orders: 'orders',
@@ -75,6 +80,35 @@ const OPERATIONS: TabDef[] = [
   { value: 'housekeeping', label: 'Housekeeping', perm: 'housekeeping' },
   { value: 'live-ops', label: 'Live Ops', perm: null },
 ];
+
+const OPS_ICONS: Record<string, TabIcon> = {
+  rooms:          { icon: <BedDouble className="w-3.5 h-3.5" />,      activeClass: 'bg-blue-600 text-white border-blue-600' },
+  orders:         { icon: <ShoppingBag className="w-3.5 h-3.5" />,    activeClass: 'bg-cyan-600 text-white border-cyan-600' },
+  'guest-services': { icon: <Users className="w-3.5 h-3.5" />,        activeClass: 'bg-indigo-600 text-white border-indigo-600' },
+  kitchen:        { icon: <UtensilsCrossed className="w-3.5 h-3.5" />, activeClass: 'bg-orange-600 text-white border-orange-600' },
+  bar:            { icon: <Wine className="w-3.5 h-3.5" />,           activeClass: 'bg-purple-600 text-white border-purple-600' },
+  housekeeping:   { icon: <Sparkles className="w-3.5 h-3.5" />,       activeClass: 'bg-emerald-600 text-white border-emerald-600' },
+  'live-ops':     { icon: <Zap className="w-3.5 h-3.5" />,           activeClass: 'bg-yellow-600 text-white border-yellow-600' },
+};
+
+const PEOPLE_ICONS: Record<string, TabIcon> = {
+  payroll:   { icon: <UserCog className="w-3.5 h-3.5" />,   activeClass: 'bg-pink-600 text-white border-pink-600' },
+  schedules: { icon: <Calendar className="w-3.5 h-3.5" />,  activeClass: 'bg-violet-600 text-white border-violet-600' },
+  timesheet: { icon: <Clock className="w-3.5 h-3.5" />,     activeClass: 'bg-slate-600 text-white border-slate-600' },
+};
+
+const CONFIG_ICONS: Record<string, TabIcon> = {
+  settings:      { icon: <Settings className="w-3.5 h-3.5" />,     activeClass: 'bg-gray-600 text-white border-gray-600' },
+  menu:          { icon: <BookOpen className="w-3.5 h-3.5" />,      activeClass: 'bg-amber-600 text-white border-amber-600' },
+  reports:       { icon: <BarChart2 className="w-3.5 h-3.5" />,     activeClass: 'bg-teal-600 text-white border-teal-600' },
+  inventory:     { icon: <Package className="w-3.5 h-3.5" />,       activeClass: 'bg-lime-600 text-white border-lime-600' },
+  nonfood:       { icon: <Box className="w-3.5 h-3.5" />,           activeClass: 'bg-stone-600 text-white border-stone-600' },
+  'resort-ops':  { icon: <Building2 className="w-3.5 h-3.5" />,    activeClass: 'bg-blue-800 text-white border-blue-800' },
+  audit:         { icon: <ClipboardList className="w-3.5 h-3.5" />, activeClass: 'bg-rose-600 text-white border-rose-600' },
+  archive:       { icon: <Archive className="w-3.5 h-3.5" />,       activeClass: 'bg-neutral-600 text-white border-neutral-600' },
+  'guest-portal': { icon: <Globe className="w-3.5 h-3.5" />,       activeClass: 'bg-sky-600 text-white border-sky-600' },
+  integration:   { icon: <BrainCircuit className="w-3.5 h-3.5" />, activeClass: 'bg-fuchsia-600 text-white border-fuchsia-600' },
+};
 
 const PEOPLE: TabDef[] = [
   { value: 'payroll', label: 'HR', perm: 'payroll' },
@@ -510,42 +544,63 @@ const AdminPage = () => {
             {opsTabs.length > 0 && (
               <div>
                 <SectionLabel label="Operations" />
-                <TabsList className="flex flex-wrap gap-1 mt-1 h-auto bg-transparent p-0">
-                  {opsTabs.map(t => (
-                    <TabsTrigger key={t.value} value={t.value}
-                      className={`font-display text-xs tracking-wider min-h-[44px] px-3 py-1.5 rounded-md border border-border data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary bg-secondary text-muted-foreground ${
-                        ALERT_KEY_MAP[t.value] && alerts[ALERT_KEY_MAP[t.value] as keyof typeof alerts] && activeTab !== t.value ? 'tab-pulse' : ''
-                      }`}>
-                      {t.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {opsTabs.map(t => {
+                    const cfg = OPS_ICONS[t.value];
+                    const isActive = activeTab === t.value;
+                    const hasAlert = ALERT_KEY_MAP[t.value] && alerts[ALERT_KEY_MAP[t.value] as keyof typeof alerts] && !isActive;
+                    return (
+                      <button key={t.value} onClick={() => setActiveTab(t.value)}
+                        className={`relative flex items-center gap-1.5 font-display text-xs tracking-wider min-h-[44px] px-4 py-2 rounded-full border transition-colors ${
+                          isActive ? (cfg?.activeClass || 'bg-primary text-white border-primary') : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
+                        } ${hasAlert ? 'tab-pulse' : ''}`}>
+                        {cfg?.icon}
+                        {t.label}
+                        {hasAlert && <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-destructive border-2 border-background" />}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
             {peopleTabs.length > 0 && (
               <div>
                 <SectionLabel label="People" />
-                <TabsList className="flex flex-wrap gap-1 mt-1 h-auto bg-transparent p-0">
-                  {peopleTabs.map(t => (
-                    <TabsTrigger key={t.value} value={t.value}
-                      className="font-display text-xs tracking-wider min-h-[44px] px-3 py-1.5 rounded-md border border-border data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary bg-secondary text-muted-foreground">
-                      {t.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {peopleTabs.map(t => {
+                    const cfg = PEOPLE_ICONS[t.value];
+                    const isActive = activeTab === t.value;
+                    return (
+                      <button key={t.value} onClick={() => setActiveTab(t.value)}
+                        className={`flex items-center gap-1.5 font-display text-xs tracking-wider min-h-[44px] px-4 py-2 rounded-full border transition-colors ${
+                          isActive ? (cfg?.activeClass || 'bg-primary text-white border-primary') : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
+                        }`}>
+                        {cfg?.icon}
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
             {cfgTabs.length > 0 && (
               <div>
                 <SectionLabel label="Config" />
-                <TabsList className="flex flex-wrap gap-1 mt-1 h-auto bg-transparent p-0">
-                  {cfgTabs.map(t => (
-                    <TabsTrigger key={t.value} value={t.value}
-                      className="font-display text-xs tracking-wider min-h-[44px] px-3 py-1.5 rounded-md border border-border data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary bg-secondary text-muted-foreground">
-                      {t.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {cfgTabs.map(t => {
+                    const cfg = CONFIG_ICONS[t.value];
+                    const isActive = activeTab === t.value;
+                    return (
+                      <button key={t.value} onClick={() => setActiveTab(t.value)}
+                        className={`flex items-center gap-1.5 font-display text-xs tracking-wider min-h-[44px] px-4 py-2 rounded-full border transition-colors ${
+                          isActive ? (cfg?.activeClass || 'bg-primary text-white border-primary') : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
+                        }`}>
+                        {cfg?.icon}
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
