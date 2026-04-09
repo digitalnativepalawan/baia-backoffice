@@ -244,10 +244,18 @@ const opsIconMap: Record<string, typeof LogIn> = {
   clean: Sparkles,
 };
 
-const MorningBriefing = () => {
+const MorningBriefing = ({ role = "reception" }: { role?: string }) => {
   const { data: rawData, isLoading } = useMorningBriefing();
   const data = rawData ? { ...rawData, adminTasks: rawData.adminTasks || [], opsTasks: rawData.opsTasks || [] } : undefined;
   const [expanded, setExpanded] = useState(false);
+
+  // Filter ops tasks by role relevance
+  const filterTasksForRole = (tasks: OpsTask[]) => {
+    if (role === 'reception') return tasks; // reception sees everything
+    if (role === 'housekeeping') return tasks.filter(t => t.icon === 'clean' || t.icon === 'arrival' || t.icon === 'departure');
+    if (role === 'experiences') return tasks.filter(t => t.icon === 'tour' || t.icon === 'request');
+    return tasks;
+  };
 
   const occupancy = data ? `${data.occupiedRooms} / ${data.totalRooms}` : '…';
   const arrivals = data ? data.arrivalsToday : null;
@@ -305,7 +313,7 @@ const MorningBriefing = () => {
             <div className="grid grid-cols-2 gap-2">
               {[
                 { icon: Sparkles, label: 'To clean', value: data.roomsToClean },
-                { icon: UtensilsCrossed, label: 'Kitchen orders', value: data.pendingKitchenOrders },
+                ...(role === 'reception' ? [{ icon: UtensilsCrossed, label: 'Kitchen orders', value: data.pendingKitchenOrders }] : []),
               ].map((s, i) => (
                 <div key={i} className="flex items-center gap-2 rounded-md bg-background/60 border border-border/50 px-3 py-2">
                   <s.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -325,7 +333,7 @@ const MorningBriefing = () => {
                   <h3 className="text-xs font-semibold text-foreground tracking-wide">Live Operations</h3>
                 </div>
                 <ul className="space-y-1.5">
-                  {data.opsTasks.map((t, i) => {
+                  {filterTasksForRole(data.opsTasks).map((t, i) => {
                     const Icon = opsIconMap[t.icon] || Zap;
                     return (
                       <li key={i} className="flex items-start gap-1.5 text-xs leading-relaxed">

@@ -87,7 +87,7 @@ const StaffShell = () => {
           </div>
         )}
 
-        {showBriefing && <MorningBriefing />}
+        {showBriefing && <MorningBriefing role={activeRole} />}
         {showTasks && <ActionRequiredPanel />}
 
         {activeRole === 'reception'    && <ReceptionHome />}
