@@ -79,7 +79,7 @@ const ActionRequiredPanel = () => {
         .neq('status', 'completed')
         .is('archived_at', null);
 
-      if (!adminFlag && empId) {
+      if (empId) {
         query = query.eq('employee_id', empId);
       }
 
