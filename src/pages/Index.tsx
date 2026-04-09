@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Shield } from 'lucide-react';
+import { Shield, DoorOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { getStaffSession, setStaffSession, isRemembered } from '@/lib/session';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -100,6 +100,14 @@ const Index = () => {
       )}
 
       <div className="mb-10" />
+
+      <button
+        onClick={() => navigate('/guest-portal')}
+        className="flex items-center gap-2 font-body text-sm text-accent hover:text-accent/80 transition-colors mb-6"
+      >
+        <DoorOpen className="w-4 h-4" />
+        I'm a Guest
+      </button>
 
       <div className="w-full max-w-xs space-y-3">
         <p className="font-display text-xs tracking-[0.2em] text-muted-foreground text-center uppercase mb-4">
