@@ -10,6 +10,7 @@ import ExperiencesHome from '@/components/staff/ExperiencesHome';
 import StaffOrderHome from '@/components/staff/StaffOrderHome';
 import ActionRequiredPanel from '@/components/staff/ActionRequiredPanel';
 import StaffNavBar from '@/components/StaffNavBar';
+import StaffBottomNav from '@/components/StaffBottomNav';
 import MorningBriefing from '@/components/MorningBriefing';
 import { useDepartmentAlerts } from '@/hooks/useDepartmentAlerts';
 import { BedDouble, Sparkles, UtensilsCrossed, Wine, Compass, ShoppingBag } from 'lucide-react';
@@ -31,9 +32,7 @@ const ROLES: RoleDef[] = [
   { key: 'orders',       label: 'Orders',       perm: 'orders',       icon: <ShoppingBag className="w-4 h-4" />,     activeClass: 'bg-cyan-600 text-white border-cyan-600' },
 ];
 
-// Only show morning briefing for roles that need it
 const BRIEFING_ROLES = ['reception'];
-// Only show action tasks for roles that have tasks assigned
 const TASKS_ROLES = ['reception', 'housekeeping', 'experiences'];
 
 const StaffShell = () => {
@@ -64,7 +63,7 @@ const StaffShell = () => {
   return (
     <div className="min-h-screen bg-navy-texture overflow-x-hidden">
       <StaffNavBar />
-      <div className="max-w-2xl mx-auto px-4 pb-4">
+      <div className="max-w-2xl mx-auto px-4 pb-24 sm:pb-6">
 
         {availableRoles.length > 1 && (
           <div className="flex flex-wrap gap-2 mb-4">
@@ -99,6 +98,7 @@ const StaffShell = () => {
         {activeRole === 'orders'       && <StaffOrderHome />}
 
       </div>
+      <StaffBottomNav />
     </div>
   );
 };

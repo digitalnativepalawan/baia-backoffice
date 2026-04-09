@@ -187,7 +187,7 @@ const StaffNavBar = ({ activeDepartment }: StaffNavBarProps) => {
               </SheetTitle>
               {deptLabel && <div className="mb-3"><DeptBadge /></div>}
               <div className="flex flex-col gap-2">
-                <NavItems mobile />
+                { /* Nav items moved to bottom bar on mobile */ }
               <div className="flex items-center gap-2 py-1">
                 <ThemeToggle />
                 <span className="font-body text-xs text-muted-foreground">Theme</span>
