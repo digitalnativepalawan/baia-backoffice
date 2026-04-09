@@ -43,6 +43,7 @@ import DepartmentOrdersView from '@/components/DepartmentOrdersView';
 import IntegrationReadinessDashboard from '@/components/integration/IntegrationReadinessDashboard';
 import LiveOpsDashboard from '@/components/admin/LiveOpsDashboard';
 import NonFoodInventory from '@/pages/NonFoodInventory';
+import InterfacePreferences, { loadUIPref, DEFAULT_PREFS, UIPref } from '@/components/admin/InterfacePreferences';
 
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 import { hasAccess, canEdit, canViewDocuments } from '@/lib/permissions';
@@ -151,15 +152,20 @@ const AdminPage = () => {
   const { perms, isAdmin, canView, canEdit: canEditModule, readOnly, canViewDocuments: docsAllowedFn } = usePermissions();
 
   const allowed = (t: TabDef) => isAdmin || (t.perm !== null && canView(t.perm));
-  const opsTabs = OPERATIONS.filter(allowed);
-  const peopleTabs = PEOPLE.filter(allowed);
-  const cfgTabs = CONFIG.filter(allowed);
+  const opsTabs = OPERATIONS.filter(allowed).filter(t => uiPrefs[t.value] !== false);
+  const peopleTabs = PEOPLE.filter(allowed).filter(t => uiPrefs[t.value] !== false);
+  const cfgTabs = CONFIG.filter(allowed).filter(t => uiPrefs[t.value] !== false);
   const allTabs = [...opsTabs, ...peopleTabs, ...cfgTabs];
   const defaultTab = allTabs[0]?.value || 'orders';
 
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [inventorySubTab, setInventorySubTab] = useState<'food' | 'nonfood'>('food');
   const [adminToolsOpen, setAdminToolsOpen] = useState(false);
+  const [uiPrefs, setUiPrefs] = useState<UIPref>(DEFAULT_PREFS);
+
+  useEffect(() => {
+    loadUIPref().then(setUiPrefs);
+  }, []);
   const alerts = useDepartmentAlerts();
 
   const docsAllowed = docsAllowedFn();
@@ -879,6 +885,7 @@ const AdminPage = () => {
                   </div>
                 </section>
 
+                <InterfacePreferences />
                 <div className="mt-8"><InvoiceSettingsForm /></div>
                 <div className="mt-8"><BillingConfigForm /></div>
 
