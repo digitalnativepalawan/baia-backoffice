@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { toast } from 'sonner';
-import { Plus, Eye, EyeOff, Receipt, Search, Download, Upload, Trash2, Minus, BedDouble, ShoppingBag, Users, UtensilsCrossed, Wine, Sparkles, Zap, MapPin, Users2, Calendar, Clock, Settings, BookOpen, BarChart3, Package, Box, Building2, ClipboardList, Archive, Globe, BrainCircuit, UserCog, BarChart2 } from 'lucide-react';
+import { Plus, Eye, EyeOff, Receipt, Search, Download, Upload, Trash2, Minus, Wrench, BedDouble, ShoppingBag, Users, UtensilsCrossed, Wine, Sparkles, Zap, MapPin, Users2, Calendar, Clock, Settings, BookOpen, BarChart3, Package, Box, Building2, ClipboardList, Archive, Globe, BrainCircuit, UserCog, BarChart2 } from 'lucide-react';
 import StaffNavBar from '@/components/StaffNavBar';
 import MenuBulkImportModal from '@/components/admin/MenuBulkImportModal';
 import ResortProfileForm from '@/components/admin/ResortProfileForm';
@@ -78,7 +79,6 @@ const OPERATIONS: TabDef[] = [
   { value: 'kitchen', label: 'Kitchen Monitor', perm: 'kitchen' },
   { value: 'bar', label: 'Bar Monitor', perm: 'bar' },
   { value: 'housekeeping', label: 'Housekeeping', perm: 'housekeeping' },
-  { value: 'live-ops', label: 'Live Ops', perm: null },
 ];
 
 const OPS_ICONS: Record<string, TabIcon> = {
@@ -97,6 +97,15 @@ const PEOPLE_ICONS: Record<string, TabIcon> = {
   timesheet: { icon: <Clock className="w-3.5 h-3.5" />,     activeClass: 'bg-slate-600 text-white border-slate-600' },
 };
 
+const ADMIN_TOOLS_ICONS: Record<string, TabIcon> = {
+  'live-ops':   { icon: <Zap className="w-3.5 h-3.5" />,           activeClass: 'bg-yellow-600 text-white border-yellow-600' },
+  timesheet:    { icon: <Clock className="w-3.5 h-3.5" />,          activeClass: 'bg-slate-600 text-white border-slate-600' },
+  settings:     { icon: <Settings className="w-3.5 h-3.5" />,       activeClass: 'bg-gray-600 text-white border-gray-600' },
+  audit:        { icon: <ClipboardList className="w-3.5 h-3.5" />,  activeClass: 'bg-rose-600 text-white border-rose-600' },
+  archive:      { icon: <Archive className="w-3.5 h-3.5" />,        activeClass: 'bg-neutral-600 text-white border-neutral-600' },
+  integration:  { icon: <BrainCircuit className="w-3.5 h-3.5" />,  activeClass: 'bg-fuchsia-600 text-white border-fuchsia-600' },
+};
+
 const CONFIG_ICONS: Record<string, TabIcon> = {
   settings:      { icon: <Settings className="w-3.5 h-3.5" />,     activeClass: 'bg-gray-600 text-white border-gray-600' },
   menu:          { icon: <BookOpen className="w-3.5 h-3.5" />,      activeClass: 'bg-amber-600 text-white border-amber-600' },
@@ -113,19 +122,23 @@ const CONFIG_ICONS: Record<string, TabIcon> = {
 const PEOPLE: TabDef[] = [
   { value: 'payroll', label: 'HR', perm: 'payroll' },
   { value: 'schedules', label: 'Schedules', perm: 'schedules' },
-  { value: 'timesheet', label: 'Timesheet', perm: 'timesheet' },
 ];
 
 const CONFIG: TabDef[] = [
-  { value: 'settings', label: 'Setup', perm: 'setup' },
   { value: 'menu', label: 'Menu', perm: 'menu' },
   { value: 'reports', label: 'Reports', perm: 'reports' },
   { value: 'inventory', label: 'Inventory', perm: 'inventory' },
-  // Non-Food merged into Inventory sub-tab
   { value: 'resort-ops', label: 'Resort Ops', perm: 'resort_ops' },
+  { value: 'guest-portal', label: 'Guest Portal', perm: null },
+];
+
+// Tabs accessible via Admin Tools drawer only
+const ADMIN_TOOLS: TabDef[] = [
+  { value: 'live-ops', label: 'Live Ops', perm: null },
+  { value: 'timesheet', label: 'Timesheet', perm: 'timesheet' },
+  { value: 'settings', label: 'Setup', perm: 'setup' },
   { value: 'audit', label: 'Audit', perm: null },
   { value: 'archive', label: 'Archive', perm: null },
-  { value: 'guest-portal', label: 'Guest Portal', perm: null },
   ...(import.meta.env.DEV ? [{ value: 'integration', label: 'Integration', perm: null } as TabDef] : []),
 ];
 
@@ -146,6 +159,7 @@ const AdminPage = () => {
 
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [inventorySubTab, setInventorySubTab] = useState<'food' | 'nonfood'>('food');
+  const [adminToolsOpen, setAdminToolsOpen] = useState(false);
   const alerts = useDepartmentAlerts();
 
   const docsAllowed = docsAllowedFn();
@@ -601,10 +615,47 @@ const AdminPage = () => {
                       </button>
                     );
                   })}
+                  {/* Admin Tools drawer trigger */}
+                  {isAdmin && (
+                    <button
+                      onClick={() => setAdminToolsOpen(true)}
+                      className={`flex items-center gap-1.5 font-display text-xs tracking-wider min-h-[44px] px-4 py-2 rounded-full border transition-colors ${
+                        ['live-ops','timesheet','settings','audit','archive','integration'].includes(activeTab)
+                          ? 'bg-zinc-700 text-white border-zinc-700'
+                          : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
+                      }`}>
+                      <Wrench className="w-3.5 h-3.5" />
+                      Admin Tools
+                    </button>
+                  )}
                 </div>
               </div>
             )}
           </div>
+
+          {/* ── Admin Tools Sheet ─────────────────────────── */}
+          <Sheet open={adminToolsOpen} onOpenChange={setAdminToolsOpen}>
+            <SheetContent side="bottom" className="bg-background border-border rounded-t-2xl max-h-[60vh]">
+              <SheetHeader className="mb-4">
+                <SheetTitle className="font-display text-sm tracking-wider text-foreground">Admin Tools</SheetTitle>
+              </SheetHeader>
+              <div className="grid grid-cols-2 gap-2">
+                {ADMIN_TOOLS.map(t => {
+                  const cfg = ADMIN_TOOLS_ICONS[t.value];
+                  return (
+                    <button key={t.value}
+                      onClick={() => { setActiveTab(t.value); setAdminToolsOpen(false); }}
+                      className={`flex items-center gap-2 font-display text-xs tracking-wider min-h-[52px] px-4 py-3 rounded-xl border transition-colors ${
+                        activeTab === t.value ? (cfg?.activeClass || 'bg-primary text-white border-primary') : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
+                      }`}>
+                      {cfg?.icon}
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </SheetContent>
+          </Sheet>
 
           {/* ═══════════════════════════════════════════════════
               OPERATIONS TAB CONTENTS
