@@ -121,7 +121,7 @@ const CONFIG: TabDef[] = [
   { value: 'menu', label: 'Menu', perm: 'menu' },
   { value: 'reports', label: 'Reports', perm: 'reports' },
   { value: 'inventory', label: 'Inventory', perm: 'inventory' },
-  { value: 'nonfood', label: 'Non-Food Inventory', perm: 'inventory' },
+  // Non-Food merged into Inventory sub-tab
   { value: 'resort-ops', label: 'Resort Ops', perm: 'resort_ops' },
   { value: 'audit', label: 'Audit', perm: null },
   { value: 'archive', label: 'Archive', perm: null },
@@ -145,6 +145,7 @@ const AdminPage = () => {
   const defaultTab = allTabs[0]?.value || 'orders';
 
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const [inventorySubTab, setInventorySubTab] = useState<'food' | 'nonfood'>('food');
   const alerts = useDepartmentAlerts();
 
   const docsAllowed = docsAllowedFn();
@@ -544,7 +545,7 @@ const AdminPage = () => {
             {opsTabs.length > 0 && (
               <div>
                 <SectionLabel label="Operations" />
-                <div className="flex flex-wrap gap-2 mt-1">
+                <div className="grid grid-cols-2 gap-2 mt-1 sm:flex sm:flex-wrap">
                   {opsTabs.map(t => {
                     const cfg = OPS_ICONS[t.value];
                     const isActive = activeTab === t.value;
@@ -1062,14 +1063,24 @@ const AdminPage = () => {
           {/* INVENTORY TAB - Food Inventory */}
           {(isAdmin || hasAccess(perms, 'inventory')) && (
             <TabsContent value="inventory">
-              <InventoryDashboard readOnly={readOnly('inventory')} />
-            </TabsContent>
-          )}
-
-          {/* NON-FOOD INVENTORY TAB - Glasses, Plates, Tools, Appliances */}
-          {(isAdmin || hasAccess(perms, 'inventory')) && (
-            <TabsContent value="nonfood">
-              <NonFoodInventory />
+              <div className="mb-4 flex gap-2">
+                <button
+                  onClick={() => setInventorySubTab('food')}
+                  className={`flex-1 py-2.5 rounded-full text-xs font-display tracking-wider border transition-colors ${inventorySubTab === 'food' ? 'bg-lime-600 text-white border-lime-600' : 'bg-secondary text-muted-foreground border-border'}`}
+                >
+                  🍽 Food & Beverage
+                </button>
+                <button
+                  onClick={() => setInventorySubTab('nonfood')}
+                  className={`flex-1 py-2.5 rounded-full text-xs font-display tracking-wider border transition-colors ${inventorySubTab === 'nonfood' ? 'bg-stone-600 text-white border-stone-600' : 'bg-secondary text-muted-foreground border-border'}`}
+                >
+                  📦 Non-Food
+                </button>
+              </div>
+              {inventorySubTab === 'food'
+                ? <InventoryDashboard readOnly={readOnly('inventory')} />
+                : <NonFoodInventory />
+              }
             </TabsContent>
           )}
 

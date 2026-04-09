@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useResortProfile } from '@/hooks/useResortProfile';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, Briefcase, LogOut, Menu, Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,7 @@ interface StaffNavBarProps {
 }
 
 const StaffNavBar = ({ activeDepartment }: StaffNavBarProps) => {
+  const { data: resortProfile } = useResortProfile();
   const navigate = useNavigate();
   const location = useLocation();
   const session = getStaffSession();
@@ -155,6 +157,11 @@ const StaffNavBar = ({ activeDepartment }: StaffNavBarProps) => {
           >
             <Home className="w-4 h-4" />
           </Button>
+          {!deptLabel && resortProfile?.resort_name && (
+            <span className="font-display text-xs tracking-wider text-foreground truncate max-w-[140px]">
+              {resortProfile.resort_name}
+            </span>
+          )}
           <DeptBadge />
         </div>
 
