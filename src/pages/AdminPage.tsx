@@ -45,6 +45,7 @@ import LiveOpsDashboard from '@/components/admin/LiveOpsDashboard';
 import NonFoodInventory from '@/pages/NonFoodInventory';
 import InterfacePreferences, { loadUIPref, DEFAULT_PREFS, UIPref } from '@/components/admin/InterfacePreferences';
 
+import { logAudit } from '@/lib/auditLog';
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 import { hasAccess, canEdit, canViewDocuments } from '@/lib/permissions';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -414,7 +415,6 @@ const AdminPage = () => {
       qc.invalidateQueries({ queryKey: ['tabs-admin'] });
       setConfirmDeleteAll(false);
       toast.success('All orders & tabs deleted');
-      const { logAudit } = await import('@/lib/auditLog');
       logAudit('deleted', 'orders', 'ALL', 'Bulk delete all orders and tabs');
     } catch (e: any) {
       toast.error(e.message || 'Delete failed');
