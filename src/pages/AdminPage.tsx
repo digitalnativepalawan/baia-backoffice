@@ -151,6 +151,8 @@ const AdminPage = () => {
   // ── Permissions ────────────────────────────────────────────────
   const { perms, isAdmin, canView, canEdit: canEditModule, readOnly, canViewDocuments: docsAllowedFn } = usePermissions();
 
+  const [uiPrefs, setUiPrefs] = useState<UIPref>(DEFAULT_PREFS);
+
   const allowed = (t: TabDef) => isAdmin || (t.perm !== null && canView(t.perm));
   const opsTabs = OPERATIONS.filter(allowed).filter(t => uiPrefs[t.value] !== false);
   const peopleTabs = PEOPLE.filter(allowed).filter(t => uiPrefs[t.value] !== false);
@@ -161,7 +163,6 @@ const AdminPage = () => {
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [inventorySubTab, setInventorySubTab] = useState<'food' | 'nonfood'>('food');
   const [adminToolsOpen, setAdminToolsOpen] = useState(false);
-  const [uiPrefs, setUiPrefs] = useState<UIPref>(DEFAULT_PREFS);
 
   useEffect(() => {
     loadUIPref().then(setUiPrefs);
