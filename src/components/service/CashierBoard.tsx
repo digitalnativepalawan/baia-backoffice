@@ -229,6 +229,65 @@ const CashierBoard = () => {
     }
   };
 
+  // Handle tab bill charged to room folio
+  const handleConfirmTabRoomFolio = async (tabBill: any, booking: any) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const staffSession = getStaffSession();
+      const ordersForTab = tabBillOrders.filter((o: any) => o.tab_id === tabBill.id);
+      const closedAt = new Date().toISOString();
+
+      if (ordersForTab.length > 0) {
+        const orderIds = ordersForTab.map((o: any) => o.id);
+        await supabase.from('orders').update({
+          status: 'Paid',
+          payment_type: 'Charge to Room',
+          room_id: booking.unit_id,
+          closed_at: closedAt,
+        }).in('id', orderIds);
+
+        for (const order of ordersForTab) {
+          const items = (order.items as any[]) || [];
+          const subtotal = items.reduce((s: number, i: any) => s + i.price * (i.qty || i.quantity || 1), 0);
+          const taxDetails = (order.tax_details as any) || {};
+          const taxAmount = Number(taxDetails.vat_amount ?? 0);
+          const serviceCharge = Number(order.service_charge ?? 0);
+          const grandTotal = Number(order.total ?? subtotal + taxAmount + serviceCharge);
+
+          await (supabase.from('room_transactions' as any) as any).insert({
+            unit_id: booking.unit_id,
+            unit_name: booking.resort_ops_units?.name || '',
+            booking_id: booking.id,
+            guest_name: booking.resort_ops_guests?.full_name || tabBill.guest_name || null,
+            transaction_type: 'room_charge',
+            order_id: order.id,
+            amount: subtotal,
+            tax_amount: taxAmount,
+            service_charge_amount: serviceCharge,
+            total_amount: grandTotal,
+            payment_method: 'Charge to Room',
+            staff_name: staffSession?.name || 'Staff',
+            notes: `Room Folio – Order: ${items.map((i: any) => `${i.qty || i.quantity || 1}x ${i.name}`).join(', ')}`,
+          });
+        }
+      }
+
+      await supabase.from('tabs').update({ payment_method: 'Charge to Room' }).eq('id', tabBill.id);
+
+      qc.invalidateQueries({ queryKey: ['cashier-tab-bills'] });
+      qc.invalidateQueries({ queryKey: ['cashier-tab-orders'] });
+      qc.invalidateQueries({ queryKey: ['cashier-completed'] });
+      setSelectedTabBill(null);
+      setSelectedPayment('');
+      toast.success('Tab charged to room folio');
+    } catch {
+      toast.error('Failed to charge tab to room');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleOrderSelect = useCallback((order: any) => {
     if (order.status === 'Paid') {
       setReceiptOrder(order);
@@ -381,6 +440,8 @@ const CashierBoard = () => {
             onConfirm={() => handleConfirmTabPayment(selectedTabBill, selectedPayment)}
             busy={busy}
             onBack={() => { setSelectedTabBill(null); setSelectedPayment(''); }}
+            activeBookings={activeBookings}
+            onRoomFolio={(booking) => handleConfirmTabRoomFolio(selectedTabBill, booking)}
           />
         ) : selectedOrder ? (
           <BillOutPanel
@@ -409,7 +470,7 @@ const CashierBoard = () => {
 
 /** Tab Bill payment panel */
 const TabBillPanel = ({
-  tab, orders: tabOrders, paymentMethods, selectedPayment, onSelectPayment, onConfirm, busy, onBack,
+  tab, orders: tabOrders, paymentMethods, selectedPayment, onSelectPayment, onConfirm, busy, onBack, activeBookings, onRoomFolio,
 }: {
   tab: any;
   orders: any[];
@@ -419,9 +480,26 @@ const TabBillPanel = ({
   onConfirm: () => void;
   busy: boolean;
   onBack: () => void;
+  activeBookings: any[];
+  onRoomFolio: (booking: any) => void;
 }) => {
   const allItems: any[] = tabOrders.flatMap((o: any) => (o.items as any[]) || []);
   const tabTotal = tabOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+
+  // Detect if the tab is linked to an in-house guest
+  const tabRoomBooking = useMemo(() => {
+    if (!activeBookings || activeBookings.length === 0) return null;
+    // Check if any order in the tab has a room_id
+    const orderWithRoom = tabOrders.find((o: any) => o.room_id);
+    if (orderWithRoom) {
+      return activeBookings.find((b: any) => b.unit_id === orderWithRoom.room_id) || null;
+    }
+    // Check if tab is a Room-service tab — match by unit name
+    if (tab.location_type === 'Room') {
+      return activeBookings.find((b: any) => b.resort_ops_units?.name === tab.location_detail) || null;
+    }
+    return null;
+  }, [tab, tabOrders, activeBookings]);
 
   return (
     <div className="flex flex-col h-full">
@@ -469,6 +547,24 @@ const TabBillPanel = ({
 
         {/* Payment Method */}
         <div className="space-y-3">
+          {/* In-stay guest: Room Folio as primary option */}
+          {tabRoomBooking && (
+            <>
+              <button
+                onClick={() => onRoomFolio(tabRoomBooking)}
+                disabled={busy}
+                className="w-full min-h-[56px] rounded-xl border-2 border-blue-400 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 font-display text-sm tracking-wider transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <BedDouble className="w-5 h-5" />
+                Room Folio — {tabRoomBooking.resort_ops_units?.name || 'Room'}
+              </button>
+              <div className="flex items-center gap-2">
+                <Separator className="flex-1" />
+                <span className="text-xs text-muted-foreground font-display tracking-wider">OR PAY NOW</span>
+                <Separator className="flex-1" />
+              </div>
+            </>
+          )}
           <p className="font-display text-xs tracking-wider text-muted-foreground">SELECT PAYMENT METHOD</p>
           <div className="grid grid-cols-2 gap-2">
             {paymentMethods.map(m => (

@@ -140,18 +140,32 @@ const WaitstaffBoard = () => {
     return stats;
   }, [tabOrders]);
 
-  // Close tab → send to Cashier
-  const handleCloseTab = async (tabId: string) => {
-    setClosingTabId(tabId);
+  // Group open tabs by location so same-table orders appear as one card
+  const groupedOpenTabs = useMemo(() => {
+    const groups = new Map<string, any[]>();
+    openTabs.forEach((tab: any) => {
+      const key = `${tab.location_type}||${tab.location_detail}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(tab);
+    });
+    return Array.from(groups.values()).map(tabs => ({
+      representative: tabs[0],
+      allIds: tabs.map((t: any) => t.id),
+    }));
+  }, [openTabs]);
+
+  // Close tab(s) → send to Cashier
+  const handleCloseTab = async (tabIds: string[]) => {
+    setClosingTabId(tabIds[0]);
     try {
-      // Mark all open orders on this tab as Served
-      const ordersOnTab = tabOrders.filter((o: any) => o.tab_id === tabId && o.status !== 'Paid');
+      // Mark all open orders on these tabs as Served
+      const ordersOnTab = tabOrders.filter((o: any) => tabIds.includes(o.tab_id) && o.status !== 'Paid');
       if (ordersOnTab.length > 0) {
         const orderIds = ordersOnTab.map((o: any) => o.id);
         await supabase.from('orders').update({ status: 'Served' }).in('id', orderIds);
       }
-      // Close the tab
-      await supabase.from('tabs').update({ status: 'Closed', closed_at: new Date().toISOString() }).eq('id', tabId);
+      // Close all tabs in the group
+      await supabase.from('tabs').update({ status: 'Closed', closed_at: new Date().toISOString() }).in('id', tabIds);
 
       qc.invalidateQueries({ queryKey: ['open-tabs-waitstaff'] });
       qc.invalidateQueries({ queryKey: ['service-orders'] });
@@ -201,13 +215,14 @@ const WaitstaffBoard = () => {
   return (
     <div className="h-full flex flex-col">
       {/* Open Tabs section */}
-      {openTabs.length > 0 && (
+      {groupedOpenTabs.length > 0 && (
         <div className="flex-shrink-0 border-b border-border bg-card/30 px-4 py-3 space-y-2">
-          <p className="font-display text-xs tracking-wider text-muted-foreground">OPEN TABS ({openTabs.length})</p>
+          <p className="font-display text-xs tracking-wider text-muted-foreground">OPEN TABS ({groupedOpenTabs.length})</p>
           <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
-            {openTabs.map((tab: any) => {
-              const stats = tabStats[tab.id] || { total: 0, orderCount: 0 };
-              const isClosing = closingTabId === tab.id;
+            {groupedOpenTabs.map(({ representative: tab, allIds }) => {
+              const combinedTotal = allIds.reduce((sum: number, id: string) => sum + (tabStats[id]?.total || 0), 0);
+              const combinedCount = allIds.reduce((sum: number, id: string) => sum + (tabStats[id]?.orderCount || 0), 0);
+              const isClosing = !!closingTabId && allIds.includes(closingTabId);
               return (
                 <div
                   key={tab.id}
@@ -233,8 +248,8 @@ const WaitstaffBoard = () => {
                       );
                     })()}
                     <div className="flex items-center justify-between">
-                      <span className="font-body text-xs text-muted-foreground">{stats.orderCount} order{stats.orderCount !== 1 ? 's' : ''}</span>
-                      <span className="font-display text-sm text-gold tabular-nums">₱{stats.total.toLocaleString()}</span>
+                      <span className="font-body text-xs text-muted-foreground">{combinedCount} order{combinedCount !== 1 ? 's' : ''}</span>
+                      <span className="font-display text-sm text-gold tabular-nums">₱{combinedTotal.toLocaleString()}</span>
                     </div>
                   </div>
                   <div className="flex gap-1.5 pt-1">
@@ -254,7 +269,7 @@ const WaitstaffBoard = () => {
                       <Plus className="w-3 h-3" /> Add Order
                     </button>
                     <button
-                      onClick={() => handleCloseTab(tab.id)}
+                      onClick={() => handleCloseTab(allIds)}
                       disabled={isClosing}
                       className="flex-1 min-h-[36px] rounded-lg bg-emerald-500/10 border border-emerald-500/40 text-emerald-400 font-display text-[11px] tracking-wider flex items-center justify-center gap-1 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
                     >
