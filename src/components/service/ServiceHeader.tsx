@@ -63,17 +63,7 @@ const ServiceHeader = ({ department, onOpenTab }: ServiceHeaderProps) => {
               <span>Order</span>
             </Button>
           )}
-          {canOrder && department === 'waitstaff' && onOpenTab && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onOpenTab}
-              className="gap-1.5 h-9 border-emerald-500 text-emerald-400 hover:bg-emerald-500/10 font-display text-xs tracking-wider"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Open Tab</span>
-            </Button>
-          )}
+
           <ThemeToggle />
           {staffName && (
             <span className="font-body text-xs text-muted-foreground hidden sm:inline truncate max-w-[140px]">{staffName}</span>
