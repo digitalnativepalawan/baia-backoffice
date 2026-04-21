@@ -21,6 +21,7 @@ import CheckoutModal from './CheckoutModal';
 import PrintBill from './PrintBill';
 import { toast } from 'sonner';
 import { logAudit } from '@/lib/auditLog';
+import { parsePriceFromDetails } from '@/lib/parsePriceFromDetails';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 
 const from = (t: string) => supabase.from(t as any) as any;
@@ -137,7 +138,12 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
   const unpaidOrdersSubtotal = unpaidOrdersTotal - unpaidOrdersSCTotal;
   const activeToursTotal = tours.filter((t: any) => t.status !== 'cancelled' && t.status !== 'completed').reduce((s: number, t: any) => s + Number(t.price || 0), 0);
   const activeRequestsTotal = requests.filter((r: any) => r.status !== 'cancelled' && r.status !== 'completed').reduce((s: number, r: any) => s + Number(r.price || 0), 0);
-  const balance = totalCharges - totalPayments + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
+  // Include completed requests that were never processed through the reception confirm flow
+  // (confirmed_by is empty) — these have no room_transaction and need to contribute to the balance
+  const completedRequestsTotal = requests
+    .filter((r: any) => r.status === 'completed' && !r.confirmed_by)
+    .reduce((s: number, r: any) => s + parsePriceFromDetails(r.details || ''), 0);
+  const balance = totalCharges - totalPayments + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal + completedRequestsTotal;
 
   const staffName = localStorage.getItem('emp_display_name') || localStorage.getItem('emp_name') || 'Staff';
 

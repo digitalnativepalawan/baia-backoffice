@@ -22,6 +22,7 @@ import { format, addDays } from 'date-fns';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { useRoomTransactions } from '@/hooks/useRoomTransactions';
 import { logAudit } from '@/lib/auditLog';
+import { parsePriceFromDetails } from '@/lib/parsePriceFromDetails';
 import { canEdit, canManage, hasAccess } from '@/lib/permissions';
 import { resolveOperationalUnitWorkflow } from '@/lib/receptionOccupancy';
 import ReceptionCalendar from '@/components/reception/ReceptionCalendar';
@@ -244,7 +245,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const { data: guestRequests = [] } = useQuery({
     queryKey: ['reception-guest-requests'],
     queryFn: async () => {
-      const { data } = await from('guest_requests').select('*').neq('status', 'cancelled').order('created_at', { ascending: false }).limit(20);
+      const { data } = await from('guest_requests').select('*').in('status', ['pending', 'confirmed']).order('created_at', { ascending: false }).limit(20);
       return (data || []) as any[];
     },
   });
@@ -433,10 +434,6 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   // ── TOUR/REQUEST ACTION HANDLERS ──
-  const parsePriceFromDetails = (details: string): number => {
-    const match = details.match(/₱([\d,]+)/);
-    return match ? Number(match[1].replace(/,/g, '')) : 0;
-  };
 
   const getRoomInfo = async (roomId: string) => {
     const { data } = await supabase.from('units').select('id, unit_name').eq('id', roomId).maybeSingle();
@@ -522,8 +519,8 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     if (!canDoEdit) { toast.error('View-only access'); return; }
     await from('guest_requests').update({ status, confirmed_by: staffName }).eq('id', id);
 
-    // Insert room charge when confirming a request with a price
-    if (status === 'confirmed' && req) {
+    // Insert room charge when confirming or completing a request with a price
+    if ((status === 'confirmed' || status === 'completed') && req) {
       const price = parsePriceFromDetails(req.details);
       if (price > 0 && req.room_id) {
         const room = await getRoomInfo(req.room_id);
