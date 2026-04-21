@@ -154,9 +154,8 @@ const CashierBoard = () => {
         }
       }
 
-      await supabase.from('orders').update(updateData).eq('id', selectedOrder.id);
-
-      // Create room_transaction so the charge appears on the guest's folio
+      // Insert room_transaction BEFORE updating the order so a failed insert
+      // prevents the order from being silently marked Paid without a folio entry.
       if (chargeToRoom && roomBooking) {
         const staffSession = getStaffSession();
         const items = (selectedOrder.items as any[]) || [];
@@ -166,7 +165,7 @@ const CashierBoard = () => {
         const serviceCharge = Number(selectedOrder.service_charge ?? 0);
         const grandTotal = Number(selectedOrder.total ?? subtotal + taxAmount + serviceCharge);
 
-        await (supabase.from('room_transactions' as any) as any).insert({
+        const { error: rtError } = await (supabase.from('room_transactions' as any) as any).insert({
           unit_id: roomBooking.unit_id,
           unit_name: roomBooking.resort_ops_units?.name || '',
           booking_id: roomBooking.id,
@@ -181,7 +180,14 @@ const CashierBoard = () => {
           staff_name: staffSession?.name || 'Staff',
           notes: `Room Folio – Order: ${items.map((i: any) => `${i.qty || i.quantity || 1}x ${i.name}`).join(', ')}`,
         });
+        if (rtError) {
+          console.error('[CashierBoard] room_transactions insert failed:', rtError);
+          toast.error('Failed to post charge to room folio. Please try again.');
+          return;
+        }
       }
+
+      await supabase.from('orders').update(updateData).eq('id', selectedOrder.id);
 
       setReceiptOrder({ ...selectedOrder, payment_type: paymentType });
       setSelectedOrder(null);
@@ -249,9 +255,18 @@ const CashierBoard = () => {
     }
     if (selectedOrder.guest_name) {
       const name = selectedOrder.guest_name.toLowerCase().trim();
-      return activeBookings.find((b: any) => {
+      const byName = activeBookings.find((b: any) => {
         const guestName = b.resort_ops_guests?.full_name?.toLowerCase()?.trim();
         return guestName && guestName === name;
+      });
+      if (byName) return byName;
+    }
+    // Fallback: match location_detail (e.g. "SUI(1)") against resort_ops_units.name
+    if (selectedOrder.location_detail) {
+      const locDetail = selectedOrder.location_detail.toLowerCase().trim();
+      return activeBookings.find((b: any) => {
+        const unitName = b.resort_ops_units?.name?.toLowerCase()?.trim();
+        return unitName && unitName === locDetail;
       }) || null;
     }
     return null;
