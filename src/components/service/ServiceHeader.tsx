@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Flame, GlassWater, BellRing, Banknote, ArrowLeft, Plus, UtensilsCrossed } from 'lucide-react';
+import { LogOut, Flame, GlassWater, BellRing, Banknote, ArrowLeft, Plus, UtensilsCrossed, Palmtree } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useMemo } from 'react';
 import { getStaffSession, clearStaffSession } from '@/lib/session';
@@ -12,10 +12,11 @@ const DEPT_CONFIG: Record<string, { label: string; icon: React.ReactNode; gradie
   reception: { label: 'Reception', icon: <BellRing className="w-4 h-4" />, gradient: 'from-[hsl(210,70%,50%)] to-[hsl(220,65%,40%)]' },
   cashier: { label: 'Cashier', icon: <Banknote className="w-4 h-4" />, gradient: 'from-[hsl(45,90%,50%)] to-[hsl(35,85%,42%)]' },
   waitstaff: { label: 'Waitstaff', icon: <UtensilsCrossed className="w-4 h-4" />, gradient: 'from-[hsl(145,60%,42%)] to-[hsl(155,55%,32%)]' },
+  tours: { label: 'Tours', icon: <Palmtree className="w-4 h-4" />, gradient: 'from-[hsl(175,60%,42%)] to-[hsl(185,55%,32%)]' },
 };
 
 interface ServiceHeaderProps {
-  department: 'kitchen' | 'bar' | 'reception' | 'cashier' | 'waitstaff';
+  department: 'kitchen' | 'bar' | 'reception' | 'cashier' | 'waitstaff' | 'tours';
 }
 
 const ServiceHeader = ({ department }: ServiceHeaderProps) => {
@@ -52,7 +53,7 @@ const ServiceHeader = ({ department }: ServiceHeaderProps) => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {canOrder && department !== 'reception' && department !== 'cashier' && (
+          {canOrder && department !== 'reception' && department !== 'cashier' && department !== 'tours' && (
             <Button
               size="sm"
               onClick={() => navigate(`/order-type?mode=staff&returnTo=/service/${department}`)}
