@@ -1,15 +1,12 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
-import WaitstaffOrderCard from './WaitstaffOrderCard';
-import ServiceOrderDetail from './ServiceOrderDetail';
-import { useResortProfile } from '@/hooks/useResortProfile';
-import { getStaffSession } from '@/lib/session';
-import { format, formatDistanceToNow } from 'date-fns';
-import { useNavigate } from 'react-router-dom';
+import { Clock, Flame, GlassWater, Home, Receipt, Send } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { formatDistanceToNow } from 'date-fns';
+import { groupOrdersByUnit, type OrderGroup } from '@/lib/groupOrders';
 
 const COL_COLORS: Record<string, string> = {
   New: 'border-t-gold',
@@ -17,80 +14,44 @@ const COL_COLORS: Record<string, string> = {
   Ready: 'border-t-emerald-400',
 };
 
-const KANBAN_COLS = ['New', 'Preparing', 'Ready'] as const;
+const STATUS_BORDER: Record<string, string> = {
+  New: 'border-l-gold',
+  Preparing: 'border-l-orange-400',
+  Ready: 'border-l-emerald-400',
+  Served: 'border-l-[hsl(210,70%,50%)]',
+  Paid: 'border-l-emerald-400',
+};
+
+// Check if a unit is in-house (COT or SUI prefix)
+const isInHouseUnit = (unitKey: string): boolean => {
+  if (!unitKey) return false;
+  const upperKey = unitKey.toUpperCase();
+  return upperKey.includes('COT') || upperKey.includes('SUI');
+};
 
 const WaitstaffBoard = () => {
   const qc = useQueryClient();
-  const navigate = useNavigate();
-  const { data: resortProfile } = useResortProfile();
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const [detailOrder, setDetailOrder] = useState<any | null>(null);
-  const [servedOpen, setServedOpen] = useState(false);
-  const [closingTabId, setClosingTabId] = useState<string | null>(null);
+  const [activeUnit, setActiveUnit] = useState<string | null>(null);
 
-  const permissions = useMemo(() => {
-    const s = getStaffSession();
-    return s?.permissions || [];
-  }, []);
-
-  // Audio unlock on first interaction
-  useEffect(() => {
-    const unlock = () => {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
-    };
-    document.addEventListener('touchstart', unlock, { once: true });
-    document.addEventListener('click', unlock, { once: true });
-    return () => {
-      document.removeEventListener('touchstart', unlock);
-      document.removeEventListener('click', unlock);
-    };
-  }, []);
-
-  // Chime at a distinct pitch for waitstaff notifications
-  const playChime = useCallback(() => {
-    const ctx = audioCtxRef.current;
-    if (!ctx || ctx.state !== 'running') return;
-    const now = ctx.currentTime;
-    const gain = ctx.createGain();
-    gain.connect(ctx.destination);
-    gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.7);
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(528, now);
-    osc.connect(gain);
-    osc.start(now);
-    osc.stop(now + 0.5);
-  }, []);
-
-  // Real-time subscription
   useEffect(() => {
     const channel = supabase
-      .channel('service-board-waitstaff')
+      .channel('waitstaff-board')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        qc.invalidateQueries({ queryKey: ['service-orders'] });
-        qc.invalidateQueries({ queryKey: ['tab-orders-waitstaff'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tabs' }, () => {
-        qc.invalidateQueries({ queryKey: ['open-tabs-waitstaff'] });
+        qc.invalidateQueries({ queryKey: ['waitstaff-orders'] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [qc]);
 
-  // Fetch active orders — shared query key with other service boards
   const { data: orders = [] } = useQuery({
-    queryKey: ['service-orders'],
+    queryKey: ['waitstaff-orders'],
     queryFn: async () => {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
       const { data } = await supabase
         .from('orders')
         .select('*')
-        .in('status', ['New', 'Preparing', 'Ready', 'Served', 'Paid'])
+        .in('status', ['New', 'Preparing', 'Ready'])
         .gte('created_at', start.toISOString())
         .order('created_at', { ascending: true })
         .limit(300);
@@ -99,201 +60,111 @@ const WaitstaffBoard = () => {
     refetchInterval: 5000,
   });
 
-  // Fetch open tabs
-  const { data: openTabs = [] } = useQuery({
-    queryKey: ['open-tabs-waitstaff'],
+  // Fetch active units so we can look up the correct units.id (NOT resort_ops_units.id)
+  const { data: activeUnits = [] } = useQuery({
+    queryKey: ['waitstaff-active-units'],
     queryFn: async () => {
       const { data } = await supabase
-        .from('tabs')
-        .select('*')
-        .eq('status', 'Open')
-        .order('created_at', { ascending: true });
-      return data || [];
+        .from('units')
+        .select('id, unit_name')
+        .eq('active', true)
+        .eq('status', 'occupied');
+      return (data || []) as { id: string; unit_name: string }[];
     },
-    refetchInterval: 10000,
+    refetchInterval: 60000,
   });
 
-  // Fetch orders for open tabs (for running totals + order counts)
-  const tabIds = useMemo(() => openTabs.map((t: any) => t.id), [openTabs]);
-  const { data: tabOrders = [] } = useQuery({
-    queryKey: ['tab-orders-waitstaff', tabIds],
-    enabled: tabIds.length > 0,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('orders')
-        .select('id, tab_id, total, status, items')
-        .in('tab_id', tabIds);
-      return data || [];
-    },
-    refetchInterval: 5000,
-  });
-
-  // Running totals per tab
-  const tabStats = useMemo(() => {
-    const stats: Record<string, { total: number; orderCount: number }> = {};
-    tabOrders.forEach((o: any) => {
-      if (!o.tab_id) return;
-      if (!stats[o.tab_id]) stats[o.tab_id] = { total: 0, orderCount: 0 };
-      stats[o.tab_id].total += Number(o.total || 0);
-      stats[o.tab_id].orderCount += 1;
-    });
-    return stats;
-  }, [tabOrders]);
-
-  // Close tab → send to Cashier
-  const handleCloseTab = async (tabId: string) => {
-    setClosingTabId(tabId);
-    try {
-      // Mark all open orders on this tab as Served
-      const ordersOnTab = tabOrders.filter((o: any) => o.tab_id === tabId && o.status !== 'Paid');
-      if (ordersOnTab.length > 0) {
-        const orderIds = ordersOnTab.map((o: any) => o.id);
-        await supabase.from('orders').update({ status: 'Served' }).in('id', orderIds);
-      }
-      // Close the tab
-      await supabase.from('tabs').update({ status: 'Closed', closed_at: new Date().toISOString() }).eq('id', tabId);
-
-      qc.invalidateQueries({ queryKey: ['open-tabs-waitstaff'] });
-      qc.invalidateQueries({ queryKey: ['service-orders'] });
-      qc.invalidateQueries({ queryKey: ['cashier-orders'] });
-      toast.success('Tab closed — sent to Cashier');
-    } catch {
-      toast.error('Failed to close tab');
-    } finally {
-      setClosingTabId(null);
-    }
-  };
-
-  // Bucket into columns — all orders visible across departments
-  const columns = useMemo(() => {
-    const cols: Record<string, any[]> = { New: [], Preparing: [], Ready: [], Served: [] };
-    orders.forEach((o: any) => {
-      if (o.status === 'New') cols.New.push(o);
-      else if (o.status === 'Preparing') cols.Preparing.push(o);
-      else if (o.status === 'Ready') cols.Ready.push(o);
-      else if (o.status === 'Served') cols.Served.push(o);
-    });
-    return cols;
+  const { activeGroups, allUnitKeys } = useMemo(() => {
+    const ag = groupOrdersByUnit(orders);
+    const keys = [...new Set(ag.map(g => g.key))];
+    return { activeGroups: ag, allUnitKeys: keys };
   }, [orders]);
 
-  // Play chime when new Ready orders appear
-  const prevReadyCountRef = useRef(0);
-  useEffect(() => {
-    if (columns.Ready.length > prevReadyCountRef.current) {
-      playChime();
+  const columns = useMemo(() => {
+    const cols: Record<string, OrderGroup[]> = { New: [], Preparing: [], Ready: [] };
+    const filtered = activeUnit ? activeGroups.filter(g => g.key === activeUnit) : activeGroups;
+    filtered.forEach(g => {
+      const col = g.worstStatus as keyof typeof cols;
+      if (cols[col]) cols[col].push(g);
+      else cols.New.push(g);
+    });
+    return cols;
+  }, [activeGroups, activeUnit]);
+
+  const handleSendGroup = useCallback(async (group: OrderGroup) => {
+    const ids = group.orders.map(o => o.id);
+    const isInHouse = isInHouseUnit(group.key);
+
+    if (isInHouse) {
+      // Look up the correct units.id (the one used as room_id throughout the app)
+      const matchedUnit = activeUnits.find(
+        u => u.unit_name.toLowerCase().trim() === group.key.toLowerCase().trim()
+          || u.unit_name.toLowerCase().trim() === group.label.toLowerCase().trim()
+      );
+
+      // Mark as Served — these are overnight guests, bill settles at reception checkout
+      // room_id links the order to the guest's folio so it shows in their Guest Portal bill
+      await supabase
+        .from('orders')
+        .update({
+          status: 'Served',
+          ...(matchedUnit ? { room_id: matchedUnit.id } : {}),
+        })
+        .in('id', ids);
+
+      qc.invalidateQueries({ queryKey: ['waitstaff-orders'] });
+      toast.success(`${group.label} — served, added to room bill`);
+    } else {
+      // Walk-in / dine-in guest: send to Cashier for immediate payment
+      await supabase
+        .from('orders')
+        .update({ status: 'Served' })
+        .in('id', ids);
+
+      qc.invalidateQueries({ queryKey: ['waitstaff-orders'] });
+      qc.invalidateQueries({ queryKey: ['cashier-orders'] });
+      toast.success(`${group.label} — sent to Cashier`);
     }
-    prevReadyCountRef.current = columns.Ready.length;
-  }, [columns.Ready.length, playChime]);
+  }, [qc, activeUnits]);
 
-  // Action handler — waitstaff can only mark orders as served (send to cashier)
-  const handleAction = async (orderId: string, action: string) => {
-    if (action !== 'mark-served') return;
-    const order = orders.find((o: any) => o.id === orderId);
-    if (!order) return;
-    await supabase.from('orders').update({ status: 'Served' }).eq('id', orderId);
-    qc.invalidateQueries({ queryKey: ['service-orders'] });
-    toast.success('Order sent to Cashier');
-  };
-
-  const totalActive =
-    columns.New.length + columns.Preparing.length + columns.Ready.length;
+  const totalActive = activeGroups.length;
 
   return (
     <div className="h-full flex flex-col">
-      {/* Open Tabs section */}
-      {openTabs.length > 0 && (
-        <div className="flex-shrink-0 border-b border-border bg-card/30 px-4 py-3 space-y-2">
-          <p className="font-display text-xs tracking-wider text-muted-foreground">OPEN TABS ({openTabs.length})</p>
-          <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
-            {openTabs.map((tab: any) => {
-              const stats = tabStats[tab.id] || { total: 0, orderCount: 0 };
-              const isClosing = closingTabId === tab.id;
-              return (
-                <div
-                  key={tab.id}
-                  className="flex-shrink-0 w-56 rounded-xl border border-border bg-card/90 p-3 space-y-2"
-                >
-                  <div className="flex items-start justify-between gap-1">
-                    <div className="min-w-0">
-                      <p className="font-display text-sm tracking-wider text-foreground truncate">
-                        🪑 {tab.location_detail}
-                      </p>
-                      <p className="font-body text-xs text-muted-foreground truncate">
-                        👤 {tab.guest_name || '—'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="space-y-0.5">
-                    {(() => {
-                      const openedAt = new Date(tab.created_at);
-                      return (
-                        <p className="font-body text-[11px] text-muted-foreground">
-                          🕐 {format(openedAt, 'h:mm a')} · {formatDistanceToNow(openedAt, { addSuffix: false })} ago
-                        </p>
-                      );
-                    })()}
-                    <div className="flex items-center justify-between">
-                      <span className="font-body text-xs text-muted-foreground">{stats.orderCount} order{stats.orderCount !== 1 ? 's' : ''}</span>
-                      <span className="font-display text-sm text-gold tabular-nums">₱{stats.total.toLocaleString()}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5 pt-1">
-                    <button
-                      onClick={() => {
-                        const params = new URLSearchParams({
-                          mode: 'staff',
-                          orderType: tab.location_type,
-                          location: tab.location_detail,
-                          guestName: tab.guest_name || '',
-                          returnTo: '/service/waitstaff',
-                        });
-                        navigate(`/menu?${params.toString()}`);
-                      }}
-                      className="flex-1 min-h-[36px] rounded-lg bg-gold/10 border border-gold/40 text-gold font-display text-[11px] tracking-wider flex items-center justify-center gap-1 hover:bg-gold/20 transition-colors"
-                    >
-                      <Plus className="w-3 h-3" /> Add Order
-                    </button>
-                    <button
-                      onClick={() => handleCloseTab(tab.id)}
-                      disabled={isClosing}
-                      className="flex-1 min-h-[36px] rounded-lg bg-emerald-500/10 border border-emerald-500/40 text-emerald-400 font-display text-[11px] tracking-wider flex items-center justify-center gap-1 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
-                    >
-                      {isClosing ? '…' : <><X className="w-3 h-3" /> Close Tab</>}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Summary strip */}
-      <div className="flex items-center gap-4 px-4 py-2 border-b border-border bg-card/50 flex-shrink-0">
-        <span className="font-display text-sm text-foreground tracking-wider">
-          {totalActive} Active
-        </span>
-        {columns.New.length > 0 && (
-          <span className="font-body text-xs text-gold font-bold blink-dot">
-            {columns.New.length} NEW
-          </span>
-        )}
-        {columns.Ready.length > 0 && (
-          <span className="font-body text-xs text-emerald-400 font-bold animate-pulse">
-            {columns.Ready.length} READY TO PICK UP
-          </span>
-        )}
+      {/* Unit filter pills */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card/50 flex-shrink-0 overflow-x-auto scrollbar-hide">
+        <button
+          onClick={() => setActiveUnit(null)}
+          className={`font-display text-xs tracking-wider px-3 py-1.5 rounded-full whitespace-nowrap transition-colors ${
+            !activeUnit ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground border border-border'
+          }`}
+        >
+          All ({totalActive})
+        </button>
+        {allUnitKeys.map(key => {
+          const group = activeGroups.find(g => g.key === key)!;
+          return (
+            <button
+              key={key}
+              onClick={() => setActiveUnit(activeUnit === key ? null : key)}
+              className={`font-display text-xs tracking-wider px-3 py-1.5 rounded-full whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                activeUnit === key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground border border-border'
+              } ${group.worstStatus === 'New' && activeUnit !== key ? 'tab-pulse' : ''}`}
+            >
+              {group.label}
+              <span className={`text-[10px] font-body font-bold rounded-full w-5 h-5 flex items-center justify-center ${
+                activeUnit === key ? 'bg-foreground/20 text-foreground' : 'bg-muted text-muted-foreground'
+              }`}>{group.items.length}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Kanban columns */}
       <div className="flex-1 overflow-auto">
-        {/* Desktop/Tablet: horizontal kanban */}
+        {/* Desktop: 3-column kanban */}
         <div className="hidden md:grid gap-3 p-4 md:grid-cols-3">
-          {KANBAN_COLS.map(col => (
-            <div
-              key={col}
-              className={`flex flex-col border-t-4 ${COL_COLORS[col]} rounded-t-lg bg-secondary/30`}
-            >
+          {(['New', 'Preparing', 'Ready'] as const).map(col => (
+            <div key={col} className={`flex flex-col border-t-4 ${COL_COLORS[col]} rounded-t-lg bg-secondary/30`}>
               <div className="px-3 py-2 flex items-center justify-between">
                 <h3 className="font-display text-sm tracking-wider text-foreground">{col}</h3>
                 <span className="font-body text-xs text-muted-foreground font-bold bg-muted rounded-full w-6 h-6 flex items-center justify-center">
@@ -301,161 +172,173 @@ const WaitstaffBoard = () => {
                 </span>
               </div>
               <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-2 max-h-[60vh]">
-                {columns[col].map((order: any) => (
-                  <WaitstaffOrderCard
-                    key={order.id}
-                    order={order}
-                    onAction={handleAction}
-                    onOpenDetail={setDetailOrder}
-                    compact
-                  />
+                {columns[col].map(group => (
+                  <GroupCard key={group.key} group={group} onSend={handleSendGroup} compact />
                 ))}
                 {columns[col].length === 0 && (
-                  <p className="font-body text-xs text-muted-foreground text-center py-8">
-                    No orders
-                  </p>
+                  <p className="font-body text-xs text-muted-foreground text-center py-8">No orders</p>
                 )}
               </div>
             </div>
           ))}
         </div>
 
-        {/* Served (collapsible) — Desktop */}
-        {columns.Served.length > 0 && (
-          <div className="hidden md:block px-4 pb-4">
-            <Collapsible open={servedOpen} onOpenChange={setServedOpen}>
-              <CollapsibleTrigger className="w-full flex items-center justify-between bg-secondary/50 border border-border rounded-lg px-4 py-3 hover:bg-secondary transition-colors">
-                <span className="font-display text-sm tracking-wider text-muted-foreground">
-                  ✓ Sent to Cashier Today ({columns.Served.length})
-                </span>
-                {servedOpen ? (
-                  <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                )}
-              </CollapsibleTrigger>
-              <CollapsibleContent className="pt-3">
-                <div className="grid gap-3 max-h-[40vh] overflow-y-auto grid-cols-3">
-                  {columns.Served.map((order: any) => (
-                    <WaitstaffOrderCard
-                      key={order.id}
-                      order={order}
-                      onOpenDetail={setDetailOrder}
-                      compact
-                    />
-                  ))}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
-        )}
-
-        {/* Mobile: tabbed view */}
-        <MobileTabView
-          columns={columns}
-          onAction={handleAction}
-          onOpenDetail={setDetailOrder}
-        />
+        {/* Mobile */}
+        <MobileTabView columns={columns} onSend={handleSendGroup} />
       </div>
-
-      {/* Detail drawer — read-only for waitstaff (no kitchen/bar actions) */}
-      <ServiceOrderDetail
-        order={detailOrder}
-        open={!!detailOrder}
-        onOpenChange={(open) => { if (!open) setDetailOrder(null); }}
-        permissions={permissions}
-        department="waitstaff"
-        onAction={async () => {}}
-        resortProfile={resortProfile}
-      />
     </div>
   );
 };
 
-/** Mobile tab-based view */
-const MobileTabView = ({
-  columns,
-  onAction,
-  onOpenDetail,
-}: {
-  columns: Record<string, any[]>;
-  onAction: (orderId: string, action: string) => Promise<void>;
-  onOpenDetail: (order: any) => void;
+/* ── Group Card ── */
+const GroupCard = ({ group, onSend, compact }: {
+  group: OrderGroup;
+  onSend: (g: OrderGroup) => Promise<void>;
+  compact?: boolean;
+}) => {
+  const [busy, setBusy] = useState(false);
+  const elapsed = formatDistanceToNow(new Date(group.oldestCreatedAt), { addSuffix: false });
+  const isReady = group.worstStatus === 'Ready';
+  const borderClass = STATUS_BORDER[group.worstStatus] || 'border-l-border';
+  const isInHouse = isInHouseUnit(group.key);
+
+  const foodItems = group.items.filter(i => { const d = i.department || 'kitchen'; return d === 'kitchen' || d === 'both'; });
+  const barItems = group.items.filter(i => i.department === 'bar' || i.department === 'both');
+
+  const handleSend = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    try { await onSend(group); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className={`rounded-xl border border-border/60 border-l-4 ${borderClass} bg-card/90 backdrop-blur-sm ${
+      group.worstStatus === 'New' ? 'new-order-card' : ''
+    } ${compact ? 'p-3' : 'p-4'}`}>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-2">
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-base text-foreground tracking-wider truncate">{group.label}</p>
+          {group.guestName && (
+            <p className="font-body text-xs text-muted-foreground mt-0.5 truncate">{group.guestName}</p>
+          )}
+          {group.orders.length > 1 && (
+            <p className="font-body text-[10px] text-muted-foreground">{group.orders.length} orders combined</p>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 text-muted-foreground flex-shrink-0 ml-2">
+          <Clock className="w-3 h-3" />
+          <span className="font-body text-[11px] tabular-nums">{elapsed}</span>
+        </div>
+      </div>
+
+      {/* Department icons + badges */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        {foodItems.length > 0 && (
+          <div className="flex items-center gap-1">
+            <Flame className="w-3 h-3 text-muted-foreground" />
+            <span className="font-body text-[11px] text-muted-foreground">{foodItems.length}</span>
+          </div>
+        )}
+        {barItems.length > 0 && (
+          <div className="flex items-center gap-1">
+            <GlassWater className="w-3 h-3 text-muted-foreground" />
+            <span className="font-body text-[11px] text-muted-foreground">{barItems.length}</span>
+          </div>
+        )}
+        {isInHouse && (
+          <Badge variant="outline" className="font-body text-[10px] h-5 gap-1 bg-blue-500/15 text-blue-400 border-blue-500/30">
+            <Home className="w-3 h-3" /> In-House
+          </Badge>
+        )}
+        {group.hasTab && !isInHouse && (
+          <Badge variant="outline" className="font-body text-[10px] h-5 gap-1 bg-[hsl(270,60%,55%,0.15)] text-[hsl(270,60%,70%)] border-[hsl(270,60%,55%,0.3)]">
+            <Receipt className="w-3 h-3" /> Tab
+          </Badge>
+        )}
+      </div>
+
+      {/* Items list */}
+      <div className="space-y-0.5 mb-3">
+        {group.items.slice(0, compact ? 4 : 8).map((item, idx) => (
+          <div key={idx} className="flex justify-between font-body">
+            <span className="text-foreground text-sm truncate mr-2">{item.qty}× {item.name}</span>
+            <span className="text-muted-foreground text-sm tabular-nums flex-shrink-0">₱{(item.price * item.qty).toLocaleString()}</span>
+          </div>
+        ))}
+        {group.items.length > (compact ? 4 : 8) && (
+          <p className="font-body text-[11px] text-muted-foreground">+{group.items.length - (compact ? 4 : 8)} more…</p>
+        )}
+      </div>
+
+      {/* Total + action — only show button when Ready */}
+      <div className="pt-2.5 border-t border-border/50">
+        <div className="flex items-center justify-between">
+          <span className="font-display text-lg text-gold tabular-nums">₱{group.total.toLocaleString()}</span>
+          {isReady && (
+            <Button
+              onClick={handleSend}
+              disabled={busy}
+              size="lg"
+              className={`font-display tracking-wider gap-2 text-sm min-h-[48px] px-5 rounded-xl ${
+                isInHouse
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              }`}
+            >
+              {busy ? 'Processing…' : isInHouse
+                ? <><Home className="w-5 h-5" /> Mark Served</>
+                : <><Send className="w-5 h-5" /> Send to Cashier</>
+              }
+            </Button>
+          )}
+        </div>
+        {isReady && isInHouse && (
+          <p className="font-body text-[10px] text-blue-400/70 mt-1.5">
+            Bill settles at reception during checkout
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ── Mobile Tab View ── */
+const MobileTabView = ({ columns, onSend }: {
+  columns: Record<string, OrderGroup[]>;
+  onSend: (g: OrderGroup) => Promise<void>;
 }) => {
   const [tab, setTab] = useState<string>('New');
-  const [servedOpen, setServedOpen] = useState(false);
-  const MOBILE_TABS = ['New', 'Preparing', 'Ready'] as const;
 
   return (
     <div className="md:hidden flex flex-col h-full">
       <div className="flex gap-1 px-3 py-2 overflow-x-auto scrollbar-hide flex-shrink-0">
-        {MOBILE_TABS.map(col => (
+        {(['New', 'Preparing', 'Ready'] as const).map(col => (
           <button
             key={col}
             onClick={() => setTab(col)}
             className={`font-display text-xs tracking-wider px-4 min-h-[48px] rounded-lg flex items-center gap-2 whitespace-nowrap transition-colors ${
-              tab === col
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary text-muted-foreground border border-border'
-            } ${col === 'Ready' && columns.Ready.length > 0 && tab !== col ? 'animate-pulse' : ''}`}
+              tab === col ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground border border-border'
+            } ${col === 'New' && columns.New.length > 0 && tab !== col ? 'tab-pulse' : ''}`}
           >
             {col}
             {columns[col].length > 0 && (
-              <span
-                className={`text-[11px] font-body font-bold rounded-full w-6 h-6 flex items-center justify-center ${
-                  tab === col ? 'bg-foreground/20 text-foreground' : 'bg-muted text-muted-foreground'
-                }`}
-              >
-                {columns[col].length}
-              </span>
+              <span className={`text-[11px] font-body font-bold rounded-full w-6 h-6 flex items-center justify-center ${
+                tab === col ? 'bg-foreground/20 text-foreground' : 'bg-muted text-muted-foreground'
+              }`}>{columns[col].length}</span>
             )}
           </button>
         ))}
       </div>
-
       <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-3">
         {columns[tab]?.length === 0 && (
-          <p className="font-body text-sm text-muted-foreground text-center py-12">
-            No {tab.toLowerCase()} orders
-          </p>
+          <p className="font-body text-sm text-muted-foreground text-center py-12">No {tab.toLowerCase()} orders</p>
         )}
-        {columns[tab]?.map((order: any) => (
-          <WaitstaffOrderCard
-            key={order.id}
-            order={order}
-            onAction={onAction}
-            onOpenDetail={onOpenDetail}
-          />
+        {columns[tab]?.map(group => (
+          <GroupCard key={group.key} group={group} onSend={onSend} />
         ))}
       </div>
-
-      {/* Served collapsible — Mobile */}
-      {columns.Served.length > 0 && (
-        <div className="px-3 pb-4 flex-shrink-0">
-          <Collapsible open={servedOpen} onOpenChange={setServedOpen}>
-            <CollapsibleTrigger className="w-full flex items-center justify-between bg-secondary/50 border border-border rounded-lg px-4 py-3">
-              <span className="font-display text-xs tracking-wider text-muted-foreground">
-                ✓ Sent to Cashier ({columns.Served.length})
-              </span>
-              {servedOpen ? (
-                <ChevronUp className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              )}
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-3 space-y-3 max-h-[40vh] overflow-y-auto">
-              {columns.Served.map((order: any) => (
-                <WaitstaffOrderCard
-                  key={order.id}
-                  order={order}
-                  onOpenDetail={onOpenDetail}
-                  compact
-                />
-              ))}
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
-      )}
     </div>
   );
 };
