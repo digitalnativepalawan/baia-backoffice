@@ -1501,7 +1501,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
       )}
 
       {/* Bill Agreement */}
-      {(transactions.length > 0 || unpaidOrders.length > 0) && (
+      {(transactions.length > 0 || unpaidOrders.length > 0) && !contestOpen && (
         <div className="border border-border rounded-lg p-4 space-y-3">
           {billAgreedAt ? (
             <div className="flex items-center gap-2 text-emerald-400">
@@ -1533,7 +1533,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
         </div>
       )}
 
-      {/* Contest Modal */}
+      {/* Contest Form */}
       {contestOpen && (
         <div className="border border-amber-500/40 rounded-lg p-4 space-y-3 bg-amber-500/5">
           <p className="font-display text-sm text-foreground">Contest This Bill</p>
