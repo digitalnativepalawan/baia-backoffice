@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ArrowLeft, Upload, Trash2, Plus, Users, FileText, UtensilsCrossed, MapPin, StickyNote, Sparkles, LogIn, LogOut, Camera, Download, Link as LinkIcon, ClipboardCheck, DollarSign, Pencil, Clock, CalendarPlus, ArrowRightLeft, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Upload, Trash2, Plus, Users, FileText, MapPin, StickyNote, Sparkles, LogIn, LogOut, Camera, Download, Link as LinkIcon, ClipboardCheck, DollarSign, Pencil, Clock, CalendarPlus, ArrowRightLeft, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, differenceInCalendarDays, addDays } from 'date-fns';
 import VibeCheckInForm from './vibe/VibeCheckInForm';
@@ -23,7 +23,8 @@ import { getManilaDateKey, resolveOperationalUnitWorkflow } from '@/lib/receptio
 
 const from = (table: string) => supabase.from(table as any) as any;
 
-type DetailTab = 'info' | 'orders' | 'documents' | 'notes' | 'tours' | 'vibe' | 'billing' | 'timeline';
+// Orders tab removed — F&B visible in Billing tab via RoomBillingTab
+type DetailTab = 'info' | 'documents' | 'notes' | 'tours' | 'vibe' | 'billing' | 'timeline';
 
 interface RoomsDashboardProps {
   readOnly?: boolean;
@@ -61,7 +62,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const [viewingVibeRecord, setViewingVibeRecord] = useState<any>(null);
   const [viewingHousekeepingOrder, setViewingHousekeepingOrder] = useState<any>(null);
 
-  // Modals
   const [showEditGuest, setShowEditGuest] = useState(false);
   const [editingTour, setEditingTour] = useState<any>(null);
   const [showExtendStay, setShowExtendStay] = useState(false);
@@ -69,7 +69,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const [extendDate, setExtendDate] = useState('');
   const [changeRoomId, setChangeRoomId] = useState('');
 
-  // Check-in form state
   const [checkInForm, setCheckInForm] = useState({
     guestName: '', phone: '', email: '',
     checkIn: new Date().toISOString().split('T')[0],
@@ -80,13 +79,11 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const [guestSearchResults, setGuestSearchResults] = useState<any[]>([]);
   const [showGuestDropdown, setShowGuestDropdown] = useState(false);
 
-  // Document form state
   const [docType, setDocType] = useState('passport');
   const [docNotes, setDocNotes] = useState('');
   const [docUrl, setDocUrl] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
 
-  // Tour form state
   const [tourName, setTourName] = useState('');
   const [tourDate, setTourDate] = useState('');
   const [tourPax, setTourPax] = useState('1');
@@ -96,14 +93,12 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const [tourNotes, setTourNotes] = useState('');
   const [tourCatalogMode, setTourCatalogMode] = useState<'catalog' | 'other'>('catalog');
 
-  // Note form
   const [noteContent, setNoteContent] = useState('');
   const [noteType, setNoteType] = useState('general');
   const [noteImageUrl, setNoteImageUrl] = useState('');
   const [showNoteUrl, setShowNoteUrl] = useState(false);
   const noteTextRef = useRef<HTMLTextAreaElement>(null);
 
-  // Room types (for base rates)
   const { data: roomTypes = [] } = useQuery({
     queryKey: ['room-types'],
     queryFn: async () => {
@@ -112,7 +107,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     },
   });
 
-  // Units
   const { data: units = [] } = useQuery({
     queryKey: ['rooms-units'],
     queryFn: async () => {
@@ -121,7 +115,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     },
   });
 
-  // All guests for combo search
   const { data: allGuests = [] } = useQuery({
     queryKey: ['all-guests'],
     queryFn: async () => {
@@ -130,7 +123,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     },
   });
 
-  // Resort ops units (for booking linkage)
   const { data: resortUnits = [] } = useQuery({
     queryKey: ['resort-ops-units'],
     queryFn: async () => {
@@ -139,7 +131,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     },
   });
 
-  // Bookings (current)
   const { data: bookings = [] } = useQuery({
     queryKey: ['rooms-bookings'],
     queryFn: async () => {
@@ -148,27 +139,22 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     },
   });
 
-  // All vibe records (for grid view badges)
   const { data: vibeRecords = [] } = useQuery({
     queryKey: ['vibe-records'],
     queryFn: async () => {
-      const { data } = await from('guest_vibe_records')
-        .select('*').eq('checked_out', false).order('created_at', { ascending: false });
+      const { data } = await from('guest_vibe_records').select('*').eq('checked_out', false).order('created_at', { ascending: false });
       return (data || []) as any[];
     },
   });
 
-  // Housekeeping orders (active)
   const { data: housekeepingOrders = [] } = useQuery({
     queryKey: ['housekeeping-orders'],
     queryFn: async () => {
-      const { data } = await from('housekeeping_orders')
-        .select('*').neq('status', 'completed').order('created_at', { ascending: false });
+      const { data } = await from('housekeeping_orders').select('*').neq('status', 'completed').order('created_at', { ascending: false });
       return (data || []) as any[];
     },
   });
 
-  // Employees for housekeeper names
   const { data: employees = [] } = useQuery({
     queryKey: ['employees-active'],
     queryFn: async () => {
@@ -177,7 +163,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     },
   });
 
-  // Catalog data for tour dropdown
   const { data: toursConfig = [] } = useQuery({
     queryKey: ['tours-config-catalog'],
     queryFn: async () => {
@@ -185,6 +170,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       return (data || []) as any[];
     },
   });
+
   const { data: rentalRates = [] } = useQuery({
     queryKey: ['rental-rates-catalog'],
     queryFn: async () => {
@@ -192,6 +178,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       return (data || []) as any[];
     },
   });
+
   const { data: transportRates = [] } = useQuery({
     queryKey: ['transport-rates-catalog'],
     queryFn: async () => {
@@ -200,52 +187,23 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     },
   });
 
-  // Resolve resort_ops_unit for a room name
-  const resolveResortUnit = (roomName: string) => {
-    return resortUnits.find((ru: any) => ru.name.toLowerCase().trim() === roomName.toLowerCase().trim());
-  };
+  const resolveResortUnit = (roomName: string) =>
+    resortUnits.find((ru: any) => ru.name.toLowerCase().trim() === roomName.toLowerCase().trim());
 
   const today = getManilaDateKey();
 
   const getUnitWorkflow = (unit: any) => {
     const resortUnit = resolveResortUnit(unit.name);
-    const unitBookings = resortUnit
-      ? bookings.filter((b: any) => b.unit_id === resortUnit.id)
-      : [];
-
-    return resolveOperationalUnitWorkflow({
-      bookings: unitBookings,
-      rawStatus: unit.status,
-      today,
-    });
+    const unitBookings = resortUnit ? bookings.filter((b: any) => b.unit_id === resortUnit.id) : [];
+    return resolveOperationalUnitWorkflow({ bookings: unitBookings, rawStatus: unit.status, today });
   };
 
-  // Get unit status
   const getUnitStatus = (unit: any): 'occupied' | 'to_clean' | 'ready' => getUnitWorkflow(unit).displayStatus;
-
-  // Active booking
   const getActiveBooking = (unit: any) => getUnitWorkflow(unit).activeBooking;
 
   const currentBooking = getActiveBooking(selectedUnit);
   const guestId = (currentBooking as any)?.guest_id;
 
-  // Orders for selected unit
-  const { data: unitOrders = [] } = useQuery({
-    queryKey: ['rooms-orders', selectedUnit?.name, currentBooking?.id],
-    enabled: !!selectedUnit && !!currentBooking,
-    queryFn: async () => {
-      const { data } = await supabase.from('orders').select('*')
-        .eq('order_type', 'Room')
-        .eq('location_detail', selectedUnit!.name)
-        .gte('created_at', currentBooking!.check_in + 'T00:00:00')
-        .lte('created_at', currentBooking!.check_out + 'T23:59:59')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      return data || [];
-    },
-  });
-
-  // Documents
   const { data: documents = [] } = useQuery({
     queryKey: ['guest-documents', selectedUnit?.name, guestId],
     enabled: !!selectedUnit && !!guestId,
@@ -255,7 +213,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     },
   });
 
-  // Guest notes
   const { data: notes = [] } = useQuery({
     queryKey: ['guest-notes', selectedUnit?.name, currentBooking?.id],
     enabled: !!selectedUnit && !!currentBooking,
@@ -265,7 +222,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     },
   });
 
-  // Guest tours
   const { data: tours = [] } = useQuery({
     queryKey: ['guest-tours', selectedUnit?.name, currentBooking?.id],
     enabled: !!selectedUnit && !!currentBooking,
@@ -282,27 +238,20 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     return emp ? (emp.display_name || emp.name) : '';
   };
 
-  // --- STATUS LABELS ---
   const getGuestStatusLabels = (booking: any) => {
     if (!booking) return [];
     const labels: { text: string; color: string }[] = [];
     labels.push({ text: 'Checked In', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' });
-    const platform = booking.platform || '';
-    if (platform === 'Friends & Family') {
+    if (booking.platform === 'Friends & Family')
       labels.push({ text: '👨‍👩‍👧 F&F', color: 'bg-purple-500/20 text-purple-400 border-purple-500/40' });
-    }
     const stayDays = differenceInCalendarDays(new Date(booking.check_out + 'T00:00:00'), new Date(booking.check_in + 'T00:00:00'));
-    if (stayDays >= 7) {
+    if (stayDays >= 7)
       labels.push({ text: 'Long Stay', color: 'bg-blue-500/20 text-blue-400 border-blue-500/40' });
-    }
-    if ((booking.notes || '').includes('[VIP]')) {
+    if ((booking.notes || '').includes('[VIP]'))
       labels.push({ text: '⭐ VIP', color: 'bg-amber-500/20 text-amber-400 border-amber-500/40' });
-    }
-    // Problem Guest from vibe records
     const unitVibes = vibeRecords.filter((v: any) => v.unit_name === selectedUnit?.name && !v.checked_out);
-    if (unitVibes.some((v: any) => (v.review_risk_level || []).includes('High'))) {
+    if (unitVibes.some((v: any) => (v.review_risk_level || []).includes('High')))
       labels.push({ text: '⚠ Problem', color: 'bg-destructive/20 text-destructive border-destructive/40' });
-    }
     return labels;
   };
 
@@ -312,11 +261,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     if (!selectedUnit) return;
     const content = noteImageUrl.trim() ? `[IMAGE]:${noteImageUrl.trim()}` : noteContent.trim();
     await from('guest_notes').insert({
-      booking_id: currentBooking?.id || null,
-      unit_name: selectedUnit.name,
-      note_type: noteType,
-      content,
-      created_by: localStorage.getItem('emp_name') || 'admin',
+      booking_id: currentBooking?.id || null, unit_name: selectedUnit.name,
+      note_type: noteType, content, created_by: localStorage.getItem('emp_name') || 'admin',
     });
     setNoteContent(''); setNoteImageUrl(''); setShowNoteUrl(false);
     qc.invalidateQueries({ queryKey: ['guest-notes', selectedUnit.name, currentBooking?.id] });
@@ -332,10 +278,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     if (error) { toast.error('Upload failed'); return; }
     const { data: urlData } = supabase.storage.from('guest-documents').getPublicUrl(path);
     await from('guest_notes').insert({
-      booking_id: currentBooking?.id || null,
-      unit_name: selectedUnit.name,
-      note_type: noteType,
-      content: `[IMAGE]:${urlData.publicUrl}`,
+      booking_id: currentBooking?.id || null, unit_name: selectedUnit.name,
+      note_type: noteType, content: `[IMAGE]:${urlData.publicUrl}`,
       created_by: localStorage.getItem('emp_name') || 'admin',
     });
     qc.invalidateQueries({ queryKey: ['guest-notes', selectedUnit.name, currentBooking?.id] });
@@ -352,24 +296,28 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const addTour = async () => {
     if (readOnly) { toast.error('View-only access'); return; }
     if (!tourName.trim() || !tourDate || !selectedUnit) return;
-    await from('guest_tours').insert({
-      booking_id: currentBooking?.id || null,
-      unit_name: selectedUnit.name,
-      tour_name: tourName.trim(),
-      tour_date: tourDate,
-      pax: parseInt(tourPax) || 1,
-      price: parseFloat(tourPrice) || 0,
-      provider: tourProvider.trim(),
-      pickup_time: tourPickupTime.trim(),
-      notes: tourNotes.trim(),
+    const tourData = {
+      booking_id: currentBooking?.id || null, unit_name: selectedUnit.name,
+      tour_name: tourName.trim(), tour_date: tourDate, pax: parseInt(tourPax) || 1,
+      price: parseFloat(tourPrice) || 0, provider: tourProvider.trim(),
+      pickup_time: tourPickupTime.trim(), notes: tourNotes.trim(),
+    };
+    await from('guest_tours').insert(tourData);
+    const staffName = localStorage.getItem('emp_name') || '';
+    await (supabase.from('tour_bookings') as any).insert({
+      booking_id: currentBooking?.id || null, room_id: selectedUnit.id || null,
+      guest_name: currentBooking?.resort_ops_guests?.full_name || selectedUnit.name,
+      tour_name: tourData.tour_name, tour_date: tourData.tour_date, pax: tourData.pax,
+      price: tourData.price, pickup_time: tourData.pickup_time, notes: tourData.notes,
+      status: 'confirmed', confirmed_by: staffName,
     });
     import('@/lib/telegram').then(({ notifyTelegram }) => {
       notifyTelegram('tours,managers', `🚐 New Booking\n${currentBooking?.resort_ops_guests?.full_name || selectedUnit.name}\n${tourName.trim()} - ${tourDate}${tourPickupTime.trim() ? ' ' + tourPickupTime.trim() : ''}`);
     });
     setTourName(''); setTourDate(''); setTourPax('1'); setTourPrice('');
-    setTourProvider(''); setTourPickupTime(''); setTourNotes('');
-    setTourCatalogMode('catalog');
+    setTourProvider(''); setTourPickupTime(''); setTourNotes(''); setTourCatalogMode('catalog');
     qc.invalidateQueries({ queryKey: ['guest-tours', selectedUnit.name, currentBooking?.id] });
+    qc.invalidateQueries({ queryKey: ['tours-board'] });
     toast.success('Tour added');
   };
 
@@ -387,10 +335,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     toast.success('Tour deleted');
   };
 
-  // Document upload with compression
   const uploadDocument = async (file: File) => {
-    if (readOnly) { toast.error('View-only access'); return; }
-    if (!selectedUnit) return;
+    if (readOnly || !selectedUnit) return;
     const compressed = file.type.startsWith('image/') ? await compressImage(file) : file;
     const ext = compressed.name.split('.').pop();
     const folder = guestId || selectedUnit.name.replace(/\s+/g, '_');
@@ -399,11 +345,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     if (error) { toast.error('Upload failed'); return; }
     const { data: urlData } = supabase.storage.from('guest-documents').getPublicUrl(path);
     await from('guest_documents').insert({
-      guest_id: guestId || null,
-      unit_name: selectedUnit.name,
-      document_type: docType,
-      image_url: urlData.publicUrl,
-      notes: docNotes.trim() || null,
+      guest_id: guestId || null, unit_name: selectedUnit.name,
+      document_type: docType, image_url: urlData.publicUrl, notes: docNotes.trim() || null,
     });
     setDocNotes('');
     qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit.name, guestId] });
@@ -411,14 +354,10 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   };
 
   const addDocumentUrl = async () => {
-    if (readOnly) { toast.error('View-only access'); return; }
-    if (!docUrl.trim() || !selectedUnit) return;
+    if (readOnly || !docUrl.trim() || !selectedUnit) return;
     await from('guest_documents').insert({
-      guest_id: guestId || null,
-      unit_name: selectedUnit.name,
-      document_type: docType,
-      image_url: docUrl.trim(),
-      notes: docNotes.trim() || null,
+      guest_id: guestId || null, unit_name: selectedUnit.name,
+      document_type: docType, image_url: docUrl.trim(), notes: docNotes.trim() || null,
     });
     setDocUrl(''); setDocNotes(''); setShowUrlInput(false);
     qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit.name, guestId] });
@@ -427,10 +366,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
 
   const deleteDocument = async (doc: any) => {
     if (readOnly) { toast.error('View-only access'); return; }
-    const path = doc.image_url.split('/guest-documents/')[1];
-    if (path && !doc.image_url.startsWith('http://') && !doc.image_url.includes('//') === false) {
-      await supabase.storage.from('guest-documents').remove([path]);
-    }
     await from('guest_documents').delete().eq('id', doc.id);
     qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit?.name, guestId] });
     toast.success('Document deleted');
@@ -442,7 +377,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   };
 
   const getTodayArrivalBooking = (unit: any) => getUnitWorkflow(unit).pendingArrival;
-
   const getTodayDepartureBooking = (unit: any) => getUnitWorkflow(unit).pendingDeparture;
 
   const getUnitVibeRisk = (unitName: string) => {
@@ -450,50 +384,38 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     return records.some((v: any) => (v.review_risk_level || []).includes('High'));
   };
 
-  const getHousekeepingOrder = (unitName: string) => {
-    return housekeepingOrders.find((o: any) => o.unit_name === unitName);
-  };
+  const getHousekeepingOrder = (unitName: string) =>
+    housekeepingOrders.find((o: any) => o.unit_name === unitName);
 
-  // Upcoming booking for Ready rooms (next 7 days)
   const getUpcomingBooking = (unit: any) => {
-    const today = new Date().toISOString().split('T')[0];
+    const t = new Date().toISOString().split('T')[0];
     const weekEnd = addDays(new Date(), 6).toISOString().split('T')[0];
     const resortUnit = resolveResortUnit(unit.name);
     if (!resortUnit) return null;
-    return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in > today && b.check_in <= weekEnd) || null;
+    return bookings.find((b: any) => b.unit_id === resortUnit.id && b.check_in > t && b.check_in <= weekEnd) || null;
   };
 
-  // --- CHECK-IN ---
   const handleCheckIn = async () => {
     if (readOnly) { toast.error('View-only access'); return; }
     if (!selectedUnit || !checkInForm.guestName.trim() || !checkInForm.checkOut) {
       toast.error('Guest name and check-out date are required'); return;
     }
-    if (getUnitStatus(selectedUnit) === 'to_clean') {
-      toast.error('Complete housekeeping before check-in'); return;
-    }
-    if (checkInForm.checkOut <= checkInForm.checkIn) {
-      toast.error('Check-out must be after check-in'); return;
-    }
-    // Conflict check: ensure no overlapping booking for this unit
+    if (getUnitStatus(selectedUnit) === 'to_clean') { toast.error('Complete housekeeping before check-in'); return; }
+    if (checkInForm.checkOut <= checkInForm.checkIn) { toast.error('Check-out must be after check-in'); return; }
     const resortUnitForCheck = resolveResortUnit(selectedUnit.name);
     if (resortUnitForCheck) {
       const conflicting = (bookings as any[]).find((b: any) =>
-        b.unit_id === resortUnitForCheck.id &&
-        b.check_in < checkInForm.checkOut &&
-        b.check_out > checkInForm.checkIn
+        b.unit_id === resortUnitForCheck.id && b.check_in < checkInForm.checkOut && b.check_out > checkInForm.checkIn
       );
       if (conflicting) {
         const conflictGuest = conflicting.resort_ops_guests?.full_name || conflicting.platform || 'another guest';
-        toast.error(`Double booking! ${selectedUnit.name} is already booked by ${conflictGuest} (${conflicting.check_in} to ${conflicting.check_out}). Delete that booking first or pick another room.`);
-        setCheckingIn(false);
+        toast.error(`Double booking! ${selectedUnit.name} is already booked by ${conflictGuest}.`);
         return;
       }
     }
     setCheckingIn(true);
     try {
-      const { data: existingGuest } = await from('resort_ops_guests')
-        .select('id').ilike('full_name', checkInForm.guestName.trim()).maybeSingle() as any;
+      const { data: existingGuest } = await from('resort_ops_guests').select('id').ilike('full_name', checkInForm.guestName.trim()).maybeSingle() as any;
       let gId: string;
       if (existingGuest) {
         gId = existingGuest.id;
@@ -507,10 +429,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       }
       let resortUnit = resolveResortUnit(selectedUnit.name);
       if (!resortUnit) {
-        const { data: newUnit, error: uErr } = await from('resort_ops_units').insert({
-          name: selectedUnit.name, type: 'room', capacity: 2,
-        }).select('id').single() as any;
-        if (uErr || !newUnit) throw new Error('Failed to create unit mapping');
+        const { data: newUnit } = await from('resort_ops_units').insert({ name: selectedUnit.name, type: 'room', capacity: 2 }).select('id').single() as any;
+        if (!newUnit) throw new Error('Failed to create unit mapping');
         resortUnit = { id: newUnit.id };
         qc.invalidateQueries({ queryKey: ['resort-ops-units'] });
       }
@@ -531,12 +451,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
       qc.invalidateQueries({ queryKey: ['rooms-units'] });
       setShowCheckInForm(false);
-      setCheckInForm({
-        guestName: '', phone: '', email: '',
-        checkIn: new Date().toISOString().split('T')[0],
-        checkOut: '', adults: '1', children: '0', platform: 'Hotel Guest', roomRate: '0', notes: '', specialRequests: '',
-      });
-      toast.success(`${checkInForm.guestName.trim()} checked in to ${selectedUnit.name}. Room password: ${roomPassword}`, { duration: 10000 });
+      setCheckInForm({ guestName: '', phone: '', email: '', checkIn: new Date().toISOString().split('T')[0], checkOut: '', adults: '1', children: '0', platform: 'Hotel Guest', roomRate: '0', notes: '', specialRequests: '' });
+      toast.success(`${checkInForm.guestName.trim()} checked in to ${selectedUnit.name}. Password: ${roomPassword}`, { duration: 10000 });
     } catch (err: any) {
       toast.error(err.message || 'Check-in failed');
     } finally {
@@ -544,24 +460,15 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     }
   };
 
-  // --- CHECK-OUT ---
   const handleCheckOut = async () => {
-    if (readOnly) { toast.error('View-only access'); return; }
-    if (!currentBooking) return;
-    const today = new Date().toISOString().split('T')[0];
-    const { error } = await from('resort_ops_bookings').update({
-      check_out: today,
-      checked_out_at: new Date().toISOString(),
-    }).eq('id', currentBooking.id);
+    if (readOnly || !currentBooking) return;
+    const t = new Date().toISOString().split('T')[0];
+    const { error } = await from('resort_ops_bookings').update({ check_out: t, checked_out_at: new Date().toISOString() }).eq('id', currentBooking.id);
     if (error) { toast.error('Checkout failed'); return; }
     await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', selectedUnit.id);
     const existingOrder = housekeepingOrders.find((o: any) => o.unit_name === selectedUnit.name);
     if (!existingOrder) {
-      await from('housekeeping_orders').insert({
-        unit_name: selectedUnit.name,
-        room_type_id: (selectedUnit as any).room_type_id || null,
-        status: 'pending_inspection',
-      });
+      await from('housekeeping_orders').insert({ unit_name: selectedUnit.name, room_type_id: (selectedUnit as any).room_type_id || null, status: 'pending_inspection' });
     }
     qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
     qc.invalidateQueries({ queryKey: ['rooms-units'] });
@@ -569,7 +476,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     toast.success('Guest checked out — housekeeping order created');
   };
 
-  // --- EXTEND STAY ---
   const handleExtendStay = async () => {
     if (!currentBooking || !extendDate) return;
     if (extendDate <= currentBooking.check_out) { toast.error('New date must be after current check-out'); return; }
@@ -579,7 +485,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     toast.success(`Stay extended to ${format(new Date(extendDate + 'T00:00:00'), 'MMM d, yyyy')}`);
   };
 
-  // --- CHANGE ROOM ---
   const handleChangeRoom = async () => {
     if (!currentBooking || !changeRoomId) return;
     const newUnit = units.find((u: any) => u.id === changeRoomId);
@@ -587,7 +492,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     const newResortUnit = resolveResortUnit(newUnit.name);
     if (!newResortUnit) { toast.error('Target room not found in resort ops'); return; }
     await from('resort_ops_bookings').update({ unit_id: newResortUnit.id }).eq('id', currentBooking.id);
-    // Old unit → to_clean, new unit → occupied
     await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', selectedUnit.id);
     await supabase.from('units').update({ status: 'occupied' } as any).eq('id', changeRoomId);
     qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
@@ -597,24 +501,14 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     toast.success(`Guest moved to ${newUnit.name}`);
   };
 
-  // ── HOUSEKEEPING INSPECTION VIEW ──
   if (viewingHousekeepingOrder) {
     const hkMode = viewingHousekeepingOrder.status === 'pre_inspection' ? 'pre_inspection' : 'cleaning';
     return (
-      <HousekeepingInspection
-        order={viewingHousekeepingOrder}
-        mode={hkMode}
-        onClose={() => {
-          setViewingHousekeepingOrder(null);
-          qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });
-          qc.invalidateQueries({ queryKey: ['rooms-units'] });
-          qc.invalidateQueries({ queryKey: ['checkout-hk-clearance'] });
-        }}
-      />
+      <HousekeepingInspection order={viewingHousekeepingOrder} mode={hkMode}
+        onClose={() => { setViewingHousekeepingOrder(null); qc.invalidateQueries({ queryKey: ['housekeeping-orders'] }); qc.invalidateQueries({ queryKey: ['rooms-units'] }); }} />
     );
   }
 
-  // DETAIL VIEW
   if (selectedUnit) {
     const booking = getActiveBooking(selectedUnit);
     const guest = (booking as any)?.resort_ops_guests;
@@ -622,29 +516,15 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     const statusLabels = getGuestStatusLabels(booking);
     const readyUnitsForChange = units.filter((u: any) => getUnitStatus(u) === 'ready' && u.id !== selectedUnit.id);
 
-    // Vibe sub-views
     if (detailTab === 'vibe' && vibeMode === 'form') {
-      return (
-        <VibeCheckInForm
-          unitName={selectedUnit.name}
-          existingRecord={editingVibeRecord}
-          onClose={() => { setVibeMode('list'); setEditingVibeRecord(null); }}
-        />
-      );
+      return <VibeCheckInForm unitName={selectedUnit.name} existingRecord={editingVibeRecord} onClose={() => { setVibeMode('list'); setEditingVibeRecord(null); }} />;
     }
     if (detailTab === 'vibe' && vibeMode === 'detail' && viewingVibeRecord) {
-      return (
-        <VibeDetailView
-          record={viewingVibeRecord}
-          onBack={() => { setVibeMode('list'); setViewingVibeRecord(null); }}
-          onEdit={() => { setEditingVibeRecord(viewingVibeRecord); setVibeMode('form'); }}
-        />
-      );
+      return <VibeDetailView record={viewingVibeRecord} onBack={() => { setVibeMode('list'); setViewingVibeRecord(null); }} onEdit={() => { setEditingVibeRecord(viewingVibeRecord); setVibeMode('form'); }} />;
     }
 
     return (
       <div className="space-y-4">
-        {/* Header */}
         <div className="flex items-center gap-3">
           <Button size="sm" variant="ghost" onClick={() => { if (singleUnitMode && onClose) { onClose(); } else { setSelectedUnit(null); setShowCheckInForm(false); } }}>
             <ArrowLeft className="w-4 h-4" />
@@ -655,16 +535,12 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           </Badge>
         </div>
 
-        {/* Status labels (PART 9) */}
         {booking && statusLabels.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
-            {statusLabels.map(l => (
-              <Badge key={l.text} variant="outline" className={`font-body text-xs ${l.color}`}>{l.text}</Badge>
-            ))}
+            {statusLabels.map(l => <Badge key={l.text} variant="outline" className={`font-body text-xs ${l.color}`}>{l.text}</Badge>)}
           </div>
         )}
 
-        {/* Quick Action Bar (PART 8) */}
         {booking && !readOnly && (
           <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
             <Button size="sm" variant="outline" className="font-display text-xs tracking-wider gap-1 min-h-[36px] whitespace-nowrap flex-shrink-0"
@@ -688,7 +564,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           </div>
         )}
 
-        {/* Housekeeping banner */}
         {unitHkOrder && !readOnly && (() => {
           const s = unitHkOrder.status;
           const isCleared = s === 'inspection_cleared';
@@ -700,38 +575,22 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           const icon = isCleared ? '✅' : isPreInspect ? '🔍' : isCleaning ? '🧹' : '📋';
           const label = isCleared ? 'Cleared for Checkout' : isPreInspect ? 'Pre-Checkout Inspection Needed' : isCleaning ? 'Cleaning in Progress' : s === 'pending_inspection' ? 'Pending Inspection' : s;
           const clickable = !isCleared;
-
           const content = (
             <>
               <div className="flex items-center gap-2">
                 <span className="text-base">{icon}</span>
-                <span className={`font-display text-sm ${textColor} tracking-wider`}>
-                  {label}
-                </span>
+                <span className={`font-display text-sm ${textColor} tracking-wider`}>{label}</span>
               </div>
-              {unitHkOrder.assigned_to && (
-                <p className="font-body text-xs text-muted-foreground mt-1">Assigned to: {getEmployeeName(unitHkOrder.assigned_to)}</p>
-              )}
-              {isCleared && unitHkOrder.damage_notes && (
-                <p className="font-body text-xs text-muted-foreground mt-1">Notes: {unitHkOrder.damage_notes}</p>
-              )}
+              {unitHkOrder.assigned_to && <p className="font-body text-xs text-muted-foreground mt-1">Assigned to: {getEmployeeName(unitHkOrder.assigned_to)}</p>}
+              {isCleared && unitHkOrder.damage_notes && <p className="font-body text-xs text-muted-foreground mt-1">Notes: {unitHkOrder.damage_notes}</p>}
               {clickable && <p className={`font-body text-xs ${textColor} opacity-70 mt-1`}>Tap to open →</p>}
             </>
           );
-
-          return clickable ? (
-            <button
-              onClick={() => setViewingHousekeepingOrder(unitHkOrder)}
-              className={`w-full border-2 ${borderColor} ${bgColor} rounded-lg p-3 text-left`}
-            >
-              {content}
-            </button>
-          ) : (
-            <div className={`w-full border-2 ${borderColor} ${bgColor} rounded-lg p-3`}>
-              {content}
-            </div>
-          );
+          return clickable
+            ? <button onClick={() => setViewingHousekeepingOrder(unitHkOrder)} className={`w-full border-2 ${borderColor} ${bgColor} rounded-lg p-3 text-left`}>{content}</button>
+            : <div className={`w-full border-2 ${borderColor} ${bgColor} rounded-lg p-3`}>{content}</div>;
         })()}
+
         {unitHkOrder && readOnly && (
           <div className="w-full border-2 border-amber-500/50 bg-amber-500/10 rounded-lg p-3">
             <div className="flex items-center gap-2">
@@ -740,17 +599,14 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                 Housekeeping: {unitHkOrder.status === 'inspection_cleared' ? '✅ Cleared' : unitHkOrder.status === 'pre_inspection' ? '🔍 Pre-Inspection' : unitHkOrder.status === 'cleaning' ? '🧹 Cleaning' : unitHkOrder.status}
               </span>
             </div>
-            {unitHkOrder.assigned_to && (
-              <p className="font-body text-xs text-muted-foreground mt-1">Assigned to: {getEmployeeName(unitHkOrder.assigned_to)}</p>
-            )}
+            {unitHkOrder.assigned_to && <p className="font-body text-xs text-muted-foreground mt-1">Assigned to: {getEmployeeName(unitHkOrder.assigned_to)}</p>}
           </div>
         )}
 
-        {/* Detail tabs */}
+        {/* Tab bar — Orders tab removed */}
         <div className="flex gap-1 flex-wrap">
           {([
             { key: 'info' as DetailTab, label: 'Guest', icon: Users },
-            { key: 'orders' as DetailTab, label: 'Orders', icon: UtensilsCrossed },
             ...(canViewDocuments ? [{ key: 'documents' as DetailTab, label: 'Docs', icon: FileText }] : []),
             { key: 'notes' as DetailTab, label: 'Notes', icon: StickyNote },
             { key: 'tours' as DetailTab, label: 'Tours', icon: MapPin },
@@ -780,7 +636,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                       </Button>
                     )}
                   </div>
-                  {/* Guest type badge */}
                   {booking.platform && (
                     <Badge variant="outline" className={`font-body text-xs ${booking.platform === 'Friends & Family' ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' : ''}`}>
                       {booking.platform}
@@ -799,20 +654,9 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                     </div>
                   </div>
                   <div className="flex gap-4">
-                    <div>
-                      <p className="font-body text-xs text-muted-foreground">Adults</p>
-                      <p className="font-body text-sm text-foreground">{booking.adults}</p>
-                    </div>
-                    {(booking as any).children > 0 && (
-                      <div>
-                        <p className="font-body text-xs text-muted-foreground">Children</p>
-                        <p className="font-body text-sm text-foreground">{(booking as any).children}</p>
-                      </div>
-                    )}
-                    <div>
-                      <p className="font-body text-xs text-muted-foreground">Rate</p>
-                      <p className="font-body text-sm text-foreground">₱{Number(booking.room_rate).toLocaleString()}</p>
-                    </div>
+                    <div><p className="font-body text-xs text-muted-foreground">Adults</p><p className="font-body text-sm text-foreground">{booking.adults}</p></div>
+                    {(booking as any).children > 0 && <div><p className="font-body text-xs text-muted-foreground">Children</p><p className="font-body text-sm text-foreground">{(booking as any).children}</p></div>}
+                    <div><p className="font-body text-xs text-muted-foreground">Rate</p><p className="font-body text-sm text-foreground">₱{Number(booking.room_rate).toLocaleString()}</p></div>
                   </div>
                   {(booking as any).room_password && (
                     <div className="mt-2 p-2 border border-primary/30 rounded bg-primary/5">
@@ -820,22 +664,11 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                       <p className="font-display text-lg tracking-wider text-primary">{(booking as any).room_password}</p>
                     </div>
                   )}
-                  {booking.notes && (
-                    <div>
-                      <p className="font-body text-xs text-muted-foreground">Booking Notes</p>
-                      <p className="font-body text-sm text-foreground">{(booking.notes || '').replace('[VIP]', '').trim()}</p>
-                    </div>
-                  )}
-                  {(booking as any).special_requests && (
-                    <div>
-                      <p className="font-body text-xs text-muted-foreground">Special Requests</p>
-                      <p className="font-body text-sm text-foreground">{(booking as any).special_requests}</p>
-                    </div>
-                  )}
+                  {booking.notes && <div><p className="font-body text-xs text-muted-foreground">Booking Notes</p><p className="font-body text-sm text-foreground">{(booking.notes || '').replace('[VIP]', '').trim()}</p></div>}
+                  {(booking as any).special_requests && <div><p className="font-body text-xs text-muted-foreground">Special Requests</p><p className="font-body text-sm text-foreground">{(booking as any).special_requests}</p></div>}
                 </div>
                 {!readOnly && (
-                  <Button size="sm" variant="destructive" onClick={handleCheckOut}
-                    className="w-full font-display text-xs tracking-wider min-h-[44px]">
+                  <Button size="sm" variant="destructive" onClick={handleCheckOut} className="w-full font-display text-xs tracking-wider min-h-[44px]">
                     <LogOut className="w-4 h-4 mr-2" /> Check Out Guest
                   </Button>
                 )}
@@ -871,8 +704,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                           const val = e.target.value;
                           setCheckInForm(p => ({ ...p, guestName: val }));
                           if (val.length >= 2) {
-                            const filtered = allGuests.filter((g: any) => g.full_name.toLowerCase().includes(val.toLowerCase())).slice(0, 5);
-                            setGuestSearchResults(filtered);
+                            setGuestSearchResults(allGuests.filter((g: any) => g.full_name.toLowerCase().includes(val.toLowerCase())).slice(0, 5));
                             setShowGuestDropdown(true);
                           } else { setShowGuestDropdown(false); }
                         }}
@@ -882,17 +714,14 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                       {showGuestDropdown && guestSearchResults.length > 0 && (
                         <div className="absolute z-50 w-full mt-1 border border-border rounded-lg bg-card shadow-lg max-h-40 overflow-y-auto">
                           {guestSearchResults.map((g: any) => (
-                            <button key={g.id} type="button" onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                setCheckInForm(p => ({ ...p, guestName: g.full_name, phone: g.phone || p.phone, email: g.email || p.email }));
-                                setShowGuestDropdown(false);
-                              }}
+                            <button key={g.id} type="button" onMouseDown={e => e.preventDefault()}
+                              onClick={() => { setCheckInForm(p => ({ ...p, guestName: g.full_name, phone: g.phone || p.phone, email: g.email || p.email })); setShowGuestDropdown(false); }}
                               className="w-full px-3 py-2 text-left hover:bg-secondary transition-colors">
                               <p className="font-body text-sm text-foreground">{g.full_name}</p>
                               {(g.phone || g.email) && <p className="font-body text-[10px] text-muted-foreground">{g.phone} {g.email}</p>}
                             </button>
                           ))}
-                          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setShowGuestDropdown(false)}
+                          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => setShowGuestDropdown(false)}
                             className="w-full px-3 py-2 text-left hover:bg-secondary transition-colors border-t border-border">
                             <p className="font-body text-xs text-accent">+ Add "{checkInForm.guestName}" as new guest</p>
                           </button>
@@ -900,40 +729,20 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                       )}
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <Input value={checkInForm.phone} onChange={e => setCheckInForm(p => ({ ...p, phone: e.target.value }))}
-                        placeholder="Phone" className="bg-secondary border-border text-foreground font-body text-xs" />
-                      <Input value={checkInForm.email} onChange={e => setCheckInForm(p => ({ ...p, email: e.target.value }))}
-                        placeholder="Email" className="bg-secondary border-border text-foreground font-body text-xs" />
+                      <Input value={checkInForm.phone} onChange={e => setCheckInForm(p => ({ ...p, phone: e.target.value }))} placeholder="Phone" className="bg-secondary border-border text-foreground font-body text-xs" />
+                      <Input value={checkInForm.email} onChange={e => setCheckInForm(p => ({ ...p, email: e.target.value }))} placeholder="Email" className="bg-secondary border-border text-foreground font-body text-xs" />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="font-body text-xs text-muted-foreground">Check-in</label>
-                        <Input type="date" value={checkInForm.checkIn} onChange={e => setCheckInForm(p => ({ ...p, checkIn: e.target.value }))}
-                          className="bg-secondary border-border text-foreground font-body text-xs" />
-                      </div>
-                      <div>
-                        <label className="font-body text-xs text-muted-foreground">Check-out *</label>
-                        <Input type="date" value={checkInForm.checkOut} onChange={e => setCheckInForm(p => ({ ...p, checkOut: e.target.value }))}
-                          className="bg-secondary border-border text-foreground font-body text-xs" />
-                      </div>
+                      <div><label className="font-body text-xs text-muted-foreground">Check-in</label><Input type="date" value={checkInForm.checkIn} onChange={e => setCheckInForm(p => ({ ...p, checkIn: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs" /></div>
+                      <div><label className="font-body text-xs text-muted-foreground">Check-out *</label><Input type="date" value={checkInForm.checkOut} onChange={e => setCheckInForm(p => ({ ...p, checkOut: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs" /></div>
                     </div>
                     <div className="grid grid-cols-4 gap-2">
-                      <div>
-                        <label className="font-body text-xs text-muted-foreground">Adults</label>
-                        <Input type="number" value={checkInForm.adults} onChange={e => setCheckInForm(p => ({ ...p, adults: e.target.value }))}
-                          className="bg-secondary border-border text-foreground font-body text-xs" />
-                      </div>
-                      <div>
-                        <label className="font-body text-xs text-muted-foreground">Children</label>
-                        <Input type="number" value={checkInForm.children} onChange={e => setCheckInForm(p => ({ ...p, children: e.target.value }))}
-                          className="bg-secondary border-border text-foreground font-body text-xs" />
-                      </div>
+                      <div><label className="font-body text-xs text-muted-foreground">Adults</label><Input type="number" value={checkInForm.adults} onChange={e => setCheckInForm(p => ({ ...p, adults: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs" /></div>
+                      <div><label className="font-body text-xs text-muted-foreground">Children</label><Input type="number" value={checkInForm.children} onChange={e => setCheckInForm(p => ({ ...p, children: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs" /></div>
                       <div>
                         <label className="font-body text-xs text-muted-foreground">Guest Type</label>
                         <Select value={checkInForm.platform} onValueChange={v => setCheckInForm(p => ({ ...p, platform: v }))}>
-                          <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
+                          <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Hotel Guest">Hotel Guest</SelectItem>
                             <SelectItem value="Walk-In Guest">Walk-In</SelectItem>
@@ -946,24 +755,13 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                           </SelectContent>
                         </Select>
                       </div>
-                      <div>
-                        <label className="font-body text-xs text-muted-foreground">Rate</label>
-                        <Input type="number" value={checkInForm.roomRate} onChange={e => setCheckInForm(p => ({ ...p, roomRate: e.target.value }))}
-                          className="bg-secondary border-border text-foreground font-body text-xs" />
-                      </div>
+                      <div><label className="font-body text-xs text-muted-foreground">Rate</label><Input type="number" value={checkInForm.roomRate} onChange={e => setCheckInForm(p => ({ ...p, roomRate: e.target.value }))} className="bg-secondary border-border text-foreground font-body text-xs" /></div>
                     </div>
-                    <Textarea value={checkInForm.specialRequests} onChange={e => setCheckInForm(p => ({ ...p, specialRequests: e.target.value }))}
-                      placeholder="Special requests (dietary, accessibility, etc.)"
-                      className="bg-secondary border-border text-foreground font-body text-sm min-h-[50px]" />
-                    <Textarea value={checkInForm.notes} onChange={e => setCheckInForm(p => ({ ...p, notes: e.target.value }))}
-                      placeholder="Notes (optional)" className="bg-secondary border-border text-foreground font-body text-sm min-h-[50px]" />
+                    <Textarea value={checkInForm.specialRequests} onChange={e => setCheckInForm(p => ({ ...p, specialRequests: e.target.value }))} placeholder="Special requests" className="bg-secondary border-border text-foreground font-body text-sm min-h-[50px]" />
+                    <Textarea value={checkInForm.notes} onChange={e => setCheckInForm(p => ({ ...p, notes: e.target.value }))} placeholder="Notes (optional)" className="bg-secondary border-border text-foreground font-body text-sm min-h-[50px]" />
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setShowCheckInForm(false)}
-                        className="flex-1 font-display text-xs tracking-wider min-h-[44px]">Cancel</Button>
-                      <Button size="sm" onClick={handleCheckIn} disabled={checkingIn}
-                        className="flex-1 font-display text-xs tracking-wider min-h-[44px]">
-                        {checkingIn ? 'Checking in...' : 'Check In'}
-                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setShowCheckInForm(false)} className="flex-1 font-display text-xs tracking-wider min-h-[44px]">Cancel</Button>
+                      <Button size="sm" onClick={handleCheckIn} disabled={checkingIn} className="flex-1 font-display text-xs tracking-wider min-h-[44px]">{checkingIn ? 'Checking in...' : 'Check In'}</Button>
                     </div>
                   </div>
                 )}
@@ -972,105 +770,53 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           </div>
         )}
 
-        {/* ORDERS */}
-        {detailTab === 'orders' && (
-          <div className="space-y-2">
-            {unitOrders.length === 0 ? (
-              <p className="font-body text-sm text-muted-foreground text-center py-4">No orders for this room</p>
-            ) : unitOrders.map((order: any) => (
-              <div key={order.id} className="border border-border rounded-lg p-3 space-y-1">
-                <div className="flex justify-between items-center">
-                  <Badge variant={order.status === 'Closed' ? 'secondary' : 'default'} className="font-body text-xs">{order.status}</Badge>
-                  <span className="font-body text-xs text-muted-foreground">{format(new Date(order.created_at), 'MMM d · h:mm a')}</span>
-                </div>
-                <div className="space-y-0.5">
-                  {(order.items as any[]).map((item: any, i: number) => (
-                    <p key={i} className="font-body text-xs text-foreground">
-                      {item.qty || item.quantity}× {item.name} — ₱{(item.price * (item.qty || item.quantity)).toFixed(0)}
-                    </p>
-                  ))}
-                </div>
-                <p className="font-display text-xs text-foreground">Total: ₱{Number(order.total).toFixed(0)}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* DOCUMENTS (PART 6 — expanded types) */}
+        {/* DOCUMENTS */}
         {detailTab === 'documents' && (
           <div className="space-y-3">
             {!readOnly && (
               <div className="border border-border rounded-lg p-3 space-y-2">
                 <Select value={docType} onValueChange={setDocType}>
-                  <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs">
-                    <SelectValue placeholder="Document type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DOC_TYPES.map(dt => (
-                      <SelectItem key={dt.value} value={dt.value}>{dt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
+                  <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs"><SelectValue placeholder="Document type" /></SelectTrigger>
+                  <SelectContent>{DOC_TYPES.map(dt => <SelectItem key={dt.value} value={dt.value}>{dt.label}</SelectItem>)}</SelectContent>
                 </Select>
-                <Input value={docNotes} onChange={e => setDocNotes(e.target.value)}
-                  placeholder="Notes (e.g., expires March 2027)" className="bg-secondary border-border text-foreground font-body text-xs" />
+                <Input value={docNotes} onChange={e => setDocNotes(e.target.value)} placeholder="Notes (e.g., expires March 2027)" className="bg-secondary border-border text-foreground font-body text-xs" />
                 <div className="grid grid-cols-2 gap-2">
                   <label className="flex items-center gap-2 cursor-pointer border border-dashed border-border rounded-lg p-3 justify-center hover:bg-secondary/50 min-h-[44px]">
-                    <Camera className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-body text-xs text-muted-foreground">Take Photo</span>
-                    <input type="file" accept="image/*" capture="environment" className="hidden"
-                      onChange={e => { if (e.target.files?.[0]) uploadDocument(e.target.files[0]); }} />
+                    <Camera className="w-4 h-4 text-muted-foreground" /><span className="font-body text-xs text-muted-foreground">Take Photo</span>
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadDocument(e.target.files[0]); }} />
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer border border-dashed border-border rounded-lg p-3 justify-center hover:bg-secondary/50 min-h-[44px]">
-                    <Upload className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-body text-xs text-muted-foreground">Upload File</span>
-                    <input type="file" accept="image/*,application/pdf" className="hidden"
-                      onChange={e => { if (e.target.files?.[0]) uploadDocument(e.target.files[0]); }} />
+                    <Upload className="w-4 h-4 text-muted-foreground" /><span className="font-body text-xs text-muted-foreground">Upload File</span>
+                    <input type="file" accept="image/*,application/pdf" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadDocument(e.target.files[0]); }} />
                   </label>
                 </div>
                 {!showUrlInput ? (
-                  <Button size="sm" variant="outline" onClick={() => setShowUrlInput(true)}
-                    className="w-full font-display text-xs tracking-wider min-h-[44px]">
+                  <Button size="sm" variant="outline" onClick={() => setShowUrlInput(true)} className="w-full font-display text-xs tracking-wider min-h-[44px]">
                     <LinkIcon className="w-3.5 h-3.5 mr-1" /> Add Document Link
                   </Button>
                 ) : (
                   <div className="flex gap-2">
-                    <Input value={docUrl} onChange={e => setDocUrl(e.target.value)}
-                      placeholder="https://..." className="bg-secondary border-border text-foreground font-body text-xs flex-1" />
-                    <Button size="sm" onClick={addDocumentUrl} disabled={!docUrl.trim()} className="font-display text-xs tracking-wider min-h-[44px]">
-                      <Plus className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => { setShowUrlInput(false); setDocUrl(''); }}
-                      className="font-display text-xs min-h-[44px]">✕</Button>
+                    <Input value={docUrl} onChange={e => setDocUrl(e.target.value)} placeholder="https://..." className="bg-secondary border-border text-foreground font-body text-xs flex-1" />
+                    <Button size="sm" onClick={addDocumentUrl} disabled={!docUrl.trim()} className="font-display text-xs tracking-wider min-h-[44px]"><Plus className="w-3.5 h-3.5" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setShowUrlInput(false); setDocUrl(''); }} className="font-display text-xs min-h-[44px]">✕</Button>
                   </div>
                 )}
               </div>
             )}
             {documents.map((doc: any) => (
               <div key={doc.id} className="border border-border rounded-lg overflow-hidden">
-                {doc.image_url && !doc.image_url.startsWith('http://') && doc.image_url.includes('guest-documents') ? (
-                  <img src={doc.image_url} alt="Document" className="w-full max-h-64 object-contain bg-secondary" />
-                ) : (
-                  <div className="p-3 bg-secondary flex items-center gap-2">
-                    <LinkIcon className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-body text-xs text-foreground truncate">{doc.image_url}</span>
-                  </div>
-                )}
+                {doc.image_url && doc.image_url.includes('guest-documents')
+                  ? <img src={doc.image_url} alt="Document" className="w-full max-h-64 object-contain bg-secondary" />
+                  : <div className="p-3 bg-secondary flex items-center gap-2"><LinkIcon className="w-4 h-4 text-muted-foreground" /><span className="font-body text-xs text-foreground truncate">{doc.image_url}</span></div>
+                }
                 <div className="flex justify-between items-center p-2">
                   <div className="flex-1 min-w-0">
-                    <span className="font-body text-xs text-muted-foreground">
-                      {doc.document_type?.replace('_', ' ')} · {format(new Date(doc.created_at), 'MMM d, yyyy')}
-                    </span>
+                    <span className="font-body text-xs text-muted-foreground">{doc.document_type?.replace('_', ' ')} · {format(new Date(doc.created_at), 'MMM d, yyyy')}</span>
                     {doc.notes && <p className="font-body text-xs text-foreground mt-0.5 truncate">{doc.notes}</p>}
                   </div>
                   <div className="flex gap-1">
-                    <a href={doc.image_url} target="_blank" rel="noopener noreferrer">
-                      <Button size="sm" variant="ghost"><Download className="w-3.5 h-3.5 text-foreground" /></Button>
-                    </a>
-                    {!readOnly && (
-                      <Button size="sm" variant="ghost" onClick={() => deleteDocument(doc)}>
-                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                      </Button>
-                    )}
+                    <a href={doc.image_url} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="ghost"><Download className="w-3.5 h-3.5 text-foreground" /></Button></a>
+                    {!readOnly && <Button size="sm" variant="ghost" onClick={() => deleteDocument(doc)}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>}
                   </div>
                 </div>
               </div>
@@ -1079,58 +825,31 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           </div>
         )}
 
-        {/* NOTES (PART 5 — enhanced) */}
+        {/* NOTES */}
         {detailTab === 'notes' && (
           <div className="space-y-3">
             {!readOnly && (
               <div className="border border-border rounded-lg p-3 space-y-2">
-                <div className="flex gap-2">
-                  <Select value={noteType} onValueChange={setNoteType}>
-                    <SelectTrigger className="w-32 bg-secondary border-border text-foreground font-body text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {NOTE_CATEGORIES.map(c => (
-                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Textarea ref={noteTextRef} value={noteContent} onChange={e => setNoteContent(e.target.value)}
-                  placeholder="Add a note..." className="bg-secondary border-border text-foreground font-body text-sm min-h-[60px]" />
-
-                {/* Attachment options */}
+                <Select value={noteType} onValueChange={setNoteType}>
+                  <SelectTrigger className="w-32 bg-secondary border-border text-foreground font-body text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>{NOTE_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+                </Select>
+                <Textarea ref={noteTextRef} value={noteContent} onChange={e => setNoteContent(e.target.value)} placeholder="Add a note..." className="bg-secondary border-border text-foreground font-body text-sm min-h-[60px]" />
                 <div className="flex gap-2 flex-wrap">
                   <label className="flex items-center gap-1 cursor-pointer border border-dashed border-border rounded-lg px-3 py-2 hover:bg-secondary/50">
-                    <Camera className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span className="font-body text-xs text-muted-foreground">Photo</span>
-                    <input type="file" accept="image/*" capture="environment" className="hidden"
-                      onChange={e => { if (e.target.files?.[0]) uploadNoteImage(e.target.files[0]); }} />
+                    <Camera className="w-3.5 h-3.5 text-muted-foreground" /><span className="font-body text-xs text-muted-foreground">Photo</span>
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadNoteImage(e.target.files[0]); }} />
                   </label>
                   <label className="flex items-center gap-1 cursor-pointer border border-dashed border-border rounded-lg px-3 py-2 hover:bg-secondary/50">
-                    <ImageIcon className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span className="font-body text-xs text-muted-foreground">Image</span>
-                    <input type="file" accept="image/*" className="hidden"
-                      onChange={e => { if (e.target.files?.[0]) uploadNoteImage(e.target.files[0]); }} />
+                    <ImageIcon className="w-3.5 h-3.5 text-muted-foreground" /><span className="font-body text-xs text-muted-foreground">Image</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={e => { if (e.target.files?.[0]) uploadNoteImage(e.target.files[0]); }} />
                   </label>
-                  {!showNoteUrl ? (
-                    <button onClick={() => setShowNoteUrl(true)}
-                      className="flex items-center gap-1 border border-dashed border-border rounded-lg px-3 py-2 hover:bg-secondary/50">
-                      <LinkIcon className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="font-body text-xs text-muted-foreground">URL</span>
-                    </button>
-                  ) : (
-                    <div className="flex gap-1 flex-1">
-                      <Input value={noteImageUrl} onChange={e => setNoteImageUrl(e.target.value)}
-                        placeholder="https://..." className="bg-secondary border-border text-foreground font-body text-xs flex-1 h-8" />
-                      <Button size="sm" variant="ghost" onClick={() => { setShowNoteUrl(false); setNoteImageUrl(''); }}
-                        className="h-8 px-2 text-xs">✕</Button>
-                    </div>
-                  )}
+                  {!showNoteUrl
+                    ? <button onClick={() => setShowNoteUrl(true)} className="flex items-center gap-1 border border-dashed border-border rounded-lg px-3 py-2 hover:bg-secondary/50"><LinkIcon className="w-3.5 h-3.5 text-muted-foreground" /><span className="font-body text-xs text-muted-foreground">URL</span></button>
+                    : <div className="flex gap-1 flex-1"><Input value={noteImageUrl} onChange={e => setNoteImageUrl(e.target.value)} placeholder="https://..." className="bg-secondary border-border text-foreground font-body text-xs flex-1 h-8" /><Button size="sm" variant="ghost" onClick={() => { setShowNoteUrl(false); setNoteImageUrl(''); }} className="h-8 px-2 text-xs">✕</Button></div>
+                  }
                 </div>
-
-                <Button size="sm" onClick={addNote} disabled={!noteContent.trim() && !noteImageUrl.trim()}
-                  className="font-display text-xs tracking-wider w-full">
+                <Button size="sm" onClick={addNote} disabled={!noteContent.trim() && !noteImageUrl.trim()} className="font-display text-xs tracking-wider w-full">
                   <Plus className="w-3.5 h-3.5 mr-1" /> Add Note
                 </Button>
               </div>
@@ -1143,22 +862,13 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                   <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0">
                       <Badge variant="outline" className="font-body text-xs mb-1">{(note.note_type || 'general').replace('_', ' ')}</Badge>
-                      {isImage ? (
-                        <a href={imageUrl!} target="_blank" rel="noopener noreferrer">
-                          <img src={imageUrl!} alt="Note attachment" className="max-h-40 rounded mt-1 object-contain bg-secondary" />
-                        </a>
-                      ) : (
-                        <p className="font-body text-sm text-foreground">{note.content}</p>
-                      )}
-                      <p className="font-body text-xs text-muted-foreground mt-1">
-                        {note.created_by} · {format(new Date(note.created_at), 'MMM d · h:mm a')}
-                      </p>
+                      {isImage
+                        ? <a href={imageUrl!} target="_blank" rel="noopener noreferrer"><img src={imageUrl!} alt="Note" className="max-h-40 rounded mt-1 object-contain bg-secondary" /></a>
+                        : <p className="font-body text-sm text-foreground">{note.content}</p>
+                      }
+                      <p className="font-body text-xs text-muted-foreground mt-1">{note.created_by} · {format(new Date(note.created_at), 'MMM d · h:mm a')}</p>
                     </div>
-                    {!readOnly && (
-                      <Button size="sm" variant="ghost" onClick={() => deleteNote(note.id)}>
-                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                      </Button>
-                    )}
+                    {!readOnly && <Button size="sm" variant="ghost" onClick={() => deleteNote(note.id)}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>}
                   </div>
                 </div>
               );
@@ -1167,96 +877,43 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           </div>
         )}
 
-        {/* TOURS (PART 4 — editable) */}
+        {/* TOURS */}
         {detailTab === 'tours' && (
           <div className="space-y-3">
             {!readOnly && (
               <div className="border border-border rounded-lg p-3 space-y-2">
-                {/* Catalog dropdown or manual entry */}
                 {tourCatalogMode === 'catalog' ? (
                   <Select onValueChange={(val) => {
-                    if (val === '__other__') {
-                      setTourCatalogMode('other');
-                      setTourName(''); setTourPrice(''); setTourProvider('');
-                      return;
-                    }
-                    // Parse selection: "type::name::price::provider"
+                    if (val === '__other__') { setTourCatalogMode('other'); setTourName(''); setTourPrice(''); setTourProvider(''); return; }
                     const [, name, price, provider] = val.split('::');
-                    setTourName(name || '');
-                    setTourPrice(price || '0');
-                    setTourProvider(provider || '');
+                    setTourName(name || ''); setTourPrice(price || '0'); setTourProvider(provider || '');
                   }}>
-                    <SelectTrigger className="bg-secondary border-border text-foreground font-body text-sm">
-                      <SelectValue placeholder="Select tour / experience / rental *" />
-                    </SelectTrigger>
+                    <SelectTrigger className="bg-secondary border-border text-foreground font-body text-sm"><SelectValue placeholder="Select tour / experience / rental *" /></SelectTrigger>
                     <SelectContent>
-                      {toursConfig.length > 0 && (
-                        <SelectGroup>
-                          <SelectLabel className="font-display text-xs tracking-wider text-muted-foreground">Tours & Experiences</SelectLabel>
-                          {toursConfig.map((t: any) => (
-                            <SelectItem key={t.id} value={`tour::${t.name}::${t.price}::${t.provider || ''}`}>
-                              {t.name} — ₱{t.price}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      )}
-                      {rentalRates.length > 0 && (
-                        <SelectGroup>
-                          <SelectLabel className="font-display text-xs tracking-wider text-muted-foreground">Rentals</SelectLabel>
-                          {rentalRates.map((r: any) => (
-                            <SelectItem key={r.id} value={`rental::${r.rate_name}::${r.price}::${r.item_type || ''}`}>
-                              {r.rate_name} — ₱{r.price}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      )}
-                      {transportRates.length > 0 && (
-                        <SelectGroup>
-                          <SelectLabel className="font-display text-xs tracking-wider text-muted-foreground">Transport</SelectLabel>
-                          {transportRates.map((tr: any) => (
-                            <SelectItem key={tr.id} value={`transport::${tr.type}::${tr.price}::`}>
-                              {tr.type} — ₱{tr.price}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      )}
-                      <SelectGroup>
-                        <SelectItem value="__other__">✏️ Other (type manually)</SelectItem>
-                      </SelectGroup>
+                      {toursConfig.length > 0 && <SelectGroup><SelectLabel className="font-display text-xs tracking-wider text-muted-foreground">Tours & Experiences</SelectLabel>{toursConfig.map((t: any) => <SelectItem key={t.id} value={`tour::${t.name}::${t.price}::${t.provider || ''}`}>{t.name} — ₱{t.price}</SelectItem>)}</SelectGroup>}
+                      {rentalRates.length > 0 && <SelectGroup><SelectLabel className="font-display text-xs tracking-wider text-muted-foreground">Rentals</SelectLabel>{rentalRates.map((r: any) => <SelectItem key={r.id} value={`rental::${r.rate_name}::${r.price}::${r.item_type || ''}`}>{r.rate_name} — ₱{r.price}</SelectItem>)}</SelectGroup>}
+                      {transportRates.length > 0 && <SelectGroup><SelectLabel className="font-display text-xs tracking-wider text-muted-foreground">Transport</SelectLabel>{transportRates.map((tr: any) => <SelectItem key={tr.id} value={`transport::${tr.type}::${tr.price}::`}>{tr.type} — ₱{tr.price}</SelectItem>)}</SelectGroup>}
+                      <SelectGroup><SelectItem value="__other__">✏️ Other (type manually)</SelectItem></SelectGroup>
                     </SelectContent>
                   </Select>
                 ) : (
                   <div className="flex gap-2">
-                    <Input value={tourName} onChange={e => setTourName(e.target.value)} placeholder="Tour name *"
-                      className="bg-secondary border-border text-foreground font-body text-sm flex-1" />
-                    <Button size="sm" variant="outline" onClick={() => setTourCatalogMode('catalog')}
-                      className="font-body text-xs shrink-0">Catalog</Button>
+                    <Input value={tourName} onChange={e => setTourName(e.target.value)} placeholder="Tour name *" className="bg-secondary border-border text-foreground font-body text-sm flex-1" />
+                    <Button size="sm" variant="outline" onClick={() => setTourCatalogMode('catalog')} className="font-body text-xs shrink-0">Catalog</Button>
                   </div>
                 )}
-                {tourName && (
-                  <p className="font-body text-xs text-muted-foreground px-1">
-                    Selected: <span className="text-foreground font-medium">{tourName}</span>
-                    {tourPrice && <> · ₱{tourPrice}</>}
-                  </p>
-                )}
+                {tourName && <p className="font-body text-xs text-muted-foreground px-1">Selected: <span className="text-foreground font-medium">{tourName}</span>{tourPrice && <> · ₱{tourPrice}</>}</p>}
                 <div className="grid grid-cols-2 gap-2">
-                  <Input value={tourProvider} onChange={e => setTourProvider(e.target.value)} placeholder="Provider / vendor"
-                    className="bg-secondary border-border text-foreground font-body text-xs" />
-                  <Input type="date" value={tourDate} onChange={e => setTourDate(e.target.value)}
-                    className="bg-secondary border-border text-foreground font-body text-xs" />
+                  <Input value={tourProvider} onChange={e => setTourProvider(e.target.value)} placeholder="Provider / vendor" className="bg-secondary border-border text-foreground font-body text-xs" />
+                  <Input type="date" value={tourDate} onChange={e => setTourDate(e.target.value)} className="bg-secondary border-border text-foreground font-body text-xs" />
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  <Input type="number" value={tourPax} onChange={e => setTourPax(e.target.value)} placeholder="Pax"
-                    className="bg-secondary border-border text-foreground font-body text-xs" />
-                  <Input type="number" value={tourPrice} onChange={e => setTourPrice(e.target.value)} placeholder="Price"
-                    className="bg-secondary border-border text-foreground font-body text-xs" />
-                  <Input value={tourPickupTime} onChange={e => setTourPickupTime(e.target.value)} placeholder="Pickup time"
-                    className="bg-secondary border-border text-foreground font-body text-xs" />
+                  <Input type="number" value={tourPax} onChange={e => setTourPax(e.target.value)} placeholder="Pax" className="bg-secondary border-border text-foreground font-body text-xs" />
+                  <Input type="number" value={tourPrice} onChange={e => setTourPrice(e.target.value)} placeholder="Price" className="bg-secondary border-border text-foreground font-body text-xs" />
+                  <Input value={tourPickupTime} onChange={e => setTourPickupTime(e.target.value)} placeholder="Pickup time" className="bg-secondary border-border text-foreground font-body text-xs" />
                 </div>
-                <Input value={tourNotes} onChange={e => setTourNotes(e.target.value)} placeholder="Notes (optional)"
-                  className="bg-secondary border-border text-foreground font-body text-xs" />
-                <Button size="sm" onClick={addTour} disabled={!tourName.trim() || !tourDate}
-                  className="font-display text-xs tracking-wider w-full min-h-[44px]">
+                <Input value={tourNotes} onChange={e => setTourNotes(e.target.value)} placeholder="Notes (optional)" className="bg-secondary border-border text-foreground font-body text-xs" />
+                <Button size="sm" onClick={addTour} disabled={!tourName.trim() || !tourDate} className="font-display text-xs tracking-wider w-full min-h-[44px]">
                   <Plus className="w-3.5 h-3.5 mr-1" /> Add Tour / Experience
                 </Button>
               </div>
@@ -1266,9 +923,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="font-display text-sm text-foreground">{tour.tour_name}</p>
-                    <p className="font-body text-xs text-muted-foreground">
-                      {format(new Date(tour.tour_date + 'T00:00:00'), 'MMM d')} · {tour.pax} pax · ₱{tour.price}
-                    </p>
+                    <p className="font-body text-xs text-muted-foreground">{format(new Date(tour.tour_date + 'T00:00:00'), 'MMM d')} · {tour.pax} pax · ₱{tour.price}</p>
                     {tour.provider && <p className="font-body text-xs text-muted-foreground">via {tour.provider}</p>}
                     {tour.pickup_time && <p className="font-body text-xs text-muted-foreground">Pickup: {tour.pickup_time}</p>}
                     {tour.notes && <p className="font-body text-xs text-foreground mt-1">{tour.notes}</p>}
@@ -1276,13 +931,9 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                   <div className="flex gap-1 items-start">
                     {!readOnly ? (
                       <>
-                        <Button size="sm" variant="ghost" onClick={() => setEditingTour(tour)} className="min-h-[28px] h-7 w-7 p-0">
-                          <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingTour(tour)} className="min-h-[28px] h-7 w-7 p-0"><Pencil className="w-3.5 h-3.5 text-muted-foreground" /></Button>
                         <Select value={tour.status} onValueChange={v => updateTourStatus(tour.id, v)}>
-                          <SelectTrigger className="h-7 w-24 text-xs bg-secondary border-border text-foreground font-body">
-                            <SelectValue />
-                          </SelectTrigger>
+                          <SelectTrigger className="h-7 w-24 text-xs bg-secondary border-border text-foreground font-body"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="booked">Booked</SelectItem>
                             <SelectItem value="confirmed">Confirmed</SelectItem>
@@ -1290,19 +941,10 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                             <SelectItem value="cancelled">Cancelled</SelectItem>
                           </SelectContent>
                         </Select>
-                        {tour.status === 'confirmed' && (
-                          <Button size="sm" variant="secondary" onClick={() => updateTourStatus(tour.id, 'completed')}
-                            className="h-7 text-xs font-display tracking-wider px-2">
-                            ✓ Done
-                          </Button>
-                        )}
-                        <Button size="sm" variant="ghost" onClick={() => deleteTour(tour.id)}>
-                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                        </Button>
+                        {tour.status === 'confirmed' && <Button size="sm" variant="secondary" onClick={() => updateTourStatus(tour.id, 'completed')} className="h-7 text-xs font-display tracking-wider px-2">✓ Done</Button>}
+                        <Button size="sm" variant="ghost" onClick={() => deleteTour(tour.id)}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>
                       </>
-                    ) : (
-                      <Badge variant="outline" className="font-body text-xs">{tour.status}</Badge>
-                    )}
+                    ) : <Badge variant="outline" className="font-body text-xs">{tour.status}</Badge>}
                   </div>
                 </div>
               </div>
@@ -1311,76 +953,57 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           </div>
         )}
 
-        {/* TIMELINE (PART 3) */}
-        {detailTab === 'timeline' && (
-          <GuestActivityTimeline booking={booking} unit={selectedUnit} />
-        )}
+        {detailTab === 'timeline' && <GuestActivityTimeline booking={booking} unit={selectedUnit} />}
 
         {/* VIBE */}
         {detailTab === 'vibe' && vibeMode === 'list' && (
           <div className="space-y-3">
             {!readOnly && (
-              <Button onClick={() => { setEditingVibeRecord(null); setVibeMode('form'); }}
-                className="w-full font-display text-xs tracking-wider min-h-[44px]">
+              <Button onClick={() => { setEditingVibeRecord(null); setVibeMode('form'); }} className="w-full font-display text-xs tracking-wider min-h-[44px]">
                 <Plus className="w-4 h-4 mr-2" /> New Vibe Check-In
               </Button>
             )}
-            {unitVibeRecords.length === 0 ? (
-              <p className="font-body text-sm text-muted-foreground text-center py-4">No vibe records for this room</p>
-            ) : unitVibeRecords.map((rec: any) => {
-              const isHigh = (rec.review_risk_level || []).includes('High');
-              return (
-                <button key={rec.id} onClick={() => { setViewingVibeRecord(rec); setVibeMode('detail'); }}
-                  className={`w-full text-left border rounded-lg p-3 hover:bg-secondary/50 transition-colors ${isHigh ? 'border-2 border-destructive' : 'border-border'}`}>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-display text-sm text-foreground">{rec.guest_name}</p>
-                      <p className="font-body text-xs text-muted-foreground">
-                        {rec.nationality || 'N/A'} · {(rec.travel_composition || []).join(', ')}
-                      </p>
+            {unitVibeRecords.length === 0
+              ? <p className="font-body text-sm text-muted-foreground text-center py-4">No vibe records for this room</p>
+              : unitVibeRecords.map((rec: any) => {
+                const isHigh = (rec.review_risk_level || []).includes('High');
+                return (
+                  <button key={rec.id} onClick={() => { setViewingVibeRecord(rec); setVibeMode('detail'); }}
+                    className={`w-full text-left border rounded-lg p-3 hover:bg-secondary/50 transition-colors ${isHigh ? 'border-2 border-destructive' : 'border-border'}`}>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-display text-sm text-foreground">{rec.guest_name}</p>
+                        <p className="font-body text-xs text-muted-foreground">{rec.nationality || 'N/A'} · {(rec.travel_composition || []).join(', ')}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        {(rec.review_risk_level || []).map((r: string) => (
+                          <Badge key={r} variant={r === 'High' ? 'destructive' : r === 'Medium' ? 'default' : 'secondary'} className="font-body text-xs">{r}</Badge>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex gap-1">
-                      {(rec.review_risk_level || []).map((r: string) => (
-                        <Badge key={r} variant={r === 'High' ? 'destructive' : r === 'Medium' ? 'default' : 'secondary'}
-                          className="font-body text-xs">{r}</Badge>
-                      ))}
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {(rec.personality_type || []).map((p: string) => <Badge key={p} variant="outline" className="font-body text-xs">{p}</Badge>)}
                     </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {(rec.personality_type || []).map((p: string) => (
-                      <Badge key={p} variant="outline" className="font-body text-xs">{p}</Badge>
-                    ))}
-                  </div>
-                </button>
-              );
-            })}
+                  </button>
+                );
+              })
+            }
           </div>
         )}
 
-        {/* BILLING */}
         {detailTab === 'billing' && (
           <RoomBillingTab unit={selectedUnit} booking={booking} guestName={guest?.full_name || null} readOnly={readOnly} />
         )}
 
-        {/* === MODALS === */}
-        {booking && guest && (
-          <EditGuestModal open={showEditGuest} onOpenChange={setShowEditGuest} guest={guest} booking={booking} />
-        )}
-        {editingTour && (
-          <EditTourModal open={!!editingTour} onOpenChange={o => { if (!o) setEditingTour(null); }}
-            tour={editingTour} unitName={selectedUnit.name} bookingId={currentBooking?.id || null} />
-        )}
+        {booking && guest && <EditGuestModal open={showEditGuest} onOpenChange={setShowEditGuest} guest={guest} booking={booking} />}
+        {editingTour && <EditTourModal open={!!editingTour} onOpenChange={o => { if (!o) setEditingTour(null); }} tour={editingTour} unitName={selectedUnit.name} bookingId={currentBooking?.id || null} />}
 
-        {/* Extend Stay dialog */}
         <Dialog open={showExtendStay} onOpenChange={setShowExtendStay}>
           <DialogContent className="bg-card border-border max-w-sm">
-            <DialogHeader>
-              <DialogTitle className="font-display tracking-wider text-sm">Extend Stay</DialogTitle>
-            </DialogHeader>
+            <DialogHeader><DialogTitle className="font-display tracking-wider text-sm">Extend Stay</DialogTitle></DialogHeader>
             <div>
               <label className="font-body text-xs text-muted-foreground">New Check-out Date</label>
-              <Input type="date" value={extendDate} onChange={e => setExtendDate(e.target.value)}
-                className="bg-secondary border-border text-foreground font-body mt-1" />
+              <Input type="date" value={extendDate} onChange={e => setExtendDate(e.target.value)} className="bg-secondary border-border text-foreground font-body mt-1" />
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowExtendStay(false)} className="font-display text-xs tracking-wider">Cancel</Button>
@@ -1389,23 +1012,14 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
           </DialogContent>
         </Dialog>
 
-        {/* Change Room dialog */}
         <Dialog open={showChangeRoom} onOpenChange={setShowChangeRoom}>
           <DialogContent className="bg-card border-border max-w-sm">
-            <DialogHeader>
-              <DialogTitle className="font-display tracking-wider text-sm">Change Room</DialogTitle>
-            </DialogHeader>
+            <DialogHeader><DialogTitle className="font-display tracking-wider text-sm">Change Room</DialogTitle></DialogHeader>
             <div>
               <label className="font-body text-xs text-muted-foreground">Move guest to</label>
               <Select value={changeRoomId} onValueChange={setChangeRoomId}>
-                <SelectTrigger className="bg-secondary border-border text-foreground font-body mt-1">
-                  <SelectValue placeholder="Select a ready room" />
-                </SelectTrigger>
-                <SelectContent>
-                  {readyUnitsForChange.map((u: any) => (
-                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                  ))}
-                </SelectContent>
+                <SelectTrigger className="bg-secondary border-border text-foreground font-body mt-1"><SelectValue placeholder="Select a ready room" /></SelectTrigger>
+                <SelectContent>{readyUnitsForChange.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <DialogFooter>
@@ -1425,14 +1039,11 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-display text-sm tracking-wider text-foreground">Today's Room Status</h3>
-          <p className="font-body text-[10px] text-muted-foreground">Present management — check-ins, check-outs & housekeeping</p>
-        </div>
+      <div>
+        <h3 className="font-display text-sm tracking-wider text-foreground">Today's Room Status</h3>
+        <p className="font-body text-[10px] text-muted-foreground">Present management — check-ins, check-outs & housekeeping</p>
       </div>
 
-      {/* Status summary */}
       <div className="grid grid-cols-3 gap-2">
         <div className="border border-red-500/30 bg-red-500/10 rounded-lg p-3 text-center">
           <p className="font-display text-2xl text-red-400">{occupiedUnits.length}</p>
@@ -1448,7 +1059,6 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
         </div>
       </div>
 
-      {/* To Clean cards */}
       {toCleanUnits.length > 0 && (
         <div className="space-y-2">
           <h4 className="font-display text-xs tracking-wider text-amber-400 uppercase">🟨 To Clean</h4>
@@ -1459,9 +1069,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                 <div className="flex justify-between items-center">
                   <div>
                     <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
-                    {hkOrder?.assigned_to && (
-                      <p className="font-body text-xs text-muted-foreground">Assigned: {getEmployeeName(hkOrder.assigned_to)}</p>
-                    )}
+                    {hkOrder?.assigned_to && <p className="font-body text-xs text-muted-foreground">Assigned: {getEmployeeName(hkOrder.assigned_to)}</p>}
                     {hkOrder && (
                       <Badge variant="outline" className={`font-body text-xs mt-1 ${hkOrder.status === 'inspection_cleared' ? 'text-emerald-400 border-emerald-500/40' : 'text-amber-400 border-amber-500/40'}`}>
                         {hkOrder.status === 'pre_inspection' ? '🔍 Pre-Inspection' : hkOrder.status === 'inspection_cleared' ? '✅ Cleared' : hkOrder.status === 'pending_inspection' ? 'Pending Inspection' : hkOrder.status === 'cleaning' ? '🧹 Cleaning' : hkOrder.status}
@@ -1470,13 +1078,11 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                   </div>
                   <div className="flex gap-2">
                     {hkOrder && !readOnly && (
-                      <Button size="sm" onClick={() => setViewingHousekeepingOrder(hkOrder)}
-                        className="font-display text-xs tracking-wider min-h-[44px]">
+                      <Button size="sm" onClick={() => setViewingHousekeepingOrder(hkOrder)} className="font-display text-xs tracking-wider min-h-[44px]">
                         <ClipboardCheck className="w-4 h-4 mr-1" /> Start
                       </Button>
                     )}
-                    <Button size="sm" variant="outline" onClick={() => { setSelectedUnit(unit); setDetailTab('info'); setVibeMode('list'); setShowCheckInForm(false); }}
-                      className="font-display text-xs tracking-wider min-h-[44px]">View</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setSelectedUnit(unit); setDetailTab('info'); setVibeMode('list'); setShowCheckInForm(false); }} className="font-display text-xs tracking-wider min-h-[44px]">View</Button>
                   </div>
                 </div>
               </div>
@@ -1485,10 +1091,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
         </div>
       )}
 
-      {/* ── Closed Checkouts (admin can reopen) ── */}
       <ClosedCheckoutsPanel isAdmin={!readOnly} />
 
-      {/* Room grid */}
       <h4 className="font-display text-xs tracking-wider text-muted-foreground uppercase">All Rooms</h4>
       <div className="grid grid-cols-2 gap-3">
         {units.map((unit: any) => {
@@ -1510,22 +1114,11 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
               <p className="font-display text-sm text-foreground tracking-wider">{unit.name}</p>
               {booking ? (
                 <div className="mt-2">
-                  <Badge className="font-body text-xs bg-red-500/20 text-red-400 border-red-500/40">
-                    {departureBooking ? 'Departure Pending' : 'Occupied'}
-                  </Badge>
+                  <Badge className="font-body text-xs bg-red-500/20 text-red-400 border-red-500/40">{departureBooking ? 'Departure Pending' : 'Occupied'}</Badge>
                   <p className="font-body text-xs text-foreground mt-1">{guest?.full_name || 'Guest'}</p>
-                  <p className="font-body text-xs text-muted-foreground">
-                    {format(new Date(booking.check_in + 'T00:00:00'), 'MMM d')} – {format(new Date(booking.check_out + 'T00:00:00'), 'MMM d')}
-                  </p>
-                  {arrivalBooking && (
-                    <p className="font-body text-[10px] text-blue-400 mt-1 truncate">
-                      Next: {arrivalBooking.resort_ops_guests?.full_name || 'Guest'}
-                      {workflow.isExtensionReview ? ' · Review extension' : ' · Arrival today'}
-                    </p>
-                  )}
-                  {workflow.isExtensionReview && (
-                    <Badge variant="outline" className="font-body text-[10px] mt-1 border-blue-500/40 text-blue-400">Review extension</Badge>
-                  )}
+                  <p className="font-body text-xs text-muted-foreground">{format(new Date(booking.check_in + 'T00:00:00'), 'MMM d')} – {format(new Date(booking.check_out + 'T00:00:00'), 'MMM d')}</p>
+                  {arrivalBooking && <p className="font-body text-[10px] text-blue-400 mt-1 truncate">Next: {arrivalBooking.resort_ops_guests?.full_name || 'Guest'}{workflow.isExtensionReview ? ' · Review extension' : ' · Arrival today'}</p>}
+                  {workflow.isExtensionReview && <Badge variant="outline" className="font-body text-[10px] mt-1 border-blue-500/40 text-blue-400">Review extension</Badge>}
                   <div className="flex flex-wrap gap-1 mt-1">
                     {isFnF && <Badge variant="outline" className="font-body text-[10px] border-emerald-500/40 text-emerald-400">F&F</Badge>}
                     {isVip && <Badge variant="outline" className="font-body text-[10px] border-amber-500/40 text-amber-400">⭐ VIP</Badge>}
@@ -1537,12 +1130,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                 <div className="mt-2">
                   <Badge className="font-body text-xs bg-blue-500/20 text-blue-400 border-blue-500/40">Ready for Check-in</Badge>
                   <p className="font-body text-xs text-foreground mt-1">{arrivalBooking.resort_ops_guests?.full_name || 'Guest'}</p>
-                  <p className="font-body text-xs text-muted-foreground">
-                    {format(new Date(arrivalBooking.check_in + 'T00:00:00'), 'MMM d')} – {format(new Date(arrivalBooking.check_out + 'T00:00:00'), 'MMM d')}
-                  </p>
-                  {workflow.isExtensionReview && (
-                    <Badge variant="outline" className="font-body text-[10px] mt-1 border-blue-500/40 text-blue-400">Review duplicate / extension</Badge>
-                  )}
+                  <p className="font-body text-xs text-muted-foreground">{format(new Date(arrivalBooking.check_in + 'T00:00:00'), 'MMM d')} – {format(new Date(arrivalBooking.check_out + 'T00:00:00'), 'MMM d')}</p>
+                  {workflow.isExtensionReview && <Badge variant="outline" className="font-body text-[10px] mt-1 border-blue-500/40 text-blue-400">Review duplicate / extension</Badge>}
                 </div>
               ) : (
                 <div className="mt-2">
@@ -1551,17 +1140,11 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
                     const upcoming = getUpcomingBooking(unit);
                     if (!upcoming) return null;
                     const upGuest = (upcoming as any)?.resort_ops_guests;
-                    return (
-                      <p className="font-body text-[10px] text-blue-400 mt-1 truncate">
-                        📅 {upGuest?.full_name || 'Guest'} · {format(new Date(upcoming.check_in + 'T00:00:00'), 'MMM d')}
-                      </p>
-                    );
+                    return <p className="font-body text-[10px] text-blue-400 mt-1 truncate">📅 {upGuest?.full_name || 'Guest'} · {format(new Date(upcoming.check_in + 'T00:00:00'), 'MMM d')}</p>;
                   })()}
                 </div>
               )}
-              {isHighRisk && (
-                <Badge variant="destructive" className="font-body text-xs mt-1">⚠ High Risk</Badge>
-              )}
+              {isHighRisk && <Badge variant="destructive" className="font-body text-xs mt-1">⚠ High Risk</Badge>}
             </button>
           );
         })}
