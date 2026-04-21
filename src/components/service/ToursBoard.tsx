@@ -294,41 +294,59 @@ const ToursBoard = () => {
   const confirmItem = useCallback(async (item: BoardItem) => {
     if (!canAct) { toast.error('View-only access'); return; }
     const rawId = item.id.replace(/^(tb-|req-)/, '');
-    if (item.kind === 'tour') {
-      await supabase.from('tour_bookings').update({ status: 'confirmed', confirmed_by: staffName }).eq('id', rawId);
-      qc.invalidateQueries({ queryKey: ['tours-board-bookings'] });
-    } else {
-      await supabase.from('guest_requests').update({ status: 'confirmed', confirmed_by: staffName }).eq('id', rawId);
-      qc.invalidateQueries({ queryKey: ['tours-board-requests'] });
+    try {
+      if (item.kind === 'tour') {
+        const { error } = await supabase.from('tour_bookings').update({ status: 'confirmed', confirmed_by: staffName }).eq('id', rawId);
+        if (error) throw error;
+        qc.invalidateQueries({ queryKey: ['tours-board-bookings'] });
+      } else {
+        const { error } = await supabase.from('guest_requests').update({ status: 'confirmed', confirmed_by: staffName }).eq('id', rawId);
+        if (error) throw error;
+        qc.invalidateQueries({ queryKey: ['tours-board-requests'] });
+      }
+      toast.success('Confirmed');
+    } catch {
+      toast.error('Failed to confirm — please try again');
     }
-    toast.success('Confirmed');
   }, [canAct, staffName, qc]);
 
   const completeItem = useCallback(async (item: BoardItem) => {
     if (!canAct) { toast.error('View-only access'); return; }
     const rawId = item.id.replace(/^(tb-|req-)/, '');
-    if (item.kind === 'tour') {
-      await supabase.from('tour_bookings').update({ status: 'completed' }).eq('id', rawId);
-      qc.invalidateQueries({ queryKey: ['tours-board-bookings'] });
-    } else {
-      await supabase.from('guest_requests').update({ status: 'completed' }).eq('id', rawId);
-      qc.invalidateQueries({ queryKey: ['tours-board-requests'] });
+    try {
+      if (item.kind === 'tour') {
+        const { error } = await supabase.from('tour_bookings').update({ status: 'completed' }).eq('id', rawId);
+        if (error) throw error;
+        qc.invalidateQueries({ queryKey: ['tours-board-bookings'] });
+      } else {
+        const { error } = await supabase.from('guest_requests').update({ status: 'completed' }).eq('id', rawId);
+        if (error) throw error;
+        qc.invalidateQueries({ queryKey: ['tours-board-requests'] });
+      }
+      toast.success('Completed');
+    } catch {
+      toast.error('Failed to complete — please try again');
     }
-    toast.success('Completed');
   }, [canAct, qc]);
 
   const cancelItem = useCallback(async (item: BoardItem) => {
     if (!canAct) { toast.error('View-only access'); return; }
     const rawId = item.id.replace(/^(tb-|req-)/, '');
-    if (item.kind === 'tour') {
-      await supabase.from('tour_bookings').update({ status: 'cancelled', confirmed_by: staffName }).eq('id', rawId);
-      qc.invalidateQueries({ queryKey: ['tours-board-bookings'] });
-    } else {
-      await supabase.from('guest_requests').update({ status: 'cancelled', confirmed_by: staffName }).eq('id', rawId);
-      qc.invalidateQueries({ queryKey: ['tours-board-requests'] });
+    try {
+      if (item.kind === 'tour') {
+        const { error } = await supabase.from('tour_bookings').update({ status: 'cancelled' }).eq('id', rawId);
+        if (error) throw error;
+        qc.invalidateQueries({ queryKey: ['tours-board-bookings'] });
+      } else {
+        const { error } = await supabase.from('guest_requests').update({ status: 'cancelled' }).eq('id', rawId);
+        if (error) throw error;
+        qc.invalidateQueries({ queryKey: ['tours-board-requests'] });
+      }
+      toast.success('Cancelled');
+    } catch {
+      toast.error('Failed to cancel — please try again');
     }
-    toast.success('Cancelled');
-  }, [canAct, staffName, qc]);
+  }, [canAct, qc]);
 
   const totalActive = columns.pending.length + columns.confirmed.length;
 
