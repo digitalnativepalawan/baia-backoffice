@@ -564,8 +564,8 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
                       {deliveryType && (
                         <p className="font-body text-xs text-cream-dim text-center mt-2">
                           {deliveryType === 'room_delivery'
-                            ? `Charges added to Room ${guestSession.room_name}`
-                            : `Charges added to Room ${guestSession.room_name}`}
+                            ? `Delivered to Room ${guestSession.room_name} — charged to your room bill`
+                            : `Come to the restaurant — charged to your room bill`}
                         </p>
                       )}
                     </div>
