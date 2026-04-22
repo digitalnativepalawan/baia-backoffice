@@ -1085,10 +1085,10 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const { data: pendingTours = [] } = useQuery({
     queryKey: ['guest-bill-pending-tours', session.booking_id],
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_tours') as any)
+      const { data } = await (supabase.from('tour_bookings') as any)
         .select('*')
         .eq('booking_id', session.booking_id)
-        .in('status', ['booked', 'pending']);
+        .in('status', ['pending', 'confirmed']);
       return data || [];
     },
   });
@@ -1097,10 +1097,10 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const { data: completedTours = [] } = useQuery({
     queryKey: ['guest-bill-completed-tours', session.booking_id],
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_tours') as any)
+      const { data } = await (supabase.from('tour_bookings') as any)
         .select('*')
         .eq('booking_id', session.booking_id)
-        .in('status', ['completed', 'confirmed']);
+        .eq('status', 'completed');
       return data || [];
     },
   });
