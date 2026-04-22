@@ -145,6 +145,10 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
 
   // Phase detection: if inspection exists and is cleared, we do actual checkout
   const inspectionCleared = hkOrder?.inspection_status === 'cleared';
+  const inspectionIssueFlagged = hkOrder?.inspection_status === 'issue_flagged';
+
+  // Disable initiate-inspection button when: submitting, checklist not passed (unless overridden), or issue already flagged
+  const initiateButtonDisabled = submitting || (!checklistPassed && !overrideChecklist) || inspectionIssueFlagged;
 
   // Phase 1: initiate pre-checkout inspection (lock unit + create HK task)
   const handleInitiateInspection = async () => {
@@ -318,18 +322,31 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
 
               {/* Inspection status (if already initiated) */}
               {hkOrder && (
-                <div className="border border-border rounded-lg p-3 space-y-1">
+                <div className={`border rounded-lg p-3 space-y-1 ${hkOrder.inspection_status === 'issue_flagged' ? 'border-red-500/40 bg-red-500/10' : 'border-border'}`}>
                   <p className="font-display text-xs tracking-wider text-muted-foreground uppercase">Inspection Status</p>
-                  <ChecklistItem
-                    ok={hkOrder.inspection_status === 'cleared'}
-                    label="Housekeeping pre-checkout inspection"
-                    detail={
-                      hkOrder.inspection_status === 'cleared'
-                        ? `✅ Cleared by ${hkOrder.inspection_by_name || 'staff'}${hkOrder.damage_notes ? ` — Notes: ${hkOrder.damage_notes}` : ''}`
-                        : '⏳ Waiting for housekeeper to inspect'
-                    }
-                    isWarning={hkOrder.inspection_status !== 'cleared'}
-                  />
+                  {hkOrder.inspection_status === 'issue_flagged' ? (
+                    <div className="space-y-1">
+                      <p className="font-body text-xs text-red-400 font-semibold">⚠️ Issue Flagged</p>
+                      {hkOrder.inspection_by_name && (
+                        <p className="font-body text-[10px] text-muted-foreground">Inspected by: {hkOrder.inspection_by_name}</p>
+                      )}
+                      {hkOrder.damage_notes && (
+                        <p className="font-body text-[10px] text-red-300">Notes: {hkOrder.damage_notes}</p>
+                      )}
+                      <p className="font-body text-[10px] text-muted-foreground">Manager override required to proceed with checkout.</p>
+                    </div>
+                  ) : (
+                    <ChecklistItem
+                      ok={hkOrder.inspection_status === 'cleared'}
+                      label="Housekeeping pre-checkout inspection"
+                      detail={
+                        hkOrder.inspection_status === 'cleared'
+                          ? `✅ Cleared by ${hkOrder.inspection_by_name || 'staff'}${hkOrder.damage_notes ? ` — Notes: ${hkOrder.damage_notes}` : ''}`
+                          : '⏳ Waiting for housekeeper to inspect'
+                      }
+                      isWarning={hkOrder.inspection_status !== 'cleared'}
+                    />
+                  )}
                 </div>
               )}
             </>
@@ -499,10 +516,16 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
           ) : (
             <Button
               onClick={handleInitiateInspection}
-              disabled={submitting || (!checklistPassed && !overrideChecklist)}
-              className="font-display text-xs tracking-wider bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={initiateButtonDisabled}
+              className={`font-display text-xs tracking-wider ${inspectionIssueFlagged ? 'bg-red-700 hover:bg-red-700 text-white cursor-not-allowed' : 'bg-amber-600 hover:bg-amber-700 text-white'}`}
             >
-              {submitting ? 'Processing...' : hkOrder ? '⏳ Inspection Pending' : '🔍 Initiate Inspection'}
+              {submitting
+                ? 'Processing...'
+                : inspectionIssueFlagged
+                  ? '⚠️ Issue Flagged — Manager Override Required'
+                  : hkOrder
+                    ? '⏳ Inspection Pending'
+                    : '🔍 Initiate Inspection'}
             </Button>
           )}
         </DialogFooter>
