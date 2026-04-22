@@ -52,6 +52,9 @@ const WaitstaffBoard = () => {
         .from('orders')
         .select('*')
         .in('status', ['New', 'Preparing', 'Ready'])
+        // Exclude guest-portal room-delivery orders and reception room-delivery orders.
+        // Show only: walk-in / staff orders (no room_id), or guest-portal dine-in orders.
+        .or('room_id.is.null,delivery_type.eq.dine_in')
         .gte('created_at', start.toISOString())
         .order('created_at', { ascending: true })
         .limit(300);
