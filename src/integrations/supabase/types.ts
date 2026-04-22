@@ -1399,6 +1399,7 @@ export type Database = {
           bar_status: string
           closed_at: string | null
           created_at: string
+          delivery_type: string | null
           guest_name: string
           id: string
           items: Json
@@ -1420,6 +1421,7 @@ export type Database = {
           bar_status?: string
           closed_at?: string | null
           created_at?: string
+          delivery_type?: string | null
           guest_name?: string
           id?: string
           items?: Json
@@ -1441,6 +1443,7 @@ export type Database = {
           bar_status?: string
           closed_at?: string | null
           created_at?: string
+          delivery_type?: string | null
           guest_name?: string
           id?: string
           items?: Json

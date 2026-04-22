@@ -89,6 +89,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
   const [orderSummary, setOrderSummary] = useState({ itemCount: 0, grandTotal: 0 });
   const [stockWarning, setStockWarning] = useState<Shortage[]>([]);
   const [overrideStock, setOverrideStock] = useState(false);
+  const [deliveryType, setDeliveryType] = useState<'room_delivery' | 'dine_in' | null>(null);
   const [scheduleMode, setScheduleMode] = useState<'asap' | 'scheduled'>('asap');
   const [tabMode, setTabMode] = useState<'new' | 'existing'>('new');
   const [selectedTabId, setSelectedTabId] = useState('');
@@ -121,6 +122,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
       setSelectedLocation(guestSession.room_name);
       setGuestName(guestSession.guest_name);
       setPaymentType('Charge to Room');
+      setDeliveryType(null);
     }
   }, [isGuestOrder]);
   const subtotal = cart.total();
@@ -183,6 +185,11 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
   const handleSendToKitchen = async () => {
     if (!selectedOrderType || !selectedLocation) {
       toast.error('Please select order type and location');
+      return;
+    }
+    // Guest portal orders require a delivery type choice
+    if (isGuestOrder && !deliveryType) {
+      toast.error('Please choose how you would like your order delivered');
       return;
     }
     // Payment type is now set by the cashier at settlement time, not at order placement
@@ -308,6 +315,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
         room_id: roomUnit?.id || null,
         tax_details: taxDetails,
         staff_name: staffName,
+        ...(isGuestOrder && deliveryType ? { delivery_type: deliveryType } : {}),
       };
       if (scheduledFor) insertData.scheduled_for = scheduledFor;
 
@@ -411,7 +419,11 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
                 {orderSummary.itemCount} item{orderSummary.itemCount !== 1 ? 's' : ''} · ₱{orderSummary.grandTotal.toLocaleString()}
               </p>
               <p className="font-body text-xs text-cream-dim text-center mt-2">
-                {isGuestOrder ? 'Charged to your room' : 'Added to your open tab'}
+                {isGuestOrder
+                  ? (deliveryType === 'dine_in'
+                      ? 'See you at the restaurant!'
+                      : 'Charged to your room')
+                  : 'Added to your open tab'}
               </p>
             </div>
             <DrawerFooter className="pt-0 gap-2">
@@ -423,6 +435,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
                   setSelectedLocation(guestSession.room_name);
                   setGuestName(guestSession.guest_name);
                   setPaymentType('Charge to Room');
+                  setDeliveryType(null);
                 } else {
                   setSelectedOrderType(''); setSelectedLocation(''); setPaymentType(''); setGuestName(''); setScheduleMode('asap');
                 }
@@ -518,13 +531,43 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
                     </div>
                   </div>
 
-                  {/* Guest-order mode: show room charge info */}
+                  {/* Guest-order mode: delivery type choice */}
                   {isGuestOrder && guestSession && (
                     <div className="mt-4 pt-3 border-t border-border">
-                      <div className="bg-gold/10 border border-gold/20 rounded-lg p-3 text-center">
-                        <p className="font-display text-xs tracking-wider text-gold mb-1">Room {guestSession.room_name}</p>
-                        <p className="font-body text-xs text-cream-dim">All charges will be added to your room bill</p>
+                      <p className="font-display text-sm text-foreground tracking-wider mb-3">How would you like your order?</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setDeliveryType('room_delivery')}
+                          className={`min-h-[64px] py-3 px-3 border rounded-lg flex flex-col items-center justify-center gap-1 transition-colors ${
+                            deliveryType === 'room_delivery'
+                              ? 'border-gold text-gold bg-gold/10'
+                              : 'border-border text-cream-dim'
+                          }`}
+                        >
+                          <span className="text-xl">🛎️</span>
+                          <span className="font-display text-xs tracking-wider">Room Delivery</span>
+                          <span className="font-body text-[10px] text-cream-dim">We bring it to your room</span>
+                        </button>
+                        <button
+                          onClick={() => setDeliveryType('dine_in')}
+                          className={`min-h-[64px] py-3 px-3 border rounded-lg flex flex-col items-center justify-center gap-1 transition-colors ${
+                            deliveryType === 'dine_in'
+                              ? 'border-gold text-gold bg-gold/10'
+                              : 'border-border text-cream-dim'
+                          }`}
+                        >
+                          <span className="text-xl">🍽️</span>
+                          <span className="font-display text-xs tracking-wider">Dine In</span>
+                          <span className="font-body text-[10px] text-cream-dim">I'll eat at the restaurant</span>
+                        </button>
                       </div>
+                      {deliveryType && (
+                        <p className="font-body text-xs text-cream-dim text-center mt-2">
+                          {deliveryType === 'room_delivery'
+                            ? `Charges added to Room ${guestSession.room_name}`
+                            : `Charges added to Room ${guestSession.room_name}`}
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -716,7 +759,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
               <DrawerFooter className="pt-2">
                 <Button
                   onClick={handleSendToKitchen}
-                  disabled={submitting || needsOrderType}
+                  disabled={submitting || needsOrderType || (isGuestOrder && !deliveryType)}
                   className="font-display tracking-wider py-6 w-full gap-2 text-base"
                 >
                   <Send className="w-4 h-4" />
@@ -729,7 +772,9 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
                   })()}
                 </Button>
                 <p className="font-body text-[10px] text-cream-dim text-center mt-1">
-                  {isGuestOrder ? 'Charges will be added to your room bill' : 'Order will be added to your open tab'}
+                  {isGuestOrder
+                    ? (deliveryType === 'dine_in' ? 'Prepare your table — charges added to your room bill' : 'Charges will be added to your room bill')
+                    : 'Order will be added to your open tab'}
                 </p>
               </DrawerFooter>
             )}
