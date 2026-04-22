@@ -979,6 +979,12 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     return (orders[0].inspection_status as any) || 'pending';
   };
 
+  // Helper: get the latest pre-checkout inspection order for a unit
+  const getPreCheckoutInspOrder = (unit: any) =>
+    allHkOrders
+      .filter((o: any) => o.unit_name === unit.name && o.task_type === 'pre_checkout_inspection')
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] || null;
+
   // Override & Unlock Checkout (GM/Admin only)
   const handleOverrideUnlock = async (unit: any) => {
     if (!isAdmin) { toast.error('Admin access required'); return; }
@@ -1104,13 +1110,17 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                     {(() => {
                       const inspState = getPreCheckoutInspState(unit);
                       if (unit.checkout_locked && inspState === 'issue_flagged') {
-                        return <Badge className="font-body text-[10px] bg-red-500/20 text-red-400 border-red-500/40">⚠ Issue Flagged</Badge>;
+                        return <Badge className="font-body text-[10px] bg-red-500/20 text-red-400 border-red-500/40 animate-pulse">⚠ Issue Flagged</Badge>;
                       }
                       if (unit.checkout_locked) {
-                        return <Badge className="font-body text-[10px] bg-amber-500/20 text-amber-400 border-amber-500/40">⏳ Awaiting Inspection</Badge>;
+                        return <Badge className="font-body text-[10px] bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse">⏳ Awaiting Inspection</Badge>;
                       }
                       if (inspState === 'cleared') {
                         return <Badge className="font-body text-[10px] bg-emerald-500/20 text-emerald-400 border-emerald-500/40">✓ Inspection Cleared</Badge>;
+                      }
+                      if (inspState === 'issue_flagged') {
+                        // Admin has unlocked after flagged issue — show warning badge
+                        return <Badge className="font-body text-[10px] bg-red-500/20 text-red-400 border-red-500/40">⚠ Issue (Override Active)</Badge>;
                       }
                       return null;
                     })()}
@@ -1118,13 +1128,14 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                 </div>
                 {canDoEdit && isDepartingToday && (() => {
                   const inspState = getPreCheckoutInspState(unit);
-                  // Hide Check Out button when unit is locked
+                  // Hide Check Out button when unit is locked (inspection in progress)
                   if (unit.checkout_locked) return null;
-                  // Hide when issue is flagged (must be overridden first)
-                  if (inspState === 'issue_flagged') return null;
+                  // Non-admins cannot proceed when issue is flagged — requires admin override first
+                  if (inspState === 'issue_flagged' && !isAdmin) return null;
                   return (
                     <Button size="sm" variant="destructive" onClick={() => {
-                      const phase = inspState === 'cleared' ? 'complete' : 'initiate';
+                      // When admin force-checks out after flagged issue, go straight to checkout phase
+                      const phase = (inspState === 'cleared' || inspState === 'issue_flagged') ? 'complete' : 'initiate';
                       setCheckoutPhase(phase);
                       setCheckOutBooking(booking);
                       setCheckOutUnit(unit);
@@ -1133,11 +1144,11 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                       setCheckOutOpen(true);
                     }} className="font-display text-xs tracking-wider min-h-[36px]">
                       <LogOut className="w-4 h-4 mr-1" />
-                      {inspState === 'cleared' ? 'Complete Checkout' : 'Check Out'}
+                      {inspState === 'cleared' ? 'Complete Checkout' : inspState === 'issue_flagged' ? '⚠️ Force Checkout' : 'Check Out'}
                     </Button>
                   );
                 })()}
-                {/* Override & Unlock Checkout — GM/Admin only, when issue is flagged */}
+                {/* Override & Unlock Checkout — GM/Admin only, when issue is flagged and unit is still locked */}
                 {isAdmin && unit.checkout_locked && getPreCheckoutInspState(unit) === 'issue_flagged' && (
                   <Button size="sm" variant="outline" onClick={() => handleOverrideUnlock(unit)}
                     className="font-display text-xs tracking-wider min-h-[36px] border-red-500/40 text-red-400 hover:bg-red-500/10">
@@ -1888,11 +1899,29 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
                   </>
                 ) : (
                   <>
-                    {/* Phase 2: Actual checkout */}
-                    <div className="border border-emerald-500/30 bg-emerald-500/5 rounded-lg p-3">
-                      <p className="font-display text-xs tracking-wider text-emerald-400 uppercase">✓ Inspection Cleared</p>
-                      <p className="font-body text-xs text-muted-foreground mt-1">Room has been inspected and cleared. Proceed with checkout.</p>
-                    </div>
+                    {/* Phase 2: Actual checkout — show appropriate banner based on inspection result */}
+                    {(() => {
+                      const inspState = checkOutUnit ? getPreCheckoutInspState(checkOutUnit) : 'none';
+                      const inspOrder = checkOutUnit ? getPreCheckoutInspOrder(checkOutUnit) : null;
+                      if (inspState === 'issue_flagged') {
+                        return (
+                          <div className="border border-red-500/40 bg-red-500/10 rounded-lg p-3">
+                            <p className="font-display text-xs tracking-wider text-red-400 uppercase">⚠️ Issue Flagged — Admin Override</p>
+                            <p className="font-body text-xs text-muted-foreground mt-1">
+                              {inspOrder?.inspection_by_name ? `Inspected by ${inspOrder.inspection_by_name}. ` : ''}
+                              An issue was reported during inspection. Proceeding as admin override.
+                              {inspOrder?.damage_notes ? ` Notes: ${inspOrder.damage_notes}` : ''}
+                            </p>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="border border-emerald-500/30 bg-emerald-500/5 rounded-lg p-3">
+                          <p className="font-display text-xs tracking-wider text-emerald-400 uppercase">✓ Inspection Cleared</p>
+                          <p className="font-body text-xs text-muted-foreground mt-1">Room has been inspected and cleared. Proceed with checkout.</p>
+                        </div>
+                      );
+                    })()}
 
                     <div className="border border-border rounded-lg p-3 bg-secondary space-y-1">
                       <p className="font-display text-sm text-foreground">{guest?.full_name || 'Guest'}</p>

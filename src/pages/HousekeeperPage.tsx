@@ -92,9 +92,16 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
     if (!latestByUnit.has(o.unit_name)) latestByUnit.set(o.unit_name, o);
   });
 
-  // Separate: assigned to me vs unassigned pending
+  // Separate: pre-checkout inspections, regular assignments, in-progress
   const allActive = Array.from(latestByUnit.values());
-  const pendingOrders = allActive.filter((o: any) => !o.accepted_by && (o.status === 'pre_inspection' || o.status === 'pending_inspection'));
+  // Pre-checkout inspections — visible to all housekeepers, not just managers
+  const preCheckoutPending = allActive.filter(
+    (o: any) => !o.accepted_by && o.task_type === 'pre_checkout_inspection' && o.status === 'pre_inspection'
+  );
+  // Regular pending assignments (exclude pre_checkout_inspection — shown separately above)
+  const pendingOrders = allActive.filter(
+    (o: any) => !o.accepted_by && o.task_type !== 'pre_checkout_inspection' && (o.status === 'pre_inspection' || o.status === 'pending_inspection')
+  );
   const myInProgress = allActive.filter((o: any) => o.accepted_by === empId && (o.status === 'cleaning' || o.status === 'pending_inspection'));
 
   // Sort: urgent first, then assigned-to-me first
@@ -170,7 +177,7 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   if (activeOrder) {
-    const hkMode = activeOrder.status === 'pre_inspection' ? 'pre_inspection' : 'cleaning';
+    const hkMode = activeOrder.task_type === 'pre_checkout_inspection' ? 'pre_inspection' : 'cleaning';
     return (
       <HousekeepingInspection
         order={activeOrder}
@@ -195,6 +202,35 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
             <p className="font-body text-xs text-muted-foreground">Welcome, {empName}</p>
           </div>
         </div>
+      )}
+
+      {/* PRE-CHECKOUT INSPECTIONS — visible to all housekeepers */}
+      {preCheckoutPending.length > 0 && (
+      <section className="mb-6">
+        <h2 className="font-display text-sm tracking-wider text-blue-400 uppercase mb-3 flex items-center gap-2">
+          🔍 Pre-Checkout Inspections ({preCheckoutPending.length})
+        </h2>
+        <div className="space-y-2">
+          {preCheckoutPending.map((order: any) => (
+            <div key={order.id} className="border border-blue-500/40 bg-blue-500/5 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-display text-base tracking-wider text-foreground">{order.unit_name}</span>
+                <Badge className="bg-blue-600 text-white font-body text-[10px]">🔍 Pre-Checkout</Badge>
+              </div>
+              <p className="font-body text-xs text-muted-foreground mb-3">
+                Requested: {format(new Date(order.created_at), 'h:mm a')} — damage check before guest leaves
+              </p>
+              <Button
+                onClick={() => handleAccept(order.id)}
+                className="w-full font-display tracking-wider text-sm min-h-[52px] bg-blue-600 hover:bg-blue-700 text-white"
+                size="lg"
+              >
+                ✋ Accept Inspection
+              </Button>
+            </div>
+          ))}
+        </div>
+      </section>
       )}
 
       {/* New Assignments — only visible to managers */}
