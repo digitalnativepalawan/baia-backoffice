@@ -27,6 +27,7 @@ const CashierBoard = () => {
   const [receiptOrder, setReceiptOrder] = useState<any | null>(null);
   const [completedOpen, setCompletedOpen] = useState(false);
   const [completedDate, setCompletedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [selectedGroup, setSelectedGroup] = useState<any[] | null>(null);
 
   // Realtime
   useEffect(() => {
@@ -196,11 +197,96 @@ const CashierBoard = () => {
     }
   };
 
+  // Handle payment for a grouped set of orders
+  const handleConfirmGroupPayment = async () => {
+    if (!selectedGroup || selectedGroup.length === 0 || busy) return;
+    const paymentType = chargeToRoom ? 'Charge to Room' : selectedPayment;
+    if (!paymentType) return;
+
+    setBusy(true);
+    try {
+      const updateData: any = {
+        status: 'Paid',
+        payment_type: paymentType,
+        closed_at: new Date().toISOString(),
+      };
+
+      let roomBooking: any = null;
+      if (chargeToRoom && selectedBooking) {
+        roomBooking = activeBookings.find(b => b.id === selectedBooking);
+        if (roomBooking?.unit_id) {
+          updateData.room_id = roomBooking.unit_id;
+        }
+      }
+
+      const orderIds = selectedGroup.map(o => o.id);
+      await supabase.from('orders').update(updateData).in('id', orderIds);
+
+      if (chargeToRoom && roomBooking) {
+        const staffSession = getStaffSession();
+        for (const order of selectedGroup) {
+          const items = (order.items as any[]) || [];
+          const subtotal = items.reduce((s: number, i: any) => s + i.price * (i.qty || i.quantity || 1), 0);
+          const taxDetails = (order.tax_details as any) || {};
+          const taxAmount = Number(taxDetails.vat_amount ?? 0);
+          const serviceCharge = Number(order.service_charge ?? 0);
+          const grandTotal = Number(order.total ?? subtotal + taxAmount + serviceCharge);
+
+          await (supabase.from('room_transactions' as any) as any).insert({
+            unit_id: roomBooking.unit_id,
+            unit_name: roomBooking.resort_ops_units?.name || '',
+            booking_id: roomBooking.id,
+            guest_name: roomBooking.resort_ops_guests?.full_name || order.guest_name || null,
+            transaction_type: 'room_charge',
+            order_id: order.id,
+            amount: subtotal,
+            tax_amount: taxAmount,
+            service_charge_amount: serviceCharge,
+            total_amount: grandTotal,
+            payment_method: 'Charge to Room',
+            staff_name: staffSession?.name || 'Staff',
+            notes: `Room Folio – Order: ${items.map((i: any) => `${i.qty || i.quantity || 1}x ${i.name}`).join(', ')}`,
+          });
+        }
+      }
+
+      setSelectedGroup(null);
+      setSelectedPayment('');
+      setChargeToRoom(false);
+      setSelectedBooking(null);
+
+      qc.invalidateQueries({ queryKey: ['cashier-orders'] });
+      toast.success('Payment confirmed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // Filter individual orders: exclude those belonging to closed tab bills
   const filteredOrders = useMemo(() => {
     const closedTabIdSet = new Set(tabBillIds);
     return orders.filter((o: any) => !o.tab_id || !closedTabIdSet.has(o.tab_id));
   }, [orders, tabBillIds]);
+
+  // Group filtered orders: by room_id → tab_id → location_detail → individual
+  const groupedOrders = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const order of filteredOrders) {
+      let key: string;
+      if (order.room_id) {
+        key = `room:${order.room_id}`;
+      } else if (order.tab_id) {
+        key = `tab:${order.tab_id}`;
+      } else if (order.location_detail) {
+        key = `loc:${order.location_detail}`;
+      } else {
+        key = `solo:${order.id}`;
+      }
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(order);
+    }
+    return Array.from(map.values());
+  }, [filteredOrders]);
 
   const activePaymentMethods = paymentMethods.filter(m => m.is_active && m.name !== 'Charge to Room');
 
@@ -234,12 +320,26 @@ const CashierBoard = () => {
       setReceiptOrder(order);
     } else {
       setSelectedOrder(order);
+      setSelectedGroup(null);
       setSelectedTabBill(null);
       setChargeToRoom(false);
       setSelectedPayment('');
       setSelectedBooking(null);
     }
   }, []);
+
+  const handleGroupSelect = useCallback((groupOrders: any[]) => {
+    if (groupOrders.length === 1) {
+      handleOrderSelect(groupOrders[0]);
+    } else {
+      setSelectedGroup(groupOrders);
+      setSelectedOrder(null);
+      setSelectedTabBill(null);
+      setChargeToRoom(false);
+      setSelectedPayment('');
+      setSelectedBooking(null);
+    }
+  }, [handleOrderSelect]);
 
   // Auto-detect in-stay guest for the selected order
   const selectedOrderInStay = useMemo(() => {
@@ -257,6 +357,23 @@ const CashierBoard = () => {
     return null;
   }, [selectedOrder, activeBookings]);
 
+  // Auto-detect in-stay guest for selected group
+  const selectedGroupInStay = useMemo(() => {
+    if (!selectedGroup || selectedGroup.length === 0) return null;
+    const firstOrder = selectedGroup[0];
+    if (firstOrder.room_id) {
+      return activeBookings.find((b: any) => b.unit_id === firstOrder.room_id) || null;
+    }
+    if (firstOrder.guest_name) {
+      const name = firstOrder.guest_name.toLowerCase().trim();
+      return activeBookings.find((b: any) => {
+        const guestName = b.resort_ops_guests?.full_name?.toLowerCase()?.trim();
+        return guestName && guestName === name;
+      }) || null;
+    }
+    return null;
+  }, [selectedGroup, activeBookings]);
+
   // Receipt view
   if (receiptOrder) {
     return <CashierReceipt order={receiptOrder} onDone={() => setReceiptOrder(null)} />;
@@ -269,7 +386,7 @@ const CashierBoard = () => {
         {/* Summary */}
         <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-card/50 flex-shrink-0">
           <span className="font-display text-sm text-foreground tracking-wider">
-            {filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} awaiting settlement
+            {groupedOrders.length} bill{groupedOrders.length !== 1 ? 's' : ''} awaiting settlement
             {tabBills.length > 0 && (
               <span className="ml-2 text-emerald-400">· {tabBills.length} tab bill{tabBills.length !== 1 ? 's' : ''}</span>
             )}
@@ -317,17 +434,26 @@ const CashierBoard = () => {
             </div>
           )}
 
-          {/* Flat list of served orders */}
-          {filteredOrders.length > 0 ? (
+          {/* Grouped list of served orders */}
+          {groupedOrders.length > 0 ? (
             <div className="p-3 space-y-2">
-              {filteredOrders.map(order => (
-                <OrderRow
-                  key={order.id}
-                  order={order}
-                  selected={selectedOrder?.id === order.id}
-                  onSelect={() => handleOrderSelect(order)}
-                />
-              ))}
+              {groupedOrders.map(group => {
+                const firstOrder = group[0];
+                const groupOrderIds = group.map((o: any) => o.id).sort().join(',');
+                const selectedGroupIds = (selectedGroup ?? []).map((o: any) => o.id).sort().join(',');
+                const isSelected = group.length === 1
+                  ? selectedOrder?.id === firstOrder.id
+                  : selectedGroup !== null && groupOrderIds === selectedGroupIds;
+                return (
+                  <GroupedOrderRow
+                    key={firstOrder.id}
+                    groupOrders={group}
+                    selected={isSelected}
+                    onSelect={() => handleGroupSelect(group)}
+                    activeBookings={activeBookings}
+                  />
+                );
+              })}
             </div>
           ) : tabBills.length === 0 ? (
             <p className="font-body text-sm text-muted-foreground text-center py-12">No orders awaiting settlement</p>
@@ -381,6 +507,22 @@ const CashierBoard = () => {
             onConfirm={() => handleConfirmTabPayment(selectedTabBill, selectedPayment)}
             busy={busy}
             onBack={() => { setSelectedTabBill(null); setSelectedPayment(''); }}
+          />
+        ) : selectedGroup ? (
+          <GroupedBillOutPanel
+            groupOrders={selectedGroup}
+            paymentMethods={activePaymentMethods}
+            selectedPayment={selectedPayment}
+            onSelectPayment={(p) => { setSelectedPayment(p); setChargeToRoom(false); }}
+            chargeToRoom={chargeToRoom}
+            onChargeToRoom={() => { setChargeToRoom(true); setSelectedPayment(''); }}
+            activeBookings={activeBookings}
+            selectedBooking={selectedBooking}
+            onSelectBooking={setSelectedBooking}
+            onConfirm={handleConfirmGroupPayment}
+            busy={busy}
+            onBack={() => { setSelectedGroup(null); setSelectedPayment(''); }}
+            inStayBooking={selectedGroupInStay}
           />
         ) : selectedOrder ? (
           <BillOutPanel
@@ -855,6 +997,316 @@ const DailySummary = ({ completed }: { completed: any[] }) => {
 
       <div className="px-4 py-3 border-t border-border text-center">
         <p className="font-body text-[10px] text-muted-foreground">Tap an order to settle · Tap completed to reprint</p>
+      </div>
+    </div>
+  );
+};
+
+/** Grouped order card for the left panel */
+const GroupedOrderRow = ({
+  groupOrders,
+  selected,
+  onSelect,
+  activeBookings,
+}: {
+  groupOrders: any[];
+  selected: boolean;
+  onSelect: () => void;
+  activeBookings: any[];
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const isMulti = groupOrders.length > 1;
+  const firstOrder = groupOrders[0];
+  const total = groupOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+  const isPaid = groupOrders.every(o => o.status === 'Paid');
+  const isReady = !isMulti && firstOrder.status === 'Ready';
+  const isRoomCharge = !isMulti && firstOrder.payment_type === 'Charge to Room';
+  const elapsed = formatDistanceToNow(new Date(firstOrder.created_at), { addSuffix: false });
+
+  // Determine display label and sublabel
+  let label = firstOrder.guest_name || firstOrder.location_detail || firstOrder.order_type;
+  let sublabel: string | undefined = firstOrder.guest_name && firstOrder.location_detail
+    ? firstOrder.location_detail
+    : undefined;
+
+  if (firstOrder.room_id) {
+    const booking = activeBookings.find((b: any) => b.unit_id === firstOrder.room_id);
+    if (booking) {
+      label = booking.resort_ops_guests?.full_name || firstOrder.guest_name || label;
+      sublabel = booking.resort_ops_units?.name || firstOrder.room_id;
+    }
+  }
+
+  return (
+    <div className={`rounded-xl border border-border/60 transition-all overflow-hidden min-w-0 ${
+      isPaid ? 'opacity-70' : ''
+    } ${selected ? 'ring-2 ring-gold bg-gold/5' : 'bg-card/90'}`}>
+      <div
+        onClick={onSelect}
+        className="p-3 cursor-pointer active:scale-[0.98] hover:bg-secondary/30"
+      >
+        <div className="flex items-start justify-between mb-1.5">
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-sm text-foreground tracking-wider truncate">{label}</p>
+            {sublabel && <p className="font-body text-xs text-muted-foreground truncate">{sublabel}</p>}
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+            {isMulti && (
+              <button
+                onClick={e => { e.stopPropagation(); setExpanded(v => !v); }}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label={expanded ? 'Collapse orders' : 'Expand orders'}
+              >
+                {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+            )}
+            {isPaid && !isMulti && <Printer className="w-3 h-3 text-gold" />}
+            <Clock className="w-3 h-3 text-muted-foreground" />
+            <span className="font-body text-[11px] tabular-nums text-muted-foreground">{elapsed}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          {isMulti ? (
+            <Badge variant="outline" className="font-body text-[10px] h-5 border-amber-400/50 text-amber-400">
+              {groupOrders.length} orders
+            </Badge>
+          ) : (
+            <Badge variant="outline" className={`font-body text-[10px] h-5 ${
+              isRoomCharge && isPaid ? 'border-blue-400/50 text-blue-400' :
+              isPaid ? 'border-emerald-400/50 text-emerald-400' :
+              isReady ? 'border-cyan-400/50 text-cyan-400' :
+              'border-amber-400/50 text-amber-400'
+            }`}>
+              {isRoomCharge && isPaid ? 'Room Charge' : isPaid ? 'Paid' : isReady ? 'Ready — Awaiting Serve' : 'Pending Payment'}
+            </Badge>
+          )}
+          <span className="font-display text-sm text-gold tabular-nums">₱{total.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {isMulti && expanded && (
+        <div className="border-t border-border/50 px-3 py-2 space-y-1 bg-secondary/20">
+          {groupOrders.map(order => {
+            const orderItems = (order.items as any[]) || [];
+            return (
+              <div key={order.id} className="text-xs font-body text-muted-foreground">
+                <span className="text-foreground">{format(new Date(order.created_at), 'h:mm a')}</span>
+                {' · '}
+                {orderItems.map((i: any) => `${i.qty || i.quantity || 1}× ${i.name}`).join(', ') || 'No items'}
+                <span className="text-gold ml-1.5">₱{Number(order.total).toLocaleString()}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** Payment panel for a grouped set of orders */
+const GroupedBillOutPanel = ({
+  groupOrders,
+  paymentMethods,
+  selectedPayment,
+  onSelectPayment,
+  chargeToRoom,
+  onChargeToRoom,
+  activeBookings,
+  selectedBooking,
+  onSelectBooking,
+  onConfirm,
+  busy,
+  onBack,
+  inStayBooking,
+}: {
+  groupOrders: any[];
+  paymentMethods: any[];
+  selectedPayment: string;
+  onSelectPayment: (p: string) => void;
+  chargeToRoom: boolean;
+  onChargeToRoom: () => void;
+  activeBookings: any[];
+  selectedBooking: string | null;
+  onSelectBooking: (id: string | null) => void;
+  onConfirm: () => void;
+  busy: boolean;
+  onBack: () => void;
+  inStayBooking: any | null;
+}) => {
+  const firstOrder = groupOrders[0];
+  const total = groupOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+  const sc = groupOrders.reduce((s, o) => s + Number(o.service_charge || 0), 0);
+  const subtotal = groupOrders.reduce((s, o) => {
+    const items = (o.items as any[]) || [];
+    return s + items.reduce((ss: number, i: any) => ss + i.price * (i.qty || i.quantity || 1), 0);
+  }, 0);
+
+  const isInStay = !!inStayBooking;
+  const canConfirm = chargeToRoom ? !!selectedBooking : !!selectedPayment;
+
+  const handleRoomFolioClick = () => {
+    onChargeToRoom();
+    onSelectBooking(inStayBooking?.id ?? null);
+  };
+
+  // Display label: use unit name if room group, otherwise location
+  let label = firstOrder.location_detail || firstOrder.guest_name || firstOrder.order_type;
+  if (firstOrder.room_id && inStayBooking) {
+    label = inStayBooking.resort_ops_units?.name || label;
+  }
+  const guestName = inStayBooking?.resort_ops_guests?.full_name || firstOrder.guest_name;
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+        <Button variant="ghost" size="icon" onClick={onBack} className="w-8 h-8 md:hidden">
+          <ArrowLeft className="w-4 h-4" />
+        </Button>
+        <div className="flex-1">
+          <p className="font-display text-base tracking-wider text-foreground">{label}</p>
+          {guestName && <p className="font-body text-xs text-muted-foreground">{guestName}</p>}
+        </div>
+        <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 font-body text-[10px]">
+          {groupOrders.length} orders
+        </Badge>
+        {isInStay && (
+          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 font-body text-[10px]">
+            <BedDouble className="w-3 h-3 mr-1" /> In-Stay
+          </Badge>
+        )}
+      </div>
+
+      {/* Itemized orders */}
+      <div className="flex-1 md:overflow-y-auto px-4 py-3 space-y-4">
+        {groupOrders.map((order, idx) => {
+          const items = (order.items as any[]) || [];
+          return (
+            <div key={order.id}>
+              <p className="font-display text-xs tracking-wider text-muted-foreground mb-1">
+                Order {idx + 1} · {format(new Date(order.created_at), 'h:mm a')}
+              </p>
+              <div className="space-y-1">
+                {items.map((item: any, iIdx: number) => (
+                  <div key={iIdx} className="flex justify-between font-body text-sm">
+                    <span className="text-foreground">{item.qty || item.quantity || 1}× {item.name}</span>
+                    <span className="text-muted-foreground tabular-nums">₱{(item.price * (item.qty || item.quantity || 1)).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end mt-1">
+                <span className="font-body text-xs text-muted-foreground">₱{Number(order.total).toLocaleString()}</span>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Totals */}
+        <div className="border-t border-border/50 pt-3 space-y-1">
+          <div className="flex justify-between font-body text-sm">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span className="tabular-nums">₱{subtotal.toLocaleString()}</span>
+          </div>
+          {sc > 0 && (
+            <div className="flex justify-between font-body text-sm">
+              <span className="text-muted-foreground">Service Charge</span>
+              <span className="tabular-nums">₱{sc.toLocaleString()}</span>
+            </div>
+          )}
+          <div className="flex justify-between font-display text-2xl text-gold pt-2">
+            <span>Total</span>
+            <span className="tabular-nums">₱{total.toLocaleString()}</span>
+          </div>
+          <p className="font-body text-xs text-muted-foreground">
+            {groupOrders.length} orders combined
+          </p>
+        </div>
+
+        {/* Payment method selection */}
+        <div className="space-y-3">
+          {isInStay && (
+            <>
+              {!chargeToRoom ? (
+                <button
+                  onClick={handleRoomFolioClick}
+                  className="w-full min-h-[56px] rounded-xl border-2 border-blue-400 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 font-display text-sm tracking-wider transition-all flex items-center justify-center gap-2"
+                >
+                  <BedDouble className="w-5 h-5" />
+                  Charge to Room — {inStayBooking.resort_ops_units?.name || 'Room'}
+                </button>
+              ) : (
+                <div className="rounded-xl border-2 border-gold bg-gold/10 p-3 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <BedDouble className="w-4 h-4 text-gold" />
+                    <span className="font-display text-sm tracking-wider text-gold">Charging to {inStayBooking.resort_ops_units?.name || 'Room'}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{inStayBooking.resort_ops_guests?.full_name || 'Guest'}</p>
+                  <button
+                    onClick={() => { onSelectPayment(''); }}
+                    className="text-xs text-muted-foreground underline mt-1"
+                  >
+                    Cancel — pay now instead
+                  </button>
+                </div>
+              )}
+              <div className="flex items-center gap-2 my-2">
+                <Separator className="flex-1" />
+                <span className="text-xs text-muted-foreground font-display tracking-wider">OR PAY NOW</span>
+                <Separator className="flex-1" />
+              </div>
+            </>
+          )}
+
+          <p className="font-display text-xs tracking-wider text-muted-foreground">
+            {isInStay ? 'PAY NOW' : 'SELECT PAYMENT METHOD'}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {paymentMethods.map(m => (
+              <button
+                key={m.id}
+                onClick={() => onSelectPayment(m.name)}
+                className={`min-h-[52px] rounded-xl border-2 font-display text-sm tracking-wider transition-all ${
+                  selectedPayment === m.name && !chargeToRoom
+                    ? 'border-gold bg-gold/10 text-gold'
+                    : 'border-border bg-card text-foreground hover:border-accent/40'
+                }`}
+              >
+                {m.name}
+              </button>
+            ))}
+            {isInStay && (
+              <button
+                onClick={handleRoomFolioClick}
+                className={`min-h-[52px] rounded-xl border-2 font-display text-sm tracking-wider transition-all flex items-center justify-center gap-2 ${
+                  chargeToRoom
+                    ? 'border-gold bg-gold/10 text-gold'
+                    : 'border-border bg-card text-foreground hover:border-accent/40'
+                }`}
+              >
+                <BedDouble className="w-4 h-4" />
+                Room Folio
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Confirm */}
+      <div className="p-4 border-t border-border flex-shrink-0">
+        <Button
+          onClick={onConfirm}
+          disabled={!canConfirm || busy}
+          size="lg"
+          className="w-full min-h-[56px] font-display text-base tracking-wider gap-2 bg-gold text-primary-foreground hover:bg-gold/90"
+        >
+          {busy ? 'Processing…' : (
+            <>
+              <Check className="w-5 h-5" />
+              Confirm Payment — ₱{total.toLocaleString()}
+            </>
+          )}
+        </Button>
       </div>
     </div>
   );
