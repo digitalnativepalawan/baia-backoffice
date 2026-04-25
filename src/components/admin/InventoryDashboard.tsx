@@ -27,7 +27,7 @@ const BUFFER_DAYS_DEFAULT = 3;
 
 interface BurnInfo {
   dailyRate: number;
-  daysRemaining: number | null; // null = no consumption data
+  daysRemaining: number | null;
   suggestedThreshold: number;
   reorderQty: number;
 }
@@ -54,7 +54,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     },
   });
 
-  // Fetch 14 days of consumption for burn rate calculation
   const { data: burnLogs = [] } = useQuery({
     queryKey: ['burn-rate-logs'],
     queryFn: async () => {
@@ -83,18 +82,15 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     },
   });
 
-  // Calculate burn rates per ingredient from 14-day window
   const burnMap = useMemo(() => {
     const map: Record<string, BurnInfo> = {};
     if (burnLogs.length === 0) return map;
 
-    // Find actual date range of logs
     const dates = burnLogs.map((l: any) => new Date(l.created_at));
     const earliest = new Date(Math.min(...dates.map(d => d.getTime())));
     const now = new Date();
     const daySpan = Math.max(1, differenceInDays(now, earliest));
 
-    // Aggregate total consumption per ingredient
     const totals: Record<string, number> = {};
     burnLogs.forEach((l: any) => {
       const id = l.ingredient_id;
@@ -115,20 +111,23 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     return map;
   }, [burnLogs, ingredients]);
 
-  // Build usage map
+  // Build usage map WITH DEDUPLICATION
   const usageMap: Record<string, { dishName: string; quantity: number }[]> = {};
   recipeLinks.forEach((rl: any) => {
     const dishName = rl.menu_items?.name || 'Unknown';
     if (!usageMap[rl.ingredient_id]) usageMap[rl.ingredient_id] = [];
-    usageMap[rl.ingredient_id].push({ dishName, quantity: rl.quantity });
+    
+    // Check if this dish already exists for this ingredient
+    const existing = usageMap[rl.ingredient_id].find(item => item.dishName === dishName);
+    if (!existing) {
+      usageMap[rl.ingredient_id].push({ dishName, quantity: rl.quantity });
+    }
   });
 
-  // Filter by department
   const deptIngredients = selectedDept === 'all'
     ? ingredients
     : ingredients.filter((i: any) => i.department === selectedDept);
 
-  // Dashboard stats (department-scoped)
   const totalValue = deptIngredients.reduce((sum: number, i: any) => sum + (i.current_stock * i.cost_per_unit), 0);
   const missingCostCount = deptIngredients.filter((i: any) => i.cost_per_unit === 0).length;
   const outOfStockCount = deptIngredients.filter((i: any) => i.current_stock <= 0).length;
@@ -139,11 +138,8 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const [editIng, setEditIng] = useState<any>(null);
   const [form, setForm] = useState({ name: '', unit: 'grams', cost_per_unit: '', current_stock: '', low_stock_threshold: '', department: 'kitchen' as Department });
 
-  // Transfer state
   const [showTransfer, setShowTransfer] = useState(false);
   const [transfer, setTransfer] = useState({ fromDept: '' as string, toDept: '' as string, ingredientId: '', quantity: '', reason: '' });
-
-  // Auto-threshold state
   const [bufferDays, setBufferDays] = useState(BUFFER_DAYS_DEFAULT);
 
   const openNew = () => {
@@ -200,7 +196,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     toast.success('Ingredient deleted');
   };
 
-  // Smart low stock: use consumption-based "days remaining" when available, fall back to static threshold
   const getUrgency = (ing: any): { level: 'critical' | 'warning' | 'ok'; daysLeft: number | null; dailyRate: number } => {
     const burn = burnMap[ing.id];
     if (burn && burn.daysRemaining !== null) {
@@ -209,7 +204,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       if (burn.daysRemaining < 5) return { level: 'warning', daysLeft: burn.daysRemaining, dailyRate: burn.dailyRate };
       return { level: 'ok', daysLeft: burn.daysRemaining, dailyRate: burn.dailyRate };
     }
-    // Fallback: static threshold
     if (ing.current_stock <= 0) return { level: 'critical', daysLeft: null, dailyRate: 0 };
     if (ing.low_stock_threshold > 0 && ing.current_stock < ing.low_stock_threshold) {
       return { level: 'warning', daysLeft: null, dailyRate: 0 };
@@ -217,21 +211,17 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     return { level: 'ok', daysLeft: null, dailyRate: 0 };
   };
 
-  // Build urgency list for alert panel
   const urgentItems = useMemo(() => {
     return deptIngredients
       .map((ing: any) => ({ ing, urgency: getUrgency(ing) }))
       .filter(({ urgency }) => urgency.level !== 'ok')
       .sort((a, b) => {
-        // Sort: critical first, then by days remaining (ascending)
         if (a.urgency.level !== b.urgency.level) return a.urgency.level === 'critical' ? -1 : 1;
         const aDays = a.urgency.daysLeft ?? 999;
         const bDays = b.urgency.daysLeft ?? 999;
         return aDays - bDays;
       });
   }, [deptIngredients, burnMap]);
-
-  const lowStockItems = urgentItems;
 
   const filtered = deptIngredients.filter((i: any) => {
     if (search.trim() && !i.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -261,9 +251,13 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     URL.revokeObjectURL(url);
   };
 
-  const editIngUsage = editIng && editIng !== 'new' ? (usageMap[editIng.id] || []) : [];
+  // Deduplicated editIngUsage
+  const editIngUsage = editIng && editIng !== 'new' 
+    ? (usageMap[editIng.id] || []).filter((item, index, self) => 
+        index === self.findIndex((t) => t.dishName === item.dishName)
+      )
+    : [];
 
-  // Auto-set thresholds based on consumption
   const autoSetThresholds = async () => {
     const updates: { id: string; threshold: number }[] = [];
     for (const ing of deptIngredients as any[]) {
@@ -289,7 +283,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     toast.success(`Updated thresholds for ${updates.length} ingredients (${bufferDays}-day buffer)`);
   };
 
-  // Filter consumption logs by department
   const filteredLogs = selectedDept === 'all'
     ? consumptionLogs
     : consumptionLogs.filter((log: any) => log.department === selectedDept || log.ingredients?.department === selectedDept);
@@ -304,7 +297,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     logsByDate[date][ingName].total += Math.abs(log.change_qty);
   });
 
-  // Transfer logic
   const transferIngredients = transfer.fromDept
     ? ingredients.filter((i: any) => i.department === transfer.fromDept)
     : [];
@@ -326,12 +318,10 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       return;
     }
 
-    // Deduct from source
     await supabase.from('ingredients').update({
       current_stock: (sourceIng as any).current_stock - qty,
     }).eq('id', sourceIng.id);
 
-    // Find or create target ingredient
     const { data: existing } = await supabase
       .from('ingredients')
       .select('*')
@@ -354,7 +344,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       });
     }
 
-    // Log both
     const reason = transfer.reason ? `transfer: ${transfer.reason}` : 'transfer';
     await supabase.from('inventory_logs').insert([
       { ingredient_id: sourceIng.id, change_qty: -qty, reason, department: transfer.fromDept },
@@ -367,7 +356,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     toast.success(`Transferred ${qty} ${(sourceIng as any).unit} of ${(sourceIng as any).name}`);
   };
 
-  // Helper to format days remaining
   const formatDays = (days: number | null) => {
     if (days === null) return null;
     if (days <= 0) return '0d';
@@ -377,7 +365,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
 
   return (
     <div className="space-y-4">
-      {/* Department pill selector */}
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setSelectedDept('all')}
@@ -415,7 +402,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
         </TabsList>
 
         <TabsContent value="stock" className="space-y-4">
-          {/* Summary cards */}
           <div className="grid grid-cols-3 gap-2">
             <div className="p-2.5 rounded-lg border border-border bg-secondary/50 text-center">
               <p className="font-display text-lg text-foreground">₱{totalValue.toLocaleString()}</p>
@@ -437,7 +423,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
             </button>
           </div>
 
-          {/* Missing cost alert */}
           {missingCostCount > 0 && (
             <div className="p-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
@@ -447,7 +432,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
             </div>
           )}
 
-          {/* Smart low stock alerts — sorted by urgency */}
           {urgentItems.length > 0 && stockFilter === 'all' && (
             <div className="p-3 rounded-lg border border-destructive/40 bg-destructive/5 space-y-2">
               <div className="flex items-center justify-between mb-1">
@@ -512,7 +496,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
             </div>
           )}
 
-          {/* Auto-threshold tool */}
           {!readOnly && (
             <div className="p-3 rounded-lg border border-border bg-secondary/30 space-y-2">
               <div className="flex items-center gap-2">
@@ -542,7 +525,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
             </div>
           )}
 
-          {/* Filters */}
           <div className="flex gap-2">
             <Input
               value={search}
@@ -576,7 +558,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
             </Button>
           </div>
 
-          {/* Ingredients list */}
           {filtered.map((ing: any) => {
             const urgency = getUrgency(ing);
             const isOut = ing.current_stock <= 0;
@@ -642,7 +623,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
           )}
         </TabsContent>
 
-        {/* CONSUMPTION LOG TAB */}
         <TabsContent value="consumption" className="space-y-4">
           <div className="flex gap-2">
             {[7, 14, 30].map(d => (
@@ -681,7 +661,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
         </TabsContent>
       </Tabs>
 
-      {/* Edit dialog */}
       <Dialog open={!!editIng} onOpenChange={() => setEditIng(null)}>
         <DialogContent className="bg-card border-border max-w-sm max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -693,7 +672,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
             <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               placeholder="Ingredient name" className="bg-secondary border-border text-foreground font-body" />
 
-            {/* Department selector */}
             <div>
               <Label className="font-body text-xs text-cream-dim">Department</Label>
               <div className="flex flex-wrap gap-2 mt-1">
@@ -740,7 +718,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
               </div>
             </div>
 
-            {/* Burn rate info in edit dialog */}
             {editIng && editIng !== 'new' && burnMap[editIng.id] && (
               <div className="p-2.5 rounded-lg border border-border bg-secondary/30 space-y-1">
                 <div className="flex items-center gap-2">
@@ -765,7 +742,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
               </div>
             )}
 
-            {/* Used in dishes section */}
             {editIngUsage.length > 0 && (
               <div className="border border-border rounded-lg p-3 space-y-2">
                 <div className="flex items-center gap-2">
@@ -777,11 +753,11 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
                 {editIngUsage
                   .sort((a, b) => a.dishName.localeCompare(b.dishName))
                   .map((u, idx) => (
-                  <div key={idx} className="flex justify-between items-center">
-                    <span className="font-body text-xs text-foreground">{u.dishName}</span>
-                    <span className="font-body text-[10px] text-cream-dim">{u.quantity} per order</span>
-                  </div>
-                ))}
+                    <div key={idx} className="flex justify-between items-center">
+                      <span className="font-body text-xs text-foreground">{u.dishName}</span>
+                      <span className="font-body text-[10px] text-cream-dim">{u.quantity} per order</span>
+                    </div>
+                  ))}
               </div>
             )}
 
@@ -795,7 +771,6 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
         </DialogContent>
       </Dialog>
 
-      {/* Transfer dialog */}
       <Dialog open={showTransfer} onOpenChange={setShowTransfer}>
         <DialogContent className="bg-card border-border max-w-sm">
           <DialogHeader>
