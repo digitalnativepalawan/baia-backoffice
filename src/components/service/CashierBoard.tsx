@@ -14,6 +14,17 @@ import { Separator } from '@/components/ui/separator';
 import { formatDistanceToNow, format } from 'date-fns';
 import CashierReceipt from './CashierReceipt';
 
+/** Prefixes that identify room/unit location_detail values */
+const ROOM_UNIT_PREFIXES = ['COT', 'SUI'];
+
+/** Returns true when a location_detail string corresponds to a room/unit */
+const isRoomLinkedLocation = (locationDetail: string | null | undefined, unitNames: string[]): boolean => {
+  if (!locationDetail) return false;
+  const loc = locationDetail.trim().toUpperCase();
+  if (ROOM_UNIT_PREFIXES.some(p => loc.startsWith(p))) return true;
+  return unitNames.some(n => n.trim().toUpperCase() === loc);
+};
+
 const CashierBoard = () => {
   const qc = useQueryClient();
   const { data: resortProfile } = useResortProfile();
@@ -130,6 +141,16 @@ const CashierBoard = () => {
         .limit(50);
       return (data || []) as any[];
     },
+  });
+
+  // All resort unit names — used for static room-association checks
+  const { data: unitNames = [] } = useQuery({
+    queryKey: ['cashier-unit-names'],
+    queryFn: async () => {
+      const { data } = await supabase.from('resort_ops_units').select('name');
+      return (data || []).map((u: any) => u.name as string);
+    },
+    staleTime: 60_000,
   });
 
   // Handle payment confirmation
@@ -249,13 +270,33 @@ const CashierBoard = () => {
     }
     if (selectedOrder.guest_name) {
       const name = selectedOrder.guest_name.toLowerCase().trim();
-      return activeBookings.find((b: any) => {
+      const byGuest = activeBookings.find((b: any) => {
         const guestName = b.resort_ops_guests?.full_name?.toLowerCase()?.trim();
         return guestName && guestName === name;
-      }) || null;
+      });
+      if (byGuest) return byGuest;
+    }
+    // Also match by location_detail against known unit names
+    if (selectedOrder.location_detail) {
+      const loc = selectedOrder.location_detail.toLowerCase().trim();
+      const byLocation = activeBookings.find((b: any) => {
+        const unitName = b.resort_ops_units?.name?.toLowerCase()?.trim();
+        return unitName && unitName === loc;
+      });
+      if (byLocation) return byLocation;
     }
     return null;
   }, [selectedOrder, activeBookings]);
+
+  // Show Room Folio button whenever the order has ANY room association —
+  // regardless of whether an active booking was auto-detected.
+  const showRoomFolioButton = useMemo(() => {
+    if (!selectedOrder) return false;
+    if (selectedOrderInStay) return true;
+    if (selectedOrder.room_id) return true;
+    if (isRoomLinkedLocation(selectedOrder.location_detail, unitNames)) return true;
+    return false;
+  }, [selectedOrder, selectedOrderInStay, unitNames]);
 
   // Receipt view
   if (receiptOrder) {
@@ -381,6 +422,7 @@ const CashierBoard = () => {
             onConfirm={() => handleConfirmTabPayment(selectedTabBill, selectedPayment)}
             busy={busy}
             onBack={() => { setSelectedTabBill(null); setSelectedPayment(''); }}
+            unitNames={unitNames}
           />
         ) : selectedOrder ? (
           <BillOutPanel
@@ -398,6 +440,7 @@ const CashierBoard = () => {
             onBack={() => setSelectedOrder(null)}
             onPreviewReceipt={() => setReceiptOrder(selectedOrder)}
             inStayBooking={selectedOrderInStay}
+            showRoomFolioButton={showRoomFolioButton}
           />
         ) : (
           <DailySummary completed={completedOrders} />
@@ -409,7 +452,7 @@ const CashierBoard = () => {
 
 /** Tab Bill payment panel */
 const TabBillPanel = ({
-  tab, orders: tabOrders, paymentMethods, selectedPayment, onSelectPayment, onConfirm, busy, onBack,
+  tab, orders: tabOrders, paymentMethods, selectedPayment, onSelectPayment, onConfirm, busy, onBack, unitNames,
 }: {
   tab: any;
   orders: any[];
@@ -419,9 +462,11 @@ const TabBillPanel = ({
   onConfirm: () => void;
   busy: boolean;
   onBack: () => void;
+  unitNames: string[];
 }) => {
   const allItems: any[] = tabOrders.flatMap((o: any) => (o.items as any[]) || []);
   const tabTotal = tabOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+  const showRoomFolioInTab = isRoomLinkedLocation(tab.location_detail, unitNames);
 
   return (
     <div className="flex flex-col h-full">
@@ -484,6 +529,19 @@ const TabBillPanel = ({
                 {m.name}
               </button>
             ))}
+            {showRoomFolioInTab && (
+              <button
+                onClick={() => onSelectPayment('Charge to Room')}
+                className={`min-h-[52px] rounded-xl border-2 font-display text-sm tracking-wider transition-all flex items-center justify-center gap-2 ${
+                  selectedPayment === 'Charge to Room'
+                    ? 'border-gold bg-gold/10 text-gold'
+                    : 'border-border bg-card text-foreground hover:border-accent/40'
+                }`}
+              >
+                <BedDouble className="w-4 h-4" />
+                Room Folio
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -561,7 +619,8 @@ const OrderRow = ({ order, selected, onSelect }: {
 const BillOutPanel = ({
   order, paymentMethods, selectedPayment, onSelectPayment,
   chargeToRoom, onChargeToRoom, activeBookings, selectedBooking,
-  onSelectBooking, onConfirm, busy, onBack, onPreviewReceipt, inStayBooking
+  onSelectBooking, onConfirm, busy, onBack, onPreviewReceipt, inStayBooking,
+  showRoomFolioButton,
 }: {
   order: any;
   paymentMethods: any[];
@@ -577,6 +636,7 @@ const BillOutPanel = ({
   onBack: () => void;
   onPreviewReceipt: () => void;
   inStayBooking: any | null;
+  showRoomFolioButton: boolean;
 }) => {
   const items = (order.items as any[]) || [];
   const subtotal = items.reduce((s: number, i: any) => s + i.price * (i.qty || i.quantity || 1), 0);
@@ -585,6 +645,12 @@ const BillOutPanel = ({
 
   const isInStay = !!inStayBooking;
   const canConfirm = chargeToRoom ? !!selectedBooking : !!selectedPayment;
+
+  // Resolve which booking is being charged to (auto-detected or manually selected)
+  const effectiveBooking = useMemo(
+    () => inStayBooking || (selectedBooking ? activeBookings.find((b: any) => b.id === selectedBooking) : null),
+    [inStayBooking, selectedBooking, activeBookings]
+  );
 
   const handleRoomFolioClick = () => {
     onChargeToRoom();
@@ -646,7 +712,7 @@ const BillOutPanel = ({
 
         {/* Payment Method Selection */}
         <div className="space-y-3">
-          {/* In-stay guest: Charge to Room as primary */}
+          {/* In-stay guest: Charge to Room as primary (auto-detected booking) */}
           {isInStay && (
             <>
               {!chargeToRoom ? (
@@ -661,9 +727,9 @@ const BillOutPanel = ({
                 <div className="rounded-xl border-2 border-gold bg-gold/10 p-3 space-y-1">
                   <div className="flex items-center gap-2">
                     <BedDouble className="w-4 h-4 text-gold" />
-                    <span className="font-display text-sm tracking-wider text-gold">Charging to {inStayBooking.resort_ops_units?.name || 'Room'}</span>
+                    <span className="font-display text-sm tracking-wider text-gold">Charging to {effectiveBooking?.resort_ops_units?.name || 'Room'}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">{inStayBooking.resort_ops_guests?.full_name || 'Guest'}</p>
+                  <p className="text-xs text-muted-foreground">{effectiveBooking?.resort_ops_guests?.full_name || 'Guest'}</p>
                   <button
                     onClick={() => { onSelectPayment(''); }}
                     className="text-xs text-muted-foreground underline mt-1"
@@ -681,8 +747,57 @@ const BillOutPanel = ({
             </>
           )}
 
+          {/* Room folio active without auto-detected booking: show booking picker */}
+          {!isInStay && chargeToRoom && (
+            <div className="space-y-2">
+              <div className="rounded-xl border-2 border-gold bg-gold/10 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <BedDouble className="w-4 h-4 text-gold" />
+                    <span className="font-display text-sm tracking-wider text-gold">
+                      {effectiveBooking ? `Charging to ${effectiveBooking.resort_ops_units?.name || 'Room'}` : 'Select Room Booking'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => { onSelectPayment(''); }}
+                    className="text-xs text-muted-foreground underline"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {effectiveBooking && (
+                  <p className="text-xs text-muted-foreground">{effectiveBooking.resort_ops_guests?.full_name || 'Guest'}</p>
+                )}
+                {activeBookings.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    {activeBookings.map((b: any) => (
+                      <button
+                        key={b.id}
+                        onClick={() => onSelectBooking(b.id)}
+                        className={`w-full text-left px-3 py-2 rounded-lg border transition-all ${
+                          selectedBooking === b.id
+                            ? 'border-gold bg-gold/10 text-gold'
+                            : 'border-border bg-card/80 text-foreground hover:border-accent/40'
+                        }`}
+                      >
+                        <span className="font-display text-xs tracking-wider">{b.resort_ops_units?.name || 'Room'}</span>
+                        <span className="font-body text-[11px] text-muted-foreground ml-2">{b.resort_ops_guests?.full_name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 my-2">
+                <Separator className="flex-1" />
+                <span className="text-xs text-muted-foreground font-display tracking-wider">OR PAY NOW</span>
+                <Separator className="flex-1" />
+              </div>
+            </div>
+          )}
+
           <p className="font-display text-xs tracking-wider text-muted-foreground">
-            {isInStay ? 'PAY NOW' : 'SELECT PAYMENT METHOD'}
+            {isInStay || (showRoomFolioButton && chargeToRoom) ? 'PAY NOW' : 'SELECT PAYMENT METHOD'}
           </p>
           <div className="grid grid-cols-2 gap-2">
             {paymentMethods.map(m => (
@@ -698,7 +813,7 @@ const BillOutPanel = ({
                 {m.name}
               </button>
             ))}
-            {isInStay && (
+            {showRoomFolioButton && (
               <button
                 onClick={handleRoomFolioClick}
                 className={`min-h-[52px] rounded-xl border-2 font-display text-sm tracking-wider transition-all flex items-center justify-center gap-2 ${
