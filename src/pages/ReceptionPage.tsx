@@ -218,6 +218,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
         .limit(20);
       return data || [];
     },
+    refetchInterval: 15000,
   });
 
   // Today's tours (guest_tours + tour_bookings)
@@ -417,6 +418,9 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'units' }, () => {
         qc.invalidateQueries({ queryKey: ['rooms-units'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        qc.invalidateQueries({ queryKey: ['reception-recent-orders'] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };

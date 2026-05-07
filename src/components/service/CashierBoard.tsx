@@ -196,10 +196,15 @@ const CashierBoard = () => {
     }
   };
 
-  // Filter individual orders: exclude those belonging to closed tab bills
+  // Filter individual orders: exclude those belonging to closed tab bills,
+  // and ensure any stale Paid or Charge-to-Room orders are removed immediately.
   const filteredOrders = useMemo(() => {
     const closedTabIdSet = new Set(tabBillIds);
-    return orders.filter((o: any) => !o.tab_id || !closedTabIdSet.has(o.tab_id));
+    return orders.filter((o: any) =>
+      (!o.tab_id || !closedTabIdSet.has(o.tab_id)) &&
+      o.status !== 'Paid' &&
+      o.payment_type !== 'Charge to Room'
+    );
   }, [orders, tabBillIds]);
 
   const activePaymentMethods = paymentMethods.filter(m => m.is_active && m.name !== 'Charge to Room');
@@ -219,6 +224,7 @@ const CashierBoard = () => {
       qc.invalidateQueries({ queryKey: ['cashier-tab-bills'] });
       qc.invalidateQueries({ queryKey: ['cashier-tab-orders'] });
       qc.invalidateQueries({ queryKey: ['cashier-completed'] });
+      qc.invalidateQueries({ queryKey: ['cashier-orders'] });
       setSelectedTabBill(null);
       setSelectedPayment('');
       toast.success('Tab settled');
