@@ -229,6 +229,64 @@ const CashierBoard = () => {
     }
   };
 
+  // Handle tab bill room folio payment
+  const handleConfirmTabRoomFolio = async (tabBill: any, booking: any) => {
+    if (busy || !booking) return;
+    setBusy(true);
+    try {
+      const ordersForTab = tabBillOrders.filter((o: any) => o.tab_id === tabBill.id);
+      const staffSession = getStaffSession();
+
+      if (ordersForTab.length > 0) {
+        const orderIds = ordersForTab.map((o: any) => o.id);
+        await supabase.from('orders').update({
+          status: 'Paid',
+          payment_type: 'Charge to Room',
+          room_id: booking.unit_id,
+          closed_at: new Date().toISOString(),
+        }).in('id', orderIds);
+
+        for (const order of ordersForTab) {
+          const items = (order.items as any[]) || [];
+          const subtotal = items.reduce((s: number, i: any) => s + i.price * (i.qty || i.quantity || 1), 0);
+          const taxDetails = (order.tax_details as any) || {};
+          const taxAmount = Number(taxDetails.vat_amount ?? 0);
+          const serviceCharge = Number(order.service_charge ?? 0);
+          const grandTotal = Number(order.total ?? subtotal + taxAmount + serviceCharge);
+
+          await (supabase.from('room_transactions' as any) as any).insert({
+            unit_id: booking.unit_id,
+            unit_name: booking.resort_ops_units?.name || '',
+            booking_id: booking.id,
+            guest_name: booking.resort_ops_guests?.full_name || tabBill.guest_name || null,
+            transaction_type: 'room_charge',
+            order_id: order.id,
+            amount: subtotal,
+            tax_amount: taxAmount,
+            service_charge_amount: serviceCharge,
+            total_amount: grandTotal,
+            payment_method: 'Charge to Room',
+            staff_name: staffSession?.name || 'Staff',
+            notes: `Room Folio – Tab: ${tabBill.location_detail} – Order: ${items.map((i: any) => `${i.qty || i.quantity || 1}x ${i.name}`).join(', ')}`,
+          });
+        }
+      }
+
+      await supabase.from('tabs').update({ payment_method: 'Charge to Room' }).eq('id', tabBill.id);
+
+      qc.invalidateQueries({ queryKey: ['cashier-tab-bills'] });
+      qc.invalidateQueries({ queryKey: ['cashier-tab-orders'] });
+      qc.invalidateQueries({ queryKey: ['cashier-completed'] });
+      setSelectedTabBill(null);
+      setSelectedPayment('');
+      toast.success('Tab charged to room');
+    } catch {
+      toast.error('Failed to charge tab to room');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleOrderSelect = useCallback((order: any) => {
     if (order.status === 'Paid') {
       setReceiptOrder(order);
@@ -249,13 +307,39 @@ const CashierBoard = () => {
     }
     if (selectedOrder.guest_name) {
       const name = selectedOrder.guest_name.toLowerCase().trim();
-      return activeBookings.find((b: any) => {
+      const byGuest = activeBookings.find((b: any) => {
         const guestName = b.resort_ops_guests?.full_name?.toLowerCase()?.trim();
         return guestName && guestName === name;
-      }) || null;
+      });
+      if (byGuest) return byGuest;
+    }
+    // Check if location_detail matches an active booking's unit name
+    if (selectedOrder.location_detail) {
+      const loc = selectedOrder.location_detail.trim();
+      const byUnit = activeBookings.find((b: any) => b.resort_ops_units?.name === loc);
+      if (byUnit) return byUnit;
+    }
+    // Check if the order's tab location_detail matches an active booking's unit name
+    if (selectedOrder.tab_id) {
+      const tab = tabBills.find((t: any) => t.id === selectedOrder.tab_id);
+      if (tab?.location_detail) {
+        const tabLoc = tab.location_detail.trim();
+        const byTabUnit = activeBookings.find((b: any) => b.resort_ops_units?.name === tabLoc);
+        if (byTabUnit) return byTabUnit;
+      }
     }
     return null;
-  }, [selectedOrder, activeBookings]);
+  }, [selectedOrder, activeBookings, tabBills]);
+
+  // Auto-detect in-stay guest for a selected tab bill
+  const selectedTabBillInStay = useMemo(() => {
+    if (!selectedTabBill) return null;
+    if (selectedTabBill.location_detail) {
+      const loc = selectedTabBill.location_detail.trim();
+      return activeBookings.find((b: any) => b.resort_ops_units?.name === loc) || null;
+    }
+    return null;
+  }, [selectedTabBill, activeBookings]);
 
   // Receipt view
   if (receiptOrder) {
@@ -381,6 +465,8 @@ const CashierBoard = () => {
             onConfirm={() => handleConfirmTabPayment(selectedTabBill, selectedPayment)}
             busy={busy}
             onBack={() => { setSelectedTabBill(null); setSelectedPayment(''); }}
+            inStayBooking={selectedTabBillInStay}
+            onRoomFolioConfirm={() => handleConfirmTabRoomFolio(selectedTabBill, selectedTabBillInStay)}
           />
         ) : selectedOrder ? (
           <BillOutPanel
@@ -410,6 +496,7 @@ const CashierBoard = () => {
 /** Tab Bill payment panel */
 const TabBillPanel = ({
   tab, orders: tabOrders, paymentMethods, selectedPayment, onSelectPayment, onConfirm, busy, onBack,
+  inStayBooking, onRoomFolioConfirm,
 }: {
   tab: any;
   orders: any[];
@@ -419,6 +506,8 @@ const TabBillPanel = ({
   onConfirm: () => void;
   busy: boolean;
   onBack: () => void;
+  inStayBooking: any | null;
+  onRoomFolioConfirm: () => void;
 }) => {
   const allItems: any[] = tabOrders.flatMap((o: any) => (o.items as any[]) || []);
   const tabTotal = tabOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
@@ -441,9 +530,16 @@ const TabBillPanel = ({
             {tab.guest_name || '—'} · Opened {tab.created_at ? format(new Date(tab.created_at), 'h:mm a') : '—'}
           </p>
         </div>
-        <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 font-body text-[10px]">
-          Tab Bill
-        </Badge>
+        <div className="flex items-center gap-2">
+          {inStayBooking && (
+            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 font-body text-[10px]">
+              <BedDouble className="w-3 h-3 mr-1" /> In-Stay
+            </Badge>
+          )}
+          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 font-body text-[10px]">
+            Tab Bill
+          </Badge>
+        </div>
       </div>
 
       {/* Itemized orders */}
@@ -484,6 +580,16 @@ const TabBillPanel = ({
                 {m.name}
               </button>
             ))}
+            {inStayBooking && (
+              <button
+                onClick={onRoomFolioConfirm}
+                disabled={busy}
+                className="min-h-[52px] rounded-xl border-2 border-blue-400 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 font-display text-sm tracking-wider transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <BedDouble className="w-4 h-4" />
+                Room Folio
+              </button>
+            )}
           </div>
         </div>
       </div>
