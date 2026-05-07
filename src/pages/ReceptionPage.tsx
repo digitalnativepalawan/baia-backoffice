@@ -175,7 +175,10 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const { data: bookings = [] } = useQuery({
     queryKey: ['rooms-bookings'],
     queryFn: async () => {
-      const { data } = await supabase.from('resort_ops_bookings').select('*, resort_ops_guests(*)').order('check_in', { ascending: false });
+      const { data } = await supabase
+        .from('resort_ops_bookings')
+        .select('*, resort_ops_units(id, name), resort_ops_guests(id, full_name, email, phone)')
+        .order('check_in', { ascending: false });
       return data || [];
     },
   });
@@ -266,10 +269,11 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     resortUnits.find((ru: any) => ru.name.toLowerCase().trim() === roomName.toLowerCase().trim());
 
   const getUnitWorkflow = (unit: any) => {
-    const resortUnit = resolveResortUnit(unit.name);
-    const unitBookings = resortUnit
-      ? bookings.filter((b: any) => b.unit_id === resortUnit.id)
-      : [];
+    const unitName = (unit.name ?? '').toLowerCase().trim();
+    const unitBookings = bookings.filter((b: any) => {
+      const bookingUnitName = ((b.resort_ops_units as any)?.name ?? '').toLowerCase().trim();
+      return bookingUnitName === unitName;
+    });
 
     return resolveOperationalUnitWorkflow({
       bookings: unitBookings,
