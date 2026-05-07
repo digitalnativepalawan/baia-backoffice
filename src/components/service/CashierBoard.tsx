@@ -196,6 +196,55 @@ const CashierBoard = () => {
     }
   };
 
+  // Handle one-click Room Folio payment
+  const handleRoomFolioConfirm = async (roomBooking: any) => {
+    if (!selectedOrder || busy || !roomBooking) return;
+    setBusy(true);
+    try {
+      await supabase.from('orders').update({
+        status: 'Paid',
+        payment_type: 'Charge to Room',
+        closed_at: new Date().toISOString(),
+        room_id: roomBooking.unit_id,
+      }).eq('id', selectedOrder.id);
+
+      const staffSession = getStaffSession();
+      const items = (selectedOrder.items as any[]) || [];
+      const subtotal = items.reduce((s: number, i: any) => s + i.price * (i.qty || i.quantity || 1), 0);
+      const taxDetails = (selectedOrder.tax_details as any) || {};
+      const taxAmount = Number(taxDetails.vat_amount ?? 0);
+      const serviceCharge = Number(selectedOrder.service_charge ?? 0);
+      const grandTotal = Number(selectedOrder.total ?? subtotal + taxAmount + serviceCharge);
+
+      await (supabase.from('room_transactions' as any) as any).insert({
+        unit_id: roomBooking.unit_id,
+        unit_name: roomBooking.resort_ops_units?.name || '',
+        booking_id: roomBooking.id,
+        guest_name: roomBooking.resort_ops_guests?.full_name || selectedOrder.guest_name || null,
+        transaction_type: 'room_charge',
+        order_id: selectedOrder.id,
+        amount: subtotal,
+        tax_amount: taxAmount,
+        service_charge_amount: serviceCharge,
+        total_amount: grandTotal,
+        payment_method: 'Charge to Room',
+        staff_name: staffSession?.name || 'Staff',
+        notes: `Room Folio – Order: ${items.map((i: any) => `${i.qty || i.quantity || 1}x ${i.name}`).join(', ')}`,
+      });
+
+      setReceiptOrder({ ...selectedOrder, payment_type: 'Charge to Room' });
+      setSelectedOrder(null);
+      setSelectedPayment('');
+      setChargeToRoom(false);
+      setSelectedBooking(null);
+
+      qc.invalidateQueries({ queryKey: ['cashier-orders'] });
+      toast.success('Payment confirmed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // Filter individual orders: exclude those belonging to closed tab bills
   const filteredOrders = useMemo(() => {
     const closedTabIdSet = new Set(tabBillIds);
@@ -394,6 +443,7 @@ const CashierBoard = () => {
             selectedBooking={selectedBooking}
             onSelectBooking={setSelectedBooking}
             onConfirm={handleConfirmPayment}
+            onRoomFolioConfirm={handleRoomFolioConfirm}
             busy={busy}
             onBack={() => setSelectedOrder(null)}
             onPreviewReceipt={() => setReceiptOrder(selectedOrder)}
@@ -561,7 +611,7 @@ const OrderRow = ({ order, selected, onSelect }: {
 const BillOutPanel = ({
   order, paymentMethods, selectedPayment, onSelectPayment,
   chargeToRoom, onChargeToRoom, activeBookings, selectedBooking,
-  onSelectBooking, onConfirm, busy, onBack, onPreviewReceipt, inStayBooking
+  onSelectBooking, onConfirm, onRoomFolioConfirm, busy, onBack, onPreviewReceipt, inStayBooking
 }: {
   order: any;
   paymentMethods: any[];
@@ -573,6 +623,7 @@ const BillOutPanel = ({
   selectedBooking: string | null;
   onSelectBooking: (id: string | null) => void;
   onConfirm: () => void;
+  onRoomFolioConfirm: (booking: any) => void;
   busy: boolean;
   onBack: () => void;
   onPreviewReceipt: () => void;
@@ -685,6 +736,16 @@ const BillOutPanel = ({
             {isInStay ? 'PAY NOW' : 'SELECT PAYMENT METHOD'}
           </p>
           <div className="grid grid-cols-2 gap-2">
+            {isInStay && (
+              <button
+                onClick={() => onRoomFolioConfirm(inStayBooking)}
+                disabled={busy}
+                className="min-h-[52px] rounded-xl border-2 border-green-600 bg-green-600/10 text-green-500 hover:bg-green-600/20 font-display text-sm tracking-wider transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <BedDouble className="w-4 h-4" />
+                Room Folio
+              </button>
+            )}
             {paymentMethods.map(m => (
               <button
                 key={m.id}
@@ -698,19 +759,6 @@ const BillOutPanel = ({
                 {m.name}
               </button>
             ))}
-            {isInStay && (
-              <button
-                onClick={handleRoomFolioClick}
-                className={`min-h-[52px] rounded-xl border-2 font-display text-sm tracking-wider transition-all flex items-center justify-center gap-2 ${
-                  chargeToRoom
-                    ? 'border-gold bg-gold/10 text-gold'
-                    : 'border-border bg-card text-foreground hover:border-accent/40'
-                }`}
-              >
-                <BedDouble className="w-4 h-4" />
-                Room Folio
-              </button>
-            )}
           </div>
         </div>
       </div>
