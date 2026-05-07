@@ -229,6 +229,63 @@ const CashierBoard = () => {
     }
   };
 
+  // Handle tab bill room folio charge
+  const handleConfirmTabRoomCharge = async (tabBill: any) => {
+    if (busy) return;
+    const roomBooking = activeBookings.find((b: any) => {
+      const unitName = b.resort_ops_units?.name?.toLowerCase()?.trim();
+      return unitName && unitName === (tabBill.location_detail || '').toLowerCase().trim();
+    });
+    if (!roomBooking) { toast.error('No active booking found for this location'); return; }
+    setBusy(true);
+    try {
+      const staffSession = getStaffSession();
+      const ordersForTab = tabBillOrders.filter((o: any) => o.tab_id === tabBill.id);
+      if (ordersForTab.length > 0) {
+        const orderIds = ordersForTab.map((o: any) => o.id);
+        await supabase.from('orders').update({
+          status: 'Paid',
+          payment_type: 'Charge to Room',
+          room_id: roomBooking.unit_id,
+          closed_at: new Date().toISOString(),
+        }).in('id', orderIds);
+        const insertPromises = ordersForTab.map((order: any) => {
+          const items = (order.items as any[]) || [];
+          const subtotal = items.reduce((s: number, i: any) => s + i.price * (i.qty || i.quantity || 1), 0);
+          const sc = Number(order.service_charge || 0);
+          const grandTotal = Number(order.total || subtotal + sc);
+          return (supabase.from('room_transactions' as any) as any).insert({
+            unit_id: roomBooking.unit_id,
+            unit_name: roomBooking.resort_ops_units?.name || '',
+            booking_id: roomBooking.id,
+            guest_name: roomBooking.resort_ops_guests?.full_name || order.guest_name || null,
+            transaction_type: 'room_charge',
+            order_id: order.id,
+            amount: subtotal,
+            tax_amount: 0,
+            service_charge_amount: sc,
+            total_amount: grandTotal,
+            payment_method: 'Charge to Room',
+            staff_name: staffSession?.name || 'Staff',
+            notes: `Room Folio – Tab: ${tabBill.location_detail} · ${items.map((i: any) => `${i.qty || i.quantity || 1}x ${i.name}`).join(', ')}`,
+          });
+        });
+        await Promise.all(insertPromises);
+      }
+      await supabase.from('tabs').update({ payment_method: 'Charge to Room' }).eq('id', tabBill.id);
+      qc.invalidateQueries({ queryKey: ['cashier-tab-bills'] });
+      qc.invalidateQueries({ queryKey: ['cashier-tab-orders'] });
+      qc.invalidateQueries({ queryKey: ['cashier-completed'] });
+      setSelectedTabBill(null);
+      setSelectedPayment('');
+      toast.success('Tab charged to room folio');
+    } catch {
+      toast.error('Failed to charge tab to room');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleOrderSelect = useCallback((order: any) => {
     if (order.status === 'Paid') {
       setReceiptOrder(order);
@@ -381,6 +438,8 @@ const CashierBoard = () => {
             onConfirm={() => handleConfirmTabPayment(selectedTabBill, selectedPayment)}
             busy={busy}
             onBack={() => { setSelectedTabBill(null); setSelectedPayment(''); }}
+            activeBookings={activeBookings}
+            onChargeToRoom={() => handleConfirmTabRoomCharge(selectedTabBill)}
           />
         ) : selectedOrder ? (
           <BillOutPanel
@@ -410,6 +469,7 @@ const CashierBoard = () => {
 /** Tab Bill payment panel */
 const TabBillPanel = ({
   tab, orders: tabOrders, paymentMethods, selectedPayment, onSelectPayment, onConfirm, busy, onBack,
+  activeBookings, onChargeToRoom,
 }: {
   tab: any;
   orders: any[];
@@ -419,9 +479,29 @@ const TabBillPanel = ({
   onConfirm: () => void;
   busy: boolean;
   onBack: () => void;
+  activeBookings: any[];
+  onChargeToRoom: () => void;
 }) => {
+  const [chargeToRoom, setChargeToRoom] = useState(false);
+
+  const inStayBooking = useMemo(() => {
+    if (!tab.location_detail) return null;
+    const loc = tab.location_detail.toLowerCase().trim();
+    return activeBookings.find((b: any) => {
+      const unitName = b.resort_ops_units?.name?.toLowerCase()?.trim();
+      return unitName && unitName === loc;
+    }) || null;
+  }, [tab.location_detail, activeBookings]);
+
   const allItems: any[] = tabOrders.flatMap((o: any) => (o.items as any[]) || []);
   const tabTotal = tabOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+
+  const canConfirm = chargeToRoom || !!selectedPayment;
+
+  const handleConfirm = () => {
+    if (chargeToRoom) onChargeToRoom();
+    else onConfirm();
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -441,9 +521,16 @@ const TabBillPanel = ({
             {tab.guest_name || '—'} · Opened {tab.created_at ? format(new Date(tab.created_at), 'h:mm a') : '—'}
           </p>
         </div>
-        <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 font-body text-[10px]">
-          Tab Bill
-        </Badge>
+        <div className="flex items-center gap-2">
+          {inStayBooking && (
+            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 font-body text-[10px]">
+              <BedDouble className="w-3 h-3 mr-1" /> In-Stay
+            </Badge>
+          )}
+          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 font-body text-[10px]">
+            Tab Bill
+          </Badge>
+        </div>
       </div>
 
       {/* Itemized orders */}
@@ -470,13 +557,48 @@ const TabBillPanel = ({
         {/* Payment Method */}
         <div className="space-y-3">
           <p className="font-display text-xs tracking-wider text-muted-foreground">SELECT PAYMENT METHOD</p>
+
+          {/* Room Folio for in-stay guests */}
+          {inStayBooking && (
+            <>
+              {!chargeToRoom ? (
+                <button
+                  onClick={() => { setChargeToRoom(true); onSelectPayment(''); }}
+                  className="w-full min-h-[56px] rounded-xl border-2 border-blue-400 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 font-display text-sm tracking-wider transition-all flex items-center justify-center gap-2"
+                >
+                  <BedDouble className="w-5 h-5" />
+                  Charge to Room — {inStayBooking.resort_ops_units?.name || 'Room'}
+                </button>
+              ) : (
+                <div className="rounded-xl border-2 border-gold bg-gold/10 p-3 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <BedDouble className="w-4 h-4 text-gold" />
+                    <span className="font-display text-sm tracking-wider text-gold">Charging to {inStayBooking.resort_ops_units?.name || 'Room'}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{inStayBooking.resort_ops_guests?.full_name || 'Guest'}</p>
+                  <button
+                    onClick={() => setChargeToRoom(false)}
+                    className="text-xs text-muted-foreground underline mt-1"
+                  >
+                    Cancel — pay now instead
+                  </button>
+                </div>
+              )}
+              <div className="flex items-center gap-2 my-2">
+                <Separator className="flex-1" />
+                <span className="text-xs text-muted-foreground font-display tracking-wider">OR PAY NOW</span>
+                <Separator className="flex-1" />
+              </div>
+            </>
+          )}
+
           <div className="grid grid-cols-2 gap-2">
             {paymentMethods.map(m => (
               <button
                 key={m.id}
-                onClick={() => onSelectPayment(m.name)}
+                onClick={() => { onSelectPayment(m.name); setChargeToRoom(false); }}
                 className={`min-h-[52px] rounded-xl border-2 font-display text-sm tracking-wider transition-all ${
-                  selectedPayment === m.name
+                  selectedPayment === m.name && !chargeToRoom
                     ? 'border-gold bg-gold/10 text-gold'
                     : 'border-border bg-card text-foreground hover:border-accent/40'
                 }`}
@@ -484,6 +606,19 @@ const TabBillPanel = ({
                 {m.name}
               </button>
             ))}
+            {inStayBooking && (
+              <button
+                onClick={() => { setChargeToRoom(true); onSelectPayment(''); }}
+                className={`min-h-[52px] rounded-xl border-2 font-display text-sm tracking-wider transition-all flex items-center justify-center gap-2 ${
+                  chargeToRoom
+                    ? 'border-gold bg-gold/10 text-gold'
+                    : 'border-border bg-card text-foreground hover:border-accent/40'
+                }`}
+              >
+                <BedDouble className="w-4 h-4" />
+                Room Folio
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -491,15 +626,15 @@ const TabBillPanel = ({
       {/* Confirm */}
       <div className="p-4 border-t border-border flex-shrink-0">
         <Button
-          onClick={onConfirm}
-          disabled={!selectedPayment || busy}
+          onClick={handleConfirm}
+          disabled={!canConfirm || busy}
           size="lg"
           className="w-full min-h-[56px] font-display text-base tracking-wider gap-2 bg-emerald-600 text-white hover:bg-emerald-600/90"
         >
           {busy ? 'Processing…' : (
             <>
               <Check className="w-5 h-5" />
-              Settle Tab — ₱{tabTotal.toLocaleString()}
+              {chargeToRoom ? `Charge to Room — ₱${tabTotal.toLocaleString()}` : `Settle Tab — ₱${tabTotal.toLocaleString()}`}
             </>
           )}
         </Button>
